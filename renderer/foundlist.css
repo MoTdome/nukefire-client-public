@@ -1,0 +1,15 @@
+/* Server-backed Foundlist / Upgrades context pane. */
+.foundlist-hero { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+.foundlist-hero h3 { margin:0; }
+.foundlist-muted { margin:5px 0; opacity:.72; }
+.foundlist-upgrade-count { white-space:nowrap; color:var(--accent); }
+.foundlist-toolbar { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0; }
+.foundlist-toolbar button[aria-pressed="true"] { font-weight:700; }
+.foundlist-items { display:grid; gap:2px; }
+.foundlist-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 10px; padding:6px 2px; border-bottom:1px solid var(--panel-border); align-items:center; }
+.foundlist-name { min-width:0; font-weight:600; }
+.foundlist-verdict { font-size:.86em; white-space:nowrap; }
+.foundlist-meta { grid-column:1 / 2; font-size:.82em; opacity:.66; }
+.foundlist-dbid { grid-column:2; grid-row:1 / span 2; align-self:center; }
+.foundlist-row[data-verdict="upgrade"] .foundlist-verdict { color:var(--accent); font-weight:700; }
+.foundlist-row[data-verdict="tossup"] .foundlist-verdict { font-weight:700; }

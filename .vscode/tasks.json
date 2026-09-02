@@ -1,0 +1,37 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "NukeFire: Start Client",
+      "type": "npm",
+      "script": "start",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "NukeFire: Verify",
+      "type": "npm",
+      "script": "verify",
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "NukeFire: Run Tests",
+      "type": "npm",
+      "script": "test",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "NukeFire: Build Mac DMG",
+      "type": "npm",
+      "script": "dist:mac",
+      "problemMatcher": [],
+      "group": "build"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+name: NukeFire Manual Test Builds
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Validate ${{ matrix.label }} packaging
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS Universal
+            command: npm run dist:mac
+          - os: windows-latest
+            label: Windows x64
+            command: npm run dist:win
+
+    runs-on: ${{ matrix.os }}
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Verify client
+        run: npm run verify
+
+      - name: Build package
+        run: ${{ matrix.command }}
+
+      - name: Confirm packages were produced
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const dist = path.resolve('dist');
+          if (!fs.existsSync(dist)) throw new Error('dist directory was not created');
+          const files = fs.readdirSync(dist).filter((name) => /\.(dmg|zip|exe)$/iu.test(name));
+          if (files.length === 0) throw new Error('No distributable package was produced');
+          console.log(files.join('\n'));
+          NODE

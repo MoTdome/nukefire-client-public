@@ -1,0 +1,204 @@
+#class jukistats kill
+#class jukistats open
+
+#juki #split {0} {4}
+#mes var off
+#mes action off
+#function {fColourStat}
+{
+	#if {100 * %1 / %2 < 33}
+	{
+	#VAR result {<118>};
+	}
+	{
+		#if {100 * %1 / %2 > 66}
+	{
+		#VAR result {<128>};
+	}
+	{
+		#VAR result {<238>};
+        };
+    };
+};
+#alias {updateGyatt}
+{
+	#FORMAT {vHPBarGyatt} {< %s%s<099>H %s%s<099>M %s%s<099>V > Gyatt %s}
+		{@fColourStat{{$gyattHpCurrent}{$gyattHpMax}}}
+		{$gyattHpCurrent}
+		{@fColourStat{{$gyattManaCurrent}{$gyattManaMax}}}
+		{$gyattManaCurrent}
+		{@fColourStat{{$gyattMoveCurrent}{$gyattMoveMax}}}
+		{$gyattMoveCurrent}
+		{$statusLineOne};
+	#SHOWME {$vHPBarGyatt} {-6};
+};
+#alias {updateDoggo}
+{
+	#FORMAT {vHPBarDoggo} {< %s%s<099>H %s%s<099>M %s%s<099>V > Doggo %s}
+		{@fColourStat{{$doggoHpCurrent}{$doggoHpMax}}}
+		{$doggoHpCurrent}
+		{@fColourStat{{$doggoManaCurrent}{$doggoManaMax}}}
+		{$doggoManaCurrent}
+		{@fColourStat{{$doggoMoveCurrent}{$doggoMoveMax}}}
+		{$doggoMoveCurrent}
+		{$statusLineOne};
+	#SHOWME {$vHPBarDoggo} {-5};
+};
+#alias {updateSus}
+{
+	#FORMAT {vHPBarSus} {< %s%s<099>H %s%s<099>M %s%s<099>V > Sus %s}
+		{@fColourStat{{$susHpCurrent}{$susHpMax}}}
+		{$susHpCurrent}
+		{@fColourStat{{$susManaCurrent}{$susManaMax}}}
+		{$susManaCurrent}
+		{@fColourStat{{$susMoveCurrent}{$susMoveMax}}}
+		{$susMoveCurrent}
+		{$statusLineThree};
+	#SHOWME {$vHPBarSus} {-3};
+};
+#alias {updateOH}
+{
+	#FORMAT {vHPBarOH} {< %s%s<099>H %s%s<099>M %s%s<099>V > OH %s}
+		{@fColourStat{{$ohHpCurrent}{$ohHpMax}}}
+		{$ohHpCurrent}
+		{@fColourStat{{$ohManaCurrent}{$ohManaMax}}}
+		{$ohManaCurrent}
+		{@fColourStat{{$ohMoveCurrent}{$ohMoveMax}}}
+		{$ohMoveCurrent}
+		{$statusLineTwo};
+	#SHOWME {$vHPBarOH} {-4};
+};
+#gyatt #ACTION {< %1H %2M %3V %0>}
+{
+	#juki #var {gyattHpCurrent} {%1};
+	#juki #var {gyattManaCurrent} {%2};
+	#juki #var {gyattMoveCurrent} {%3};
+	#juki updateGyatt;
+};
+#doggo #ACTION {< %1H %2M %3V %0>}
+{
+	#juki #var {doggoHpCurrent} {%1};
+	#juki #var {doggoManaCurrent} {%2};
+	#juki #var {doggoMoveCurrent} {%3};
+	#juki updateDoggo;
+};
+#sus #ACTION {< %1H %2M %3V %0>}
+{
+	#juki #var {susHpCurrent} {%1};
+	#juki #var {susManaCurrent} {%2};
+	#juki #var {susMoveCurrent} {%3};
+	#juki updateSus;
+};
+#oh #ACTION {< %1H %2M %3V %0>}
+{
+	#juki #var {ohHpCurrent} {%1};
+	#juki #var {ohManaCurrent} {%2};
+	#juki #var {ohMoveCurrent} {%3};
+	#juki updateOH;
+};
+#juki #ACTION {< %1H %2M %3V >}
+{
+	#if {$gyattHpCurrent > $gyattHpMax}
+	{
+		#var {gyattHpMax} {$gyattHpCurrent}
+	};
+    #if {$doggoHpCurrent > $doggoHpMax}
+	{
+		#var {doggoHpMax} {$doggoHpCurrent}
+	};
+	#if {$gyattManaCurrent > $gyattManaMax}
+	{
+		#var {gyattManaMax} {$gyattManaCurrent}
+	};
+    #if {$doggoManaCurrent > $doggoManaMax}
+	{
+		#var {doggoManaMax} {$doggoManaCurrent}
+	};
+	#if {$gyattMoveCurrent > $gyattMoveMax}
+	{
+		#var {dgyattMoveMax} {$gyattMoveCurrent}
+	};
+    #if {$doggoMoveCurrent > $doggoMoveMax}
+	{
+		#var {doggoMoveMax} {$doggoMoveCurrent}
+	};
+	#if {$ohHpCurrent > $ohHpMax}
+	{
+		#var {ohHpMax} {$ohHpCurrent}
+	};
+	#if {$ohManaCurrent > $ohManaMax}
+	{
+		#var {ohManaMax} {$ohManaCurrent}
+	};
+	#if {$ohMoveCurrent > $ohMoveMax}
+	{
+		#var {ohMoveMax} {$ohMoveCurrent}
+        };
+        #if {$susHpCurrent > $susHpMax}
+	{
+		#var {susHpMax} {$susHpCurrent}
+	};
+	#if {$susManaCurrent > $susManaMax}
+	{
+		#var {susManaMax} {$susManaCurrent}
+	};
+	#if {$susMoveCurrent > $susMoveMax}
+	{
+		#var {susMoveMax} {$susMoveCurrent}
+	};
+};
+#juki #ACTION {^%1 gossips, %0}
+{
+	#var {statusLineOne} {<159> %1 gossips, %0<099>}
+};
+#juki #ACTION {^%1 says, %0}
+{
+	#var {statusLineThree} {<039>%1<029> says, <039> %0<099>}
+};
+#juki #ACTION {^%1 group-tels %0}
+{
+	#var {statusLineTwo} {<059>%1 group-tels %0<099>}
+};
+#juki #ACTION {^%1 telepaths to you, %0}
+{
+	#var {statusLineTwo} {<059>%1<019> telepaths, <059>to you %0<099>}
+};
+#juki #ACTION {^%1 replies %0}
+{
+	#var {statusLineTwo} {<059>%1<019> replies <059>%0<099>}
+};
+#juki #ACTION {^%1 auctions, %0}
+{
+	#var {statusLineOne} {<129>%1<029> auctions, <129> %0<099>}
+};
+
+
+
+#juki #var {doggoHpMax} {1}
+#juki #var {doggoManaMax} {1}
+#juki #var {doggoMoveMax} {1}
+#juki #var {doggoHpCurrent} {1}
+#juki #var {doggoManaCurrent} {1}
+#juki #var {doggoMoveCurrent} {1}
+#juki #var {ohHpMax} {1}
+#juki #var {ohManaMax} {1}
+#juki #var {ohMoveMax} {1}
+#juki #var {ohHpCurrent} {1}
+#juki #var {ohManaCurrent} {1}
+#juki #var {ohMoveCurrent} {1}
+#juki #var {susHpMax} {1}
+#juki #var {susManaMax} {1}
+#juki #var {susMoveMax} {1}
+#juki #var {susHpCurrent} {1}
+#juki #var {susManaCurrent} {1}
+#juki #var {susMoveCurrent} {1}
+#juki #var {statusLineOne} {.}
+#juki #var {statusLineTwo} {.}
+#juki #var {statusLineThree} {.}
+#juki #var {gyattHpMax} {1}
+#juki #var {gyattManaMax} {1}
+#juki #var {gyattMoveMax} {1}
+#juki #var {gyattHpCurrent} {1}
+#juki #var {gyattManaCurrent} {1}
+#juki #var {gyattMoveCurrent} {1}
+#class jukistats close

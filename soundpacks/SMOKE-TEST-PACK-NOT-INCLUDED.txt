@@ -1,0 +1,1 @@
+A separate Beta.70 smoke-test pack was found locally with manifest id 'nukefire.beta70-test'. It contains only a minimal three-event test set and is intentionally not included with the three complete public example packs.

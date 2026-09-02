@@ -1,0 +1,40 @@
+NukeFire Client beta.20 — TinTin++ Import Verification
+
+1. Keep the client disconnected for the first test.
+2. Open Preferences and locate Import TinTin++ Aliases and Actions.
+3. Paste:
+
+   #alias {k} {kill %1;kick}
+   #alias {heal %1} {cast heal %1}
+   #action {%1 tells you '%2'} {tell %1 I heard you.} {3}
+   #action {bad} {#math {x} {1}}
+   #nop #alias {ignored} {quit}
+
+4. Select Analyze Paste.
+5. Confirm:
+   - 2 aliases and 2 actions found.
+   - the first alias and ordinary action are Ready.
+   - heal is Translated to alias name heal.
+   - the #math action is Unsupported and cannot be selected.
+   - the #nop alias is ignored.
+6. Import Selected with Keep existing selected.
+7. Confirm imported Actions show OFF with #action list.
+8. Confirm alias k expands normally after connecting.
+9. Enable the imported tell action explicitly and verify it triggers once.
+10. Use Undo Last Import and confirm the imported definitions disappear.
+11. Test a duplicate with Keep existing, then Replace existing.
+12. Change the client command prefix and confirm #all routes are translated to it.
+13. Paste a large narrowed export and verify Preferences remains responsive.
+14. Confirm terminal output, Communications, Mapper, screen-reader controls,
+    sessions, Actions, Gags, Variables, and Speedwalk remain unchanged.
+
+15. On a large paste, click Import Selected and confirm the button immediately
+    changes to Importing… before the final result appears.
+16. Confirm the final result reports imported aliases, disabled actions,
+    replacements, duplicates, and capacity skips rather than failing silently.
+
+17. Immediately after a successful import, enter #alias and confirm each imported
+    alias is listed without restarting the client.
+18. Execute one imported alias and confirm its generated commands are sent in order.
+19. Enter #action and confirm imported Actions are present and remain OFF.
+20. Use Undo Last Import and confirm the same lists update immediately.

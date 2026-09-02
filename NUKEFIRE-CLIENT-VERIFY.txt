@@ -1,0 +1,44 @@
+NukeFire Client 0.3.1-beta.20 verification record
+Date: Mon Jul 27 2026 HST
+Baseline: uploaded NukeFire Client 0.3.1-beta.19 ZIP
+
+Completed in the beta.20 source workspace:
+- npm run check: PASS
+- Dependency-free Node test suite: 215 passed, 0 failed
+- Authoritative mapper tests: PASS
+  - exact NukeFire BIGMAP terrain colors
+  - one-way traversal respected
+  - closed and locked links rejected
+  - character, zone, and all-local map clearing
+- Static beta.20 integration tests: PASS
+  - branded disconnect dialog
+  - authoritative Room.Info / Char.GPS / NukeFire.Map.Local refresh
+  - map status, selection, Run Here, and double-click travel wiring
+  - two-packet room confirmation gate before each next route step
+  - timeout, mismatch, manual-command, session-switch, disconnect, and clear stops
+  - GPS catalog integration and map memory clear command
+- JavaScript syntax verification for main, preload, renderer, and source modules: PASS
+
+Installer verification:
+- The self-contained beta.19-to-beta.20 client installer was applied to a fresh
+  extraction of the uploaded beta.19 ZIP.
+- Post-install file hashes matched the beta.20 source workspace.
+- The retired beta.19 fine-tuning test was removed.
+- Installer verification and rollback metadata completed successfully.
+
+Server replacement verification:
+- The six supplied C/H replacements were copied byte-for-byte into the server package.
+- The self-contained server installer was applied to a clean mock source directory.
+- Post-install SHA-256 hashes matched the packaged replacements.
+- BIGMAP, GMCP request, arbitrary-room BFS, active GPS, and map-memory markers: PASS.
+
+Environment-limited gates:
+- 15 renderer/DOM tests require jsdom. The package registry returned 503/EAI_AGAIN
+  while dependencies were being restored, so those tests could not execute here.
+  The full test command therefore reported 215 passes and 15 missing-jsdom failures;
+  none reached an assertion failure.
+- Native Electron DMG/EXE production was not possible without the complete Electron
+  dependency/toolchain download. Use npm ci, npm run verify, then dist:mac or dist:win
+  in the normal release environment.
+- A full C compile/link was not possible because only the six replacement server files,
+  not the complete NukeFire server tree and libraries, were supplied.

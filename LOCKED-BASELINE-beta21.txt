@@ -1,0 +1,6 @@
+NukeFire Client locked beta.21 source baseline
+Version: 0.3.1-beta.21
+Branch: milestone-1.9-client-development
+Baseline predecessor commit: 9ce3c08764cd1f274b64c9ce7d805ec062fc9fc7
+Release workflow trigger: v0.3.1-beta.21
+Generated: 2026-07-28T03:14:12Z

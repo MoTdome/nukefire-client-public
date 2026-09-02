@@ -1,0 +1,77 @@
+NukeFire Client beta.20 — Performance Foundation Verification
+==============================================================
+
+Baseline
+--------
+Centered, read-only beta.20 mapper source before this performance-only pass.
+No server files or settings schema were changed.
+
+Static and unit verification
+----------------------------
+- npm run check: PASS
+- Dependency-free Node test suite: 236 passed, 0 failed
+- Focused compact GMCP reconstruction tests: PASS
+- Focused terminal/session runtime tests: PASS
+- Focused mapper index/viewport tests: PASS
+- Focused connection duplicate-suppression tests: PASS
+
+Full DOM verification boundary
+------------------------------
+The packaging container does not contain jsdom. The rollback-safe installer runs
+`npm run verify` in the user's normal beta.20 repository, where dependencies are
+already installed. Any full-suite failure restores every changed file.
+
+Synthetic benchmark method
+--------------------------
+Node performance.now(), five rounds per case; the median is reported. Both
+baseline and optimized trees were tested in the same process environment.
+
+GMCP hot path
+-------------
+Input state:
+- 500 GPS catalog destinations
+- 256 BIGMAP rooms and 255 links
+- 20-member group cache
+- 1,000 Char.Vitals packets
+- Optimized case reconstructs the renderer cache from compact event patches
+
+Baseline median:   884.631 ms
+Optimized median:    2.537 ms
+Elapsed reduction:  99.71%
+
+Serialized events across 1,000 packets:
+Baseline:  114,424,940 bytes
+Optimized:     196,930 bytes
+Payload reduction: 99.83%
+Final event size: 114,426 bytes -> 198 bytes
+
+Terminal runtime hot path
+-------------------------
+Input:
+- 10,000 representative ANSI-colored combat/prompt chunks
+- Same stored run count and transcript character count in both cases
+
+Baseline median:  49.842 ms
+Optimized median: 43.394 ms
+Elapsed reduction: 12.94%
+
+Mapper viewport hot path
+------------------------
+Input:
+- 40,000 learned rooms on one plane
+- 1,000 identical viewport queries
+- 961 returned rooms in both cases
+
+Baseline median:  1,562.338 ms
+Optimized median:    58.121 ms
+Elapsed reduction:   96.28%
+
+Behavior preserved
+------------------
+- Incoming text, Actions, Gags, Communications classification, prompt handling,
+  aliases, variables, Speedwalk, and outgoing commands remain immediate/ordered.
+- Communications continues to render ordinary arrivals synchronously.
+- Both terminal engines retain scrollback/follow-output/color/accessibility rules.
+- The map remains centered, read-only, terrain-colored, remembered, and zoomable.
+- Full GMCP snapshots remain available for connect, session activation, copyover,
+  and explicit resynchronization.

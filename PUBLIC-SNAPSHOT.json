@@ -1,0 +1,50 @@
+{
+  "project": "NukeFire Client",
+  "public_snapshot": "0.3.1-beta.73",
+  "source_tag": "v0.3.1-beta.73",
+  "source_commit": "550c6de6f663203005dc114db92cab0e813fb280",
+  "created_at": "2026-09-02T22:35:51.439213+00:00",
+  "private_history_included": false,
+  "soundpacks": [
+    "NukeFire-Classic.nfsp",
+    "Reader-Essential.nfsp",
+    "Wasteland-Immersive.nfsp"
+  ],
+  "soundpack_files": {
+    "NukeFire-Classic.nfsp": {
+      "id": "nukefire.beta70.classic",
+      "name": "NukeFire Classic",
+      "author": "NukeFire Accessibility Team",
+      "version": "1.0.0",
+      "source_filename": "nukefire.beta70.classic.nfsp",
+      "source_path_category": "local exported test asset",
+      "sha256": "1360a56949d0b64a630a359eced2aba2b81a441b2e06aed910b810d55a2bfc1e",
+      "bytes": 370052,
+      "matching_local_copies": 1
+    },
+    "Reader-Essential.nfsp": {
+      "id": "nukefire.beta70.reader-essential",
+      "name": "Reader Essential",
+      "author": "NukeFire Accessibility Team",
+      "version": "1.0.0",
+      "source_filename": "Reader-Essential-Beta70-20260827(1).nfsp",
+      "source_path_category": "local exported test asset",
+      "sha256": "8fa616c393bfcb2d9434823e1bd263e0b184ba4776714ed6567faa8eaa0e707b",
+      "bytes": 212986,
+      "matching_local_copies": 1
+    },
+    "Wasteland-Immersive.nfsp": {
+      "id": "nukefire.beta70.wasteland-immersive",
+      "name": "Wasteland Immersive",
+      "author": "NukeFire Accessibility Team",
+      "version": "1.0.0",
+      "source_filename": "Wasteland-Immersive-Beta70-20260827(1).nfsp",
+      "source_path_category": "local exported test asset",
+      "sha256": "4e3cc258927f6f6ae80bde1582c6f4eb26e5c135378236a59423094bd24fb432",
+      "bytes": 441457,
+      "matching_local_copies": 1
+    }
+  },
+  "server_integration_examples_included": false,
+  "server_integration_status": "placeholder/readme only; source examples pending review"
+}

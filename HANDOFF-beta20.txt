@@ -1,0 +1,72 @@
+NukeFire Client beta.20 handoff
+===============================
+
+Trusted baseline
+----------------
+- Uploaded archive: nukefire-client-beta19-current(1).zip
+- Baseline version: 0.3.1-beta.19
+- Result version: 0.3.1-beta.20
+- Beta.19 remains the rollback baseline.
+
+Milestone delivered
+-------------------
+Authoritative BIGMAP travel with exact NukeFire terrain presentation, room inspection
+and selection, Run Here/double-click travel, verified one-room-at-a-time routing,
+conservative route stopping, GPS integration, map status and clearing, a branded
+disconnect dialog, and the NukeFire Console rename.
+
+Client installation
+-------------------
+Run the self-contained upgrade installer from a terminal:
+
+  python3 nukefire-client-beta20-install.py /path/to/nukefire-client
+
+The installer accepts beta.19 or beta.20, creates a timestamped backup, writes only
+beta.20 changed/new files, removes the retired beta.19 fine-tuning test, validates
+hashes, and runs available verification. Useful options:
+
+  --verify-only   Validate an installed beta.20 tree without changing it.
+  --skip-tests    Install and hash-check without running Node tests.
+  --rollback DIR  Restore a backup directory created by the installer.
+
+Server installation
+-------------------
+Review server/SERVER-INSTALL-beta20.txt, then run:
+
+  python3 install-nukefire-server-map-beta20.py /path/to/nukefire/src
+
+The server installer backs up and replaces asciimap.c/.h, gmcp.c/.h, and gps.c/.h,
+then validates their hashes and required integration markers. Compile and link in the
+complete NukeFire server tree afterward.
+
+Client/server contract
+----------------------
+- Client requests Room.Info, Char.GPS, NukeFire.GPS.Catalog, and NukeFire.Map.Local.
+- Server BIGMAP is authoritative for room topology, exits, terrain, visited state,
+  current room, GPS route, destination, and truncation/status messages.
+- Server map-memory clearing command used by the client: map memory clear
+- Route movement never relies on an unverified speedwalk string.
+- Each direction waits for matching Room.Info and BIGMAP-center confirmation.
+
+Verification status
+-------------------
+- npm run check: PASS
+- Dependency-free tests: 215 passed, 0 failed
+- Client installer fresh-beta.19 round trip and hash comparison: PASS
+- Server installer mock-tree round trip and hash comparison: PASS
+- jsdom-dependent DOM tests: not executable here because dependency restoration failed
+  during a registry outage; no DOM test reached an assertion.
+- Native Electron packages: not produced in this environment.
+- Full server compile/link: not run without the complete server tree.
+
+Next release gate
+-----------------
+In the normal Electron build environment:
+
+  npm ci
+  npm run verify
+  npm run dist:mac       # macOS Universal
+  npm run dist:win       # Windows x64
+
+Then compile the six server replacements in the complete NukeFire source tree and
+perform live acceptance against the beta.20 client.

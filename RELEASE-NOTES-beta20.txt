@@ -1,0 +1,48 @@
+NukeFire Client 0.3.1-beta.20
+Authoritative BIGMAP Travel
+
+Built directly from the supplied beta.19 ZIP.
+
+Player-facing changes
+---------------------
+- Disconnect now uses a branded, keyboard-accessible NukeFire confirmation dialog.
+- The mapper can explicitly refresh authoritative Room.Info, Char.GPS, and
+  NukeFire.Map.Local data.
+- Map history can be cleared for the current character, current zone, all local
+  client history, or the server's session BIGMAP memory.
+- BIGMAP rooms use the exact NukeFire terrain palette and familiar glyphs:
+  @ current room, * GPS route, X destination, and # normal room.
+- Hovering or keyboard-focusing a room shows the same authoritative room details
+  available after selection.
+- Rooms can be selected and traveled to with Run Here, double-click, or Shift+Enter.
+- Map status reports source, room counts, visited state, GPS target, route progress,
+  truncation, and server messages.
+- NukeFire Actions is renamed NukeFire Console throughout the interface.
+
+Travel safety
+-------------
+- Routes are computed only from the latest authoritative BIGMAP snapshot.
+- Closed and locked links are not traversed.
+- One-way links remain one-way.
+- Only one direction is sent at a time.
+- The client waits for both Room.Info and a new BIGMAP center to confirm the expected
+  room before sending another direction.
+- The route is recomputed after every confirmed room.
+- Travel stops on room mismatch, stale/missing confirmation, timeout, manual input,
+  session change, disconnect, map clearing, or Stop Route.
+- GPS is integrated when a selected map room matches the authoritative server catalog;
+  unnamed or uncatalogued rooms still use conservative local BIGMAP routing.
+
+Server companion files
+----------------------
+The complete handoff includes replacement asciimap.c/.h, gmcp.c/.h, and gps.c/.h
+files plus a backup/rollback installer. Together they provide authoritative BIGMAP
+snapshots, terrain/link metadata, session exploration clearing, GPS state/catalog,
+and reusable active-target and arbitrary-room BFS routing helpers.
+
+Verification
+------------
+See NUKEFIRE-CLIENT-VERIFY.txt. Source syntax and 215 dependency-free tests pass.
+The remaining 15 DOM tests require jsdom, which could not be restored during the
+package-registry outage in this build environment. Native Electron packages and a
+full server compile remain normal release-environment gates.

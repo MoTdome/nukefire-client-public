@@ -1,0 +1,2 @@
+NukeFire Client 0.3.1-beta.73
+Combat Responsiveness and Sustained Performance

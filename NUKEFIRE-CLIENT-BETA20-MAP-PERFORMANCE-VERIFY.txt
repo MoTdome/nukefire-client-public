@@ -1,0 +1,35 @@
+NukeFire Client beta.20 explored-map/performance verification
+==============================================================
+
+Source baseline:
+  beta.20 with responsiveness-v2 and room-click hotfixes
+
+Syntax:
+  npm run check
+  PASS
+
+Dependency-free tests:
+  228 tests
+  228 passed
+  0 failed
+
+Full-DOM tests:
+  Added test/beta20-explored-map-dom.test.js.
+  jsdom is not installed in the release container, so this test is syntax-checked
+  here and is run automatically by the installer on a normal beta.20 working
+  tree after npm ci.
+
+Synthetic mapper benchmark (12,000 rooms, 10 serialize iterations):
+  Prior beta.20 MapperGraph.serialize(): 48.22 ms average
+  This pass MapperGraph.serialize():     28.72 ms average
+  This pass viewport filter:              0.63 ms average/query
+
+Behavioral boundaries retained:
+  - one command at a time for Run Here
+  - fresh BIGMAP check for every next edge
+  - Room.Info plus BIGMAP arrival confirmation
+  - manual command/session/disconnect/timeout route cancellation
+  - screen-reader and terminal scrollback behavior
+  - atomic disk writes and main-process map sanitization
+
+V2 correction: removed deferred Communications repaint after full-DOM regressions; mapper DOM test now selects the current room by vnum instead of assuming SVG order.

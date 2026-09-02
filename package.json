@@ -1,0 +1,105 @@
+{
+  "name": "nukefire-mac-client",
+  "version": "0.3.1-beta.73",
+  "private": true,
+  "description": "A focused desktop MUD client for NukeFire.",
+  "main": "main.js",
+  "author": "NukeFire",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "check": "node --check main.js && node --check src/window-layout.js && node --check preload.js && node --check src/connection-manager.js && node --check src/speech-markers.js && node --check src/client-command-parser.js && node --check src/display-text.js && node --check src/prompt-display.js && node --check src/pipeline-debug.js && node --check src/history-navigation.js && node --check src/client-command-help.js && node --check src/echo-format.js && node --check src/math-engine.js && node --check src/function-engine.js && node --check src/conditional-engine.js && node --check src/alias-engine.js && node --check src/variable-engine.js && node --check src/action-engine.js && node --check src/tintin-importer.js && node --check src/tintin-script-loader.js && node --check src/tintin-script-writer.js && node --check src/script-store.js && node --check src/keybinding-engine.js && node --check src/macro-engine.js && node --check src/tab-engine.js && node --check src/tintin-input-editor.js && node --check src/semantic-controls.js && node --check src/gag-engine.js && node --check src/highlight-engine.js && node --check src/substitute-engine.js && node --check src/class-manager.js && node --check src/speedwalk-engine.js && node --check src/session-manager.js && node --check src/session-runtime.js && node --check src/combat-vitals.js && node --check src/context-deck.js && node --check src/affects.js && node --check src/mob-inspector.js && node --check src/foundlist.js && node --check src/knowledge-store.js && node --check src/telnet-parser.js && node --check src/gmcp-store.js && node --check src/settings-store.js && node --check src/map-store.js && node --check src/mapper.js && node --check src/communications.js && node --check src/panel-window-state.js && node --check src/panel-drag-layout.js && node --check src/osc8-links.js && node --check src/ansi-parser.js && node --check renderer/xterm-adapter.js && node --check src/panel-stack-resize.js && node --check renderer/renderer.js && node --check renderer/popout.js && node --check popout-preload.js && node --check src/reader-history.js && node --check src/reader-safety.js && node --check src/reader-onboarding.js",
+    "verify": "node --check src/soundpack-store.js && node --check src/audio-cues.js && npm run check && npm test",
+    "dist:mac": "electron-builder --mac --universal --publish never",
+    "dist:dir": "electron-builder --dir --publish never",
+    "dist:win": "electron-builder --win --x64 --publish never",
+    "dist:linux": "electron-builder --linux AppImage --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "43.1.1",
+    "electron-builder": "26.15.3",
+    "jsdom": "^29.1.1"
+  },
+  "build": {
+    "appId": "org.nukefire.client",
+    "productName": "NukeFire Client",
+    "asar": true,
+    "files": [
+      "main.js",
+      "preload.js",
+      "popout-preload.js",
+      "src/**/*",
+      "renderer/**/*",
+      "build/icon.png",
+      "package.json",
+      "node_modules/@xterm/xterm/**/*",
+      "node_modules/@xterm/addon-fit/**/*",
+      "node_modules/@xterm/addon-search/**/*",
+      "node_modules/@xterm/addon-serialize/**/*",
+      "node_modules/@xterm/addon-unicode11/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.games",
+      "artifactName": "NukeFire-Client-${version}-macOS-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "icon": "icon.icns"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "artifactName": "NukeFire-Client-Setup-${version}-${arch}.${ext}",
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico"
+    },
+    "portable": {
+      "artifactName": "NukeFire-Client-Portable-${version}-${arch}.${ext}"
+    },
+    "directories": {
+      "buildResources": "build"
+    }
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-search": "0.16.0",
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/addon-unicode11": "0.9.0",
+    "@xterm/xterm": "6.0.0",
+    "adm-zip": "0.5.16",
+    "wasmoon": "1.16.0"
+  }
+}

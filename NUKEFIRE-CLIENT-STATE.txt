@@ -1,0 +1,5 @@
+NukeFire Client state
+Version: 0.3.1-beta.20
+Milestone: authoritative BIGMAP travel and NukeFire Console
+Baseline: beta.19 usability fine-tuning, built directly from the supplied beta.19 ZIP
+Key changes: branded disconnect modal; authoritative Room.Info/GPS/BIGMAP refresh; scoped client and server map clearing; exact terrain-colored tiles; hover/focus room details; selection; Run Here and double-click travel; one-room-at-a-time confirmation; route safeguards; GPS catalog integration; map status; NukeFire Console rename.

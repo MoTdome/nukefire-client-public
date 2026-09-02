@@ -1,0 +1,220 @@
+:root {
+  color-scheme: dark;
+  --bg: #0e1216;
+  --panel: #181e24;
+  --panel-2: #222a32;
+  --border: #3e4954;
+  --text: #edf2f7;
+  --muted: #aab5c0;
+  --terminal-foreground: #d3d7dc;
+  --terminal-background: #050607;
+}
+body[data-interface-brightness="dark"] {
+  --bg: #090b0d;
+  --panel: #11151a;
+  --panel-2: #171c22;
+  --border: #2a3139;
+  --text: #d9e0e7;
+  --muted: #8b97a4;
+}
+body[data-interface-brightness="high-contrast"] {
+  --bg: #11161b;
+  --panel: #20272f;
+  --panel-2: #2b3540;
+  --border: #65717d;
+  --text: #fff;
+  --muted: #d1d8df;
+}
+body[data-interface-brightness="brighter"] .popout-header,
+body[data-interface-brightness="high-contrast"] .popout-header {
+  border-color: var(--border);
+  background: linear-gradient(var(--panel-2), var(--panel));
+}
+body[data-interface-brightness="brighter"] .popout-size-menu,
+body[data-interface-brightness="high-contrast"] .popout-size-menu {
+  border-color: var(--border);
+  background: var(--panel);
+}
+html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body {
+  background: var(--terminal-background);
+  color: var(--text);
+  font-family: var(--ui-font-family);
+}
+button, input, select, textarea { font: inherit; }
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #ffd166;
+  outline-offset: 2px;
+}
+.popout-shell {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  background:
+    radial-gradient(circle at 50% -15%, rgb(122 145 65 / 12%), transparent 42%),
+    var(--terminal-background);
+}
+.popout-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #343c34;
+  border-radius: 5px;
+  padding: 9px 10px;
+  background: linear-gradient(#20261f, #111612);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
+}
+.popout-header h1 {
+  margin: 0;
+  color: #d9e4aa;
+  font-size: 15px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.popout-header p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+.popout-actions { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.popout-size-controller { position: relative; }
+.popout-size-menu {
+  position: absolute;
+  z-index: 120;
+  top: calc(100% + 7px);
+  right: 0;
+  width: min(310px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid #56616d;
+  border-radius: 7px;
+  background: #11161b;
+  box-shadow: 0 12px 34px rgb(0 0 0 / 48%);
+}
+.popout-size-menu[hidden] { display: none !important; }
+.popout-current-size { margin: 0 0 8px; color: #d9e4aa; font-size: 11px; }
+.popout-size-presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.popout-size-presets button { min-width: 0; }
+.popout-custom-size {
+  display: grid;
+  grid-template-columns: auto minmax(76px, 1fr) auto minmax(76px, 1fr);
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #303842;
+}
+.popout-size-heading { grid-column: 1 / -1; color: #edf2f7; font-size: 11px; font-weight: 700; }
+.popout-custom-size label { color: var(--muted); font-size: 10px; }
+.popout-custom-size input { min-width: 0; width: 100%; }
+.popout-custom-size button { grid-column: 1 / -1; }
+.popout-size-help { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.communications-view {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid #343c34;
+  border-radius: 5px;
+  background: var(--panel);
+  overflow: auto;
+}
+.communications-view[hidden],
+.generic-panel-view[hidden] { display: none !important; }
+.communications-control-row { display: flex; align-items: flex-start; gap: 7px; min-width: 0; min-height: max-content; flex-wrap: wrap; }
+.communications-control-label { flex: 0 0 48px; padding-top: 6px; color: var(--muted); font-size: 9px; font-weight: 700; line-height: 1.2; letter-spacing: .08em; text-transform: uppercase; }
+.communications-channel-row { overflow: hidden; }
+.communications-order-control,
+.communications-tools,
+.communications-tabs { flex: 1 1 150px; min-width: 0; }
+.communications-tabs { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 3px; max-height: 72px; overflow-x: hidden; overflow-y: auto; padding: 0 2px 2px 0; }
+.communications-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-color: transparent;
+  background: #171c22;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.communications-tab[aria-selected="true"] { border-color: #56616d; background: #29313a; color: #f1f5f9; }
+.communications-unread { min-width: 17px; padding: 1px 4px; border-radius: 999px; background: #8c3d24; color: #fff; font-size: 9px; text-align: center; }
+.communications-unread[hidden] { display: none !important; }
+.communications-order-control { display: block; }
+.communications-order-control select { min-width: 0; width: 100%; padding: 5px 7px; font-size: 11px; }
+.communications-tools { display: grid; grid-template-columns: minmax(100px, 1fr) auto; gap: 7px; }
+.communications-messages { min-width: 0; min-height: 0; max-height: 100%; display: flex; flex-direction: column; overflow: auto; border: 1px solid #2b323a; border-radius: 7px; background: #090b0e; }
+.communication-message { flex: 0 0 auto; padding: 8px 10px; border-bottom: 1px solid #20262d; }
+.communications-messages[data-message-order="newest-bottom"] > .communication-message:first-child { margin-top: auto; }
+.communication-message:last-child { border-bottom: 0; }
+.communication-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; color: var(--muted); font-size: 10px; }
+.communication-channel-label { padding: 1px 5px; border: 1px solid #3c4651; border-radius: 999px; color: #c7d0d8; text-transform: uppercase; letter-spacing: .04em; font-size: 9px; }
+.communication-meta strong { color: #edf2f7; font-size: 11px; }
+.communication-body { margin: 0; color: var(--terminal-foreground); font: 12px/1.42 var(--terminal-font-family); white-space: pre-wrap; overflow-wrap: anywhere; }
+.communications-empty { margin: 0; color: var(--muted); font-size: 11px; text-align: center; }
+.communications-empty[hidden] { display: none !important; }
+.generic-panel-view {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+  border: 1px solid #343c34;
+  border-radius: 5px;
+  background: var(--panel);
+}
+.panel-mirror { min-width: 0; min-height: 100%; }
+.popout-mirrored-panel {
+  width: 100%;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.popout-mirrored-panel.mapper-panel,
+.popout-mirrored-panel.context-deck-panel { height: 100%; }
+.popout-mirrored-panel .panel-titlebar,
+.popout-mirrored-panel .panel-menu,
+.popout-mirrored-panel .panel-menu-button,
+.popout-mirrored-panel .mapper-canvas-resizer { display: none !important; }
+.popout-mirrored-panel [data-popout-control] { cursor: pointer; }
+.popout-mirrored-panel input[data-popout-control],
+.popout-mirrored-panel select[data-popout-control],
+.popout-mirrored-panel textarea[data-popout-control] { cursor: text; }
+.panel-window-empty { margin: 0; padding: 20px; color: var(--muted); text-align: center; }
+body.terminal-monochrome .communication-body,
+body.terminal-monochrome .communication-body span { color: var(--terminal-foreground) !important; }
+body.terminal-monochrome .communication-body span { background-color: transparent !important; }
+body.screen-reader-mode { --text: #fff; --muted: #d5dbe1; --border: #66717d; }
+.sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
+@media (max-width: 700px) {
+  .popout-header { align-items: flex-start; flex-wrap: wrap; }
+  .popout-actions { width: 100%; flex-wrap: wrap; }
+  .popout-size-controller { margin-right: auto; }
+}
+@media (max-width: 500px) {
+  .popout-custom-size { grid-template-columns: auto minmax(0, 1fr); }
+  .popout-custom-size button,
+  .popout-size-heading { grid-column: 1 / -1; }
+}
+/* Beta.55 v15: keep the detached Size menu inside narrow pop-out windows.
+   At <=700px the responsive header places the Size controller on the left,
+   so right:0 would project most of the menu off the left edge. */
+@media (max-width: 700px) {
+  .popout-size-menu {
+    left: 0;
+    right: auto;
+    max-width: calc(100vw - 24px);
+  }
+}

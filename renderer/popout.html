@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>NukeFire Panel</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="popout.css">
+</head>
+<body>
+  <div id="sr-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <main class="popout-shell">
+    <header class="popout-header">
+      <div>
+        <h1 id="popout-title">NukeFire Panel</h1>
+        <p id="popout-subtitle">Live NukeFire client panel</p>
+      </div>
+      <div class="popout-actions">
+        <div class="popout-size-controller">
+          <button id="panel-size-toggle" type="button" aria-expanded="false"
+            aria-controls="panel-size-menu">Size</button>
+          <div id="panel-size-menu" class="popout-size-menu" hidden>
+            <p id="panel-current-size" class="popout-current-size" aria-live="polite">Current size unavailable</p>
+            <div class="popout-size-presets" role="group" aria-label="Window size presets">
+              <button type="button" data-window-size="compact">Compact</button>
+              <button type="button" data-window-size="standard">Standard</button>
+              <button type="button" data-window-size="large">Large</button>
+              <button type="button" data-window-size="fill-display">Fill Display</button>
+              <button type="button" data-window-size="default">Panel Default</button>
+            </div>
+            <form id="custom-size-form" class="popout-custom-size">
+              <span class="popout-size-heading">Custom Size</span>
+              <label for="custom-window-width">Width</label>
+              <input id="custom-window-width" name="width" type="number" inputmode="numeric"
+                min="440" max="16384" step="1" required>
+              <label for="custom-window-height">Height</label>
+              <input id="custom-window-height" name="height" type="number" inputmode="numeric"
+                min="340" max="16384" step="1" required>
+              <button type="submit" class="primary">Apply</button>
+            </form>
+            <p class="popout-size-help">Dragging the window edges still works, and every panel remembers its own size.</p>
+          </div>
+        </div>
+        <button id="focus-game" type="button">Focus Game</button>
+        <button id="dock-panel" class="primary" type="button">Dock Panel</button>
+      </div>
+    </header>
+
+    <section id="communications-view" class="communications-view" aria-label="Communications panel" hidden>
+      <div class="communications-control-row communications-channel-row">
+        <span id="communications-channels-label" class="communications-control-label">Channels</span>
+        <div id="communications-tabs" class="communications-tabs" role="tablist"
+          aria-labelledby="communications-channels-label"></div>
+      </div>
+      <div class="communications-control-row">
+        <span class="communications-control-label">Display</span>
+        <label class="communications-order-control" for="communications-order">
+          <span class="sr-only">Message order</span>
+          <select id="communications-order" aria-label="Communication message order">
+            <option value="newest-top">Newest at top</option>
+            <option value="newest-bottom">Newest at bottom</option>
+          </select>
+        </label>
+      </div>
+      <div class="communications-control-row">
+        <span class="communications-control-label">Find</span>
+        <div class="communications-tools">
+          <label class="sr-only" for="communications-search">Search communications</label>
+          <input id="communications-search" type="search" placeholder="Search messages…" autocomplete="off">
+          <button id="communications-clear" type="button">Clear</button>
+        </div>
+      </div>
+      <div id="communications-messages" class="communications-messages" role="log" aria-live="off"
+        aria-label="Communication messages" tabindex="0"></div>
+      <p id="communications-empty" class="communications-empty">No communication messages captured yet.</p>
+    </section>
+
+    <section id="generic-panel-view" class="generic-panel-view" aria-label="NukeFire panel window" hidden>
+      <div id="panel-mirror" class="panel-mirror"></div>
+    </section>
+  </main>
+  <script src="../src/ansi-parser.js"></script>
+  <script src="../src/panel-window-state.js"></script>
+  <script src="popout.js"></script>
+</body>
+</html>

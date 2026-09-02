@@ -1,0 +1,2140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; media-src 'self' data:">
+  <title>NukeFire Client</title>
+  <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="foundlist.css">
+  <style id="reader-workspace-styles">
+    .reader-workspace-panel { display: none; }
+    body.reader-workspace-mode #workspace {
+      grid-template-columns: minmax(0, 1fr) minmax(250px, 320px) !important;
+      grid-template-rows: minmax(0, 1fr) !important;
+      column-gap: 8px !important;
+    }
+    body.reader-workspace-mode #workspace > .dock-region,
+    body.reader-workspace-mode #workspace > .dock-resizer,
+    body.reader-workspace-mode #panel-menu-layer {
+      display: none !important;
+    }
+    body.reader-workspace-mode #workspace > .terminal-shell {
+      grid-column: 1 !important;
+      grid-row: 1 !important;
+      min-width: 0;
+      min-height: 0;
+    }
+    body.reader-workspace-mode #reader-workspace-panel {
+      display: flex;
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+      min-height: 0;
+      overflow: auto;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      border-left: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(6, 8, 10, 0.96);
+    }
+    .reader-workspace-header,
+    .reader-workspace-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .reader-workspace-header {
+      justify-content: space-between;
+    }
+    .reader-workspace-header h2,
+    .reader-workspace-section h3 {
+      margin: 0;
+    }
+    .reader-workspace-section {
+      display: grid;
+      gap: 7px;
+    }
+    .reader-workspace-status {
+      margin: 0;
+      line-height: 1.35;
+    }
+    body.reader-workspace-mode #reader-workspace-panel button {
+      min-height: 32px;
+    }
+    @media (max-width: 850px) {
+      body.reader-workspace-mode #workspace {
+        grid-template-columns: minmax(0, 1fr) !important;
+        grid-template-rows: minmax(0, 1fr) auto !important;
+      }
+      body.reader-workspace-mode #reader-workspace-panel {
+        grid-column: 1;
+        grid-row: 2;
+        max-height: 38vh;
+        border-left: 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.18);
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="skip-links" aria-label="Skip links">
+    <a href="#command">Skip to command input</a>
+    <a href="#output">Skip to game output</a>
+  </nav>
+
+  <div id="sr-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+  <div id="sr-interrupt-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
+  <p id="output-help" class="sr-only">
+    NukeFire game output. Use Command Shift O to focus this region, Command Shift L to read the last complete line, and Command L to return to command input.
+  </p>
+  <p id="command-help" class="sr-only">
+    Enter a NukeFire command. Press Return to send. Use Up and Down Arrow to browse command history. Press Return on a blank line to advance paginated output.
+  </p>
+  <p id="panel-resize-help" class="sr-only">
+    Use Up and Down Arrow to resize. Hold Shift for larger steps. Home uses the safe minimum, End uses the maximum, and double-click restores automatic height.
+  </p>
+
+  <div id="app">
+    <header id="connection-bar" class="connection-bar">
+      <div class="brand" aria-label="NukeFire Client">
+        <div class="brand-logo-frame" aria-hidden="true">
+          <img class="brand-logo" src="assets/nukefire-wordmark.webp" alt="">
+          <span class="brand-build">DESKTOP HUD</span>
+        </div>
+        <div class="brand-compact" aria-hidden="true">NF</div>
+        <h1 class="sr-only">NukeFire Client</h1>
+      </div>
+
+      <label>
+        <span>Host</span>
+        <input id="host" value="tdome.nukefire.org" autocomplete="off" spellcheck="false"
+          title="Server host. Press Return to connect.">
+      </label>
+      <label class="port-field">
+        <span>Port</span>
+        <input id="port" value="4000" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5"
+          aria-label="Server port" title="Server port from 1 to 65535. Press Return to connect.">
+      </label>
+      <div class="connection-actions" role="group" aria-label="Connection tools">
+        <button id="connect" class="primary" title="Connect the active session to this host and port">Connect</button>
+        <button id="reconnect" type="button" title="Replace the active session connection without closing the session">Reconnect</button>
+        <button id="disconnect" disabled title="Disconnect the active session">Disconnect</button>
+        <button id="reader-setup-button" type="button" title="Set up Reader Mode before or after connecting">Reader Setup</button>
+        <button id="knowledge-button" class="knowledge-button" type="button"
+          aria-label="Open NukeFire Knowledge" aria-haspopup="dialog"
+          aria-controls="knowledge-dialog" title="NukeFire Knowledge (Command-K)">⌕</button>
+        <button id="preferences-button" class="preferences-button" type="button"
+          aria-label="Open Preferences" aria-haspopup="dialog"
+          aria-controls="preferences-dialog" title="Preferences (Command-,)">⚙</button>
+      </div>
+      <section id="layout-gallery" class="layout-gallery" aria-label="Workspace layout gallery">
+        <button id="layout-gallery-previous" class="layout-gallery-nav" type="button" aria-label="Previous layout preview" title="Previous layout preview">‹</button>
+        <div class="layout-gallery-card">
+          <div class="layout-gallery-copy">
+            <span class="layout-gallery-kicker">LAYOUT</span>
+            <strong id="layout-gallery-name">My Layout</strong>
+            <span id="layout-gallery-description">Your current saved workspace.</span>
+          </div>
+          <div id="layout-gallery-preview" class="layout-gallery-preview" data-layout-preview="my-layout" aria-hidden="true">
+            <span class="layout-preview-terminal"></span>
+            <span class="layout-preview-left"></span>
+            <span class="layout-preview-right"></span>
+            <span class="layout-preview-outer-right"></span>
+            <span class="layout-preview-bottom"></span>
+          </div>
+          <button id="layout-gallery-apply" class="layout-gallery-apply" type="button" disabled>Current</button>
+        </div>
+        <button id="layout-gallery-next" class="layout-gallery-nav" type="button" aria-label="Next layout preview" title="Next layout preview">›</button>
+      </section>
+
+      <div id="status" class="status disconnected" role="status" aria-live="polite" aria-atomic="true">
+        <span class="status-light" aria-hidden="true"></span>
+        <span id="status-text">Disconnected</span>
+      </div>
+      <button id="connection-bar-toggle" class="connection-bar-toggle" type="button"
+        aria-expanded="true" aria-controls="connection-bar"
+        aria-label="Hide connection settings" title="Hide connection settings">Hide</button>
+    </header>
+
+    <div id="session-area" class="session-area">
+      <section id="session-bar" class="session-bar" aria-label="NukeFire sessions">
+        <div id="session-tabs" class="session-tabs" role="tablist" aria-label="Connected character sessions"></div>
+        <div class="session-controls">
+          <label class="session-role-field" for="session-role">
+            <span>Role</span>
+            <select id="session-role" aria-label="Active session role"
+              title="Label the active session for crew and workspace organization">
+              <option value="tank">Tank</option>
+              <option value="healer">Healer</option>
+              <option value="damage">Damage</option>
+              <option value="support">Support</option>
+              <option value="scout">Scout</option>
+              <option value="member">Member</option>
+            </select>
+          </label>
+          <button id="session-add" type="button" aria-expanded="false" aria-controls="session-create-drawer"
+            title="Create another independent character session">New Session</button>
+          <button id="session-close" type="button" title="Close the active session tab; Disconnect only ends the live connection">Close Session…</button>
+        </div>
+      </section>
+      <div id="session-create-drawer" class="session-create-drawer" hidden>
+        <form id="session-create-form" class="session-create-form">
+          <label for="session-new-name">Session name</label>
+          <input id="session-new-name" maxlength="80" autocomplete="off" placeholder="Healer" required>
+          <label for="session-new-role">Role</label>
+          <select id="session-new-role">
+            <option value="member">Member</option>
+            <option value="tank">Tank</option>
+            <option value="healer">Healer</option>
+            <option value="damage">Damage</option>
+            <option value="support">Support</option>
+            <option value="scout">Scout</option>
+          </select>
+          <button id="session-create-submit" class="primary" type="submit" disabled>Create Session</button>
+          <button id="session-create-cancel" type="button">Cancel</button>
+        </form>
+      </div>
+    </div>
+
+    <main id="workspace" class="workspace-grid has-left-dock">
+      <aside id="dock-left" class="sidebar dock-region dock-left" data-dock-region="left" aria-label="Left panel dock">
+        <section id="panel-vitals" class="panel vitals-panel" data-workspace-panel="vitals" aria-labelledby="vitals-heading">
+          <div class="panel-titlebar">
+            <h2 id="vitals-heading">Vitals</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="vitals" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-vitals"
+              aria-label="Open Vitals panel menu" title="Vitals panel options">⋯</button>
+            <div id="panel-menu-vitals" class="panel-menu" role="menu"
+              data-panel-menu="vitals" aria-label="Vitals panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="vitals">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="vitals">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="vitals">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="vitals">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="vitals">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="vitals">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="vitals">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="vitals">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="vitals">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="vitals">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="vitals">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="vitals">Hide Panel</button>
+            </div>
+          </div>
+          <div class="vital">
+            <div><span>Health</span><output id="hp-text">—</output></div>
+            <div id="hp-meter" class="meter" role="progressbar" aria-label="Health" aria-valuemin="0" aria-valuetext="Health unknown"><div id="hp-bar"></div></div>
+          </div>
+          <div class="vital">
+            <div><span>Mana</span><output id="mana-text">—</output></div>
+            <div id="mana-meter" class="meter" role="progressbar" aria-label="Mana" aria-valuemin="0" aria-valuetext="Mana unknown"><div id="mana-bar"></div></div>
+          </div>
+          <div class="vital">
+            <div><span>Movement</span><output id="move-text">—</output></div>
+            <div id="move-meter" class="meter" role="progressbar" aria-label="Movement" aria-valuemin="0" aria-valuetext="Movement unknown"><div id="move-bar"></div></div>
+          </div>
+
+          <section class="combat-vitals-section opponent-vitals-section" aria-labelledby="opponent-vitals-heading">
+            <h3 id="opponent-vitals-heading">Opponent</h3>
+            <p id="opponent-vitals-empty" class="combat-vitals-empty">Not fighting.</p>
+            <div id="opponent-vitals" class="combat-vital-card" aria-live="off" hidden>
+              <div class="combat-vital-heading">
+                <strong id="opponent-name">Opponent</strong>
+                <span id="opponent-level" class="combat-vital-badge"></span>
+              </div>
+              <div class="combat-vital-values">
+                <span id="opponent-hp-text">—</span>
+              </div>
+              <div id="opponent-hp-meter" class="combat-meter" role="progressbar" aria-label="Opponent health" aria-valuemin="0" aria-valuetext="Opponent health unknown"><div id="opponent-hp-bar"></div></div>
+            </div>
+          </section>
+
+          <section class="combat-vitals-section group-vitals-section" aria-labelledby="group-vitals-heading">
+            <h3 id="group-vitals-heading">Group Vitals</h3>
+            <p id="group-vitals-empty" class="combat-vitals-empty">Solo.</p>
+            <div id="group-vitals-list" class="combat-vitals-list" role="list" aria-live="off"></div>
+          </section>
+
+          <section id="group-targets-section" class="combat-vitals-section group-targets-section" aria-labelledby="group-targets-heading" hidden>
+            <h3 id="group-targets-heading">Group Targets</h3>
+            <div id="group-targets-list" class="combat-vitals-list" role="list" aria-live="off"></div>
+          </section>
+        </section>
+
+        <section id="panel-session-vitals" class="panel session-vitals-panel" data-workspace-panel="sessionVitals" aria-labelledby="session-vitals-heading">
+          <div class="panel-titlebar">
+            <h2 id="session-vitals-heading">Session Vitals</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="sessionVitals" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-session-vitals"
+              aria-label="Open Session Vitals panel menu" title="Session Vitals panel options">⋯</button>
+            <div id="panel-menu-session-vitals" class="panel-menu" role="menu"
+              data-panel-menu="sessionVitals" aria-label="Session Vitals panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="sessionVitals">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="sessionVitals">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="sessionVitals">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="sessionVitals">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="sessionVitals">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="sessionVitals">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="sessionVitals">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="sessionVitals">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="sessionVitals">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="sessionVitals">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="sessionVitals">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="sessionVitals">Hide Panel</button>
+            </div>
+          </div>
+          <p id="session-vitals-empty" class="session-vitals-empty">No companion sessions connected to this server.</p>
+          <div id="session-vitals-list" class="session-vitals-list" role="list" aria-live="off"></div>
+        </section>
+
+        <section id="panel-affects" class="panel affects-panel" data-workspace-panel="affects" aria-labelledby="affects-heading">
+          <div class="panel-titlebar">
+            <h2 id="affects-heading">Affects</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="affects" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-affects"
+              aria-label="Open Affects panel menu" title="Affects panel options">⋯</button>
+            <div id="panel-menu-affects" class="panel-menu" role="menu"
+              data-panel-menu="affects" aria-label="Affects panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="affects">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="affects">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="affects">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="affects">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="affects">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="affects">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="affects">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="affects">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="affects">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="affects">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="affects">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="affects">Hide Panel</button>
+            </div>
+          </div>
+          <div class="affects-toolbar">
+            <p id="affects-status" aria-live="off">Waiting for active affect data.</p>
+            <div class="affects-toolbar-actions">
+              <label class="affects-mode-control" for="affects-display-mode">
+                <span>View</span>
+                <select id="affects-display-mode" aria-label="Affects display style">
+                  <option value="complete">Complete</option>
+                  <option value="classic">Classic</option>
+                </select>
+              </label>
+              <button id="affects-text-list" type="button" title="Send the normal affects command to the game">Text List</button>
+              <button id="affects-refresh" type="button" title="Request fresh structured affect data from NukeFire">Refresh</button>
+            </div>
+          </div>
+          <div id="affects-list" class="affects-list" role="list" aria-live="off"></div>
+          <p id="affects-empty" class="affects-empty">Connect to see active affects.</p>
+          <p id="affects-note" class="affects-note" hidden></p>
+          <div id="affects-summary" class="sr-only" aria-live="polite"></div>
+        </section>
+
+        <section id="panel-mob-inspector" class="panel mob-inspector-panel" data-workspace-panel="mobInspector" aria-labelledby="mob-inspector-heading">
+          <div class="panel-titlebar">
+            <h2 id="mob-inspector-heading">Mob Inspector</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="mobInspector" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-mob-inspector"
+              aria-label="Open Mob Inspector panel menu" title="Mob Inspector panel options">⋯</button>
+            <div id="panel-menu-mob-inspector" class="panel-menu" role="menu"
+              data-panel-menu="mobInspector" aria-label="Mob Inspector panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="mobInspector">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="mobInspector">Move Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="mobInspector">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="mobInspector">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="mobInspector">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="mobInspector">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="mobInspector">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="mobInspector">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="mobInspector">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="mobInspector">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="mobInspector">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="mobInspector">Hide Panel</button>
+            </div>
+          </div>
+          <div class="mob-inspector-toolbar">
+            <p id="mob-inspector-status" aria-live="off">Waiting for a mob inspection.</p>
+            <button id="mob-inspector-refresh" type="button" title="Request the current fighting target from NukeFire">Refresh Target</button>
+          </div>
+          <label class="checkbox mob-inspector-auto-option">
+            <input id="mob-inspector-auto-open" type="checkbox" checked>
+            Auto-open when NukeFire inspects a mob
+          </label>
+          <div id="mob-inspector-content" class="mob-inspector-content" hidden>
+            <header class="mob-inspector-hero">
+              <div class="mob-inspector-art-wrap" aria-hidden="true">
+                <svg id="mob-inspector-art" class="mob-inspector-art" data-category="creature" viewBox="0 0 48 48" focusable="false"></svg>
+                <span id="mob-inspector-rank-badge" class="mob-inspector-rank-badge" hidden></span>
+              </div>
+              <div class="mob-inspector-identity">
+                <h3 id="mob-inspector-name">Unknown creature</h3>
+                <p id="mob-inspector-descriptors"></p>
+                <p id="mob-inspector-zone" class="mob-inspector-expanded-only"></p>
+              </div>
+            </header>
+            <section class="mob-inspector-health" aria-labelledby="mob-inspector-health-heading">
+              <div class="mob-inspector-section-heading">
+                <h4 id="mob-inspector-health-heading">Combat</h4>
+                <strong id="mob-inspector-hp-text">HP unavailable</strong>
+              </div>
+              <progress id="mob-inspector-hp" max="100" value="0" aria-label="Mob health percentage"></progress>
+              <p id="mob-inspector-fighting" class="mob-inspector-muted"></p>
+            </section>
+            <section id="mob-inspector-consider-section" class="mob-inspector-section mob-inspector-expanded-only" aria-labelledby="mob-inspector-consider-heading" hidden>
+              <h4 id="mob-inspector-consider-heading">Consider</h4>
+              <strong id="mob-inspector-consider-label"></strong>
+              <p id="mob-inspector-consider-advice"></p>
+              <p id="mob-inspector-consider-group" class="mob-inspector-muted"></p>
+            </section>
+            <section class="mob-inspector-section mob-inspector-expanded-only" aria-labelledby="mob-inspector-history-heading">
+              <h4 id="mob-inspector-history-heading">Your History</h4>
+              <dl id="mob-inspector-history" class="mob-inspector-stats"></dl>
+              <p id="mob-inspector-history-note" class="mob-inspector-muted"></p>
+            </section>
+            <section id="mob-inspector-mastery-section" class="mob-inspector-section mob-inspector-expanded-only" aria-labelledby="mob-inspector-mastery-heading" hidden>
+              <h4 id="mob-inspector-mastery-heading">Zone Mastery</h4>
+              <dl id="mob-inspector-mastery" class="mob-inspector-stats"></dl>
+            </section>
+            <section class="mob-inspector-section mob-inspector-affects-section" aria-labelledby="mob-inspector-affects-heading">
+              <div class="mob-inspector-section-heading">
+                <h4 id="mob-inspector-affects-heading">Active Effects</h4>
+                <span id="mob-inspector-affects-count"></span>
+              </div>
+              <div id="mob-inspector-affects" class="mob-inspector-affects" role="list" aria-live="off"></div>
+              <details id="mob-inspector-affects-more" class="mob-inspector-affects-more" hidden>
+                <summary></summary>
+                <div id="mob-inspector-affects-overflow" class="mob-inspector-affects"></div>
+              </details>
+              <p id="mob-inspector-affects-note" class="mob-inspector-muted" hidden></p>
+            </section>
+          </div>
+          <p id="mob-inspector-empty" class="mob-inspector-empty">Use mobcount, consider, or diagnose on a visible mob to inspect it here.</p>
+          <div id="mob-inspector-summary" class="sr-only" aria-live="polite"></div>
+        </section>
+
+        <section id="panel-loot-history" class="panel loot-history-panel" data-workspace-panel="lootHistory" aria-labelledby="loot-history-heading">
+          <div class="panel-titlebar">
+            <h2 id="loot-history-heading">Loot History</h2>
+            <button class="panel-menu-button" type="button" data-panel-menu-button="lootHistory" aria-haspopup="menu" aria-expanded="false" aria-controls="panel-menu-loot-history" aria-label="Open Loot History panel menu" title="Loot History panel options">⋯</button>
+            <div id="panel-menu-loot-history" class="panel-menu" role="menu" data-panel-menu="lootHistory" aria-label="Loot History panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="lootHistory">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="lootHistory">Move Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="lootHistory">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="lootHistory">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="lootHistory">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="lootHistory">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="lootHistory">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="lootHistory">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="lootHistory">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="lootHistory">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="lootHistory">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="lootHistory">Hide Panel</button>
+            </div>
+          </div>
+          <div class="loot-history-toolbar" role="group" aria-label="Loot history filters">
+            <button type="button" data-loot-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-loot-filter="equipment" aria-pressed="false">Equipment</button>
+            <button type="button" data-loot-filter="key" aria-pressed="false">Keys</button>
+            <button type="button" data-loot-filter="material" aria-pressed="false">Materials</button>
+            <button type="button" data-loot-filter="credits" aria-pressed="false">Credits</button>
+            <button id="loot-history-clear" type="button">Clear</button>
+            <button id="loot-history-more" type="button" hidden>Show older</button>
+          </div>
+          <p id="loot-history-status" class="loot-history-status">Session loot will appear here.</p>
+          <div id="loot-history-list" class="loot-history-list" role="list" aria-live="off"></div>
+          <p id="loot-history-empty" class="loot-history-empty">No loot recorded this session.</p>
+        </section>
+
+        <section id="panel-foundlist" class="panel foundlist-panel" data-workspace-panel="foundlist" aria-labelledby="foundlist-heading">
+          <div class="panel-titlebar">
+            <h2 id="foundlist-heading">Foundlist / Upgrades</h2>
+            <button class="panel-menu-button" type="button" data-panel-menu-button="foundlist" aria-haspopup="menu" aria-expanded="false" aria-controls="panel-menu-foundlist" aria-label="Open Foundlist panel menu" title="Foundlist panel options">⋯</button>
+            <div id="panel-menu-foundlist" class="panel-menu" role="menu" data-panel-menu="foundlist" aria-label="Foundlist panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="foundlist">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="foundlist">Move Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="foundlist">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="foundlist">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="foundlist">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="foundlist">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="foundlist">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="foundlist">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="foundlist">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="foundlist">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="foundlist">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="foundlist">Hide Panel</button>
+            </div>
+          </div>
+          <div id="foundlist-content" hidden>
+            <div class="foundlist-hero">
+              <div>
+                <h3 id="foundlist-zone">Current Zone</h3>
+                <p id="foundlist-summary" class="foundlist-muted"></p>
+              </div>
+              <strong id="foundlist-upgrade-count" class="foundlist-upgrade-count"></strong>
+            </div>
+            <div class="foundlist-toolbar" role="group" aria-label="Foundlist filters">
+              <button type="button" data-foundlist-filter="all" aria-pressed="true">All</button>
+              <button type="button" data-foundlist-filter="upgrade" aria-pressed="false">Upgrades</button>
+              <button type="button" data-foundlist-filter="tossup" aria-pressed="false">Toss-ups</button>
+              <button type="button" data-foundlist-filter="downgrade" aria-pressed="false">Downgrades</button>
+              <button type="button" data-foundlist-filter="unusable" aria-pressed="false">Unusable</button>
+            </div>
+            <div id="foundlist-items" class="foundlist-items" role="list" aria-live="off"></div>
+            <p id="foundlist-filter-empty" class="foundlist-muted" hidden>No items match this filter.</p>
+            <p id="foundlist-truncated" class="foundlist-muted" hidden>The server limited this snapshot; use the normal foundlist command for the complete text list.</p>
+          </div>
+          <p id="foundlist-empty" class="foundlist-muted">Type foundlist in a supported zone to load known drops and upgrade verdicts.</p>
+        </section>
+
+        <section id="panel-quick-commands" class="panel quick-commands" data-workspace-panel="quickCommands" aria-labelledby="quick-heading">
+          <div class="panel-titlebar">
+            <h2 id="quick-heading">Quick Commands</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="quickCommands" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-quick-commands"
+              aria-label="Open Quick Commands panel menu" title="Quick Commands panel options">⋯</button>
+            <div id="panel-menu-quick-commands" class="panel-menu" role="menu"
+              data-panel-menu="quickCommands" aria-label="Quick Commands panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="quickCommands">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="quickCommands">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="quickCommands">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="quickCommands">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="quickCommands">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="quickCommands">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="quickCommands">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="quickCommands">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="quickCommands">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="quickCommands">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="quickCommands">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="quickCommands">Hide Panel</button>
+            </div>
+          </div>
+          <div id="quick-command-buttons" class="quick-command-buttons" aria-label="Quick command buttons">
+            <button data-default-quick-command="look" data-command="look">Look</button>
+            <button data-default-quick-command="score" data-command="score">Score</button>
+            <button data-default-quick-command="inventory" data-command="inventory">Inventory</button>
+            <button data-default-quick-command="equipment" data-command="equipment">Equipment</button>
+            <button data-default-quick-command="who" data-command="who">Who</button>
+            <button data-default-quick-command="newbie-help" data-command="help newbie">Newbie Help</button>
+          </div>
+          <button id="quick-command-customize" class="quick-command-customize" type="button">
+            Customize Quick Commands…
+          </button>
+        </section>
+
+        <section id="panel-live-state" class="panel live-state-panel" data-workspace-panel="liveState" aria-labelledby="live-state-heading">
+          <div class="panel-titlebar">
+            <h2 id="live-state-heading">NukeFire State</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="liveState" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-live-state"
+              aria-label="Open NukeFire State panel menu" title="NukeFire State panel options">⋯</button>
+            <div id="panel-menu-live-state" class="panel-menu" role="menu"
+              data-panel-menu="liveState" aria-label="NukeFire State panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="liveState">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="liveState">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="liveState">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="liveState">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="liveState">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="liveState">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="liveState">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="liveState">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="liveState">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="liveState">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="liveState">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="liveState">Hide Panel</button>
+            </div>
+          </div>
+          <dl aria-live="off">
+            <div><dt>Character</dt><dd id="character-state">Waiting</dd></div>
+            <div><dt>Room</dt><dd id="room-state">Waiting</dd></div>
+            <div><dt>Group</dt><dd id="group-state">Waiting</dd></div>
+          </dl>
+        </section>
+
+        <section id="panel-protocol" class="panel protocol-panel" data-workspace-panel="protocol" aria-labelledby="protocol-heading">
+          <div class="panel-titlebar">
+            <h2 id="protocol-heading">Protocol</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="protocol" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-protocol"
+              aria-label="Open Protocol panel menu" title="Protocol panel options">⋯</button>
+            <div id="panel-menu-protocol" class="panel-menu" role="menu"
+              data-panel-menu="protocol" aria-label="Protocol panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="protocol">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="protocol">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="protocol">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="protocol">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="protocol">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="protocol">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="protocol">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="protocol">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="protocol">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="protocol">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="protocol">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="protocol">Hide Panel</button>
+            </div>
+          </div>
+          <dl aria-live="off">
+            <div><dt>Telnet</dt><dd>Active</dd></div>
+            <div><dt>Terminal</dt><dd id="terminal-type-state">Waiting</dd></div>
+            <div><dt>Window</dt><dd id="naws-state">Waiting</dd></div>
+            <div><dt>Charset</dt><dd id="charset-state">Waiting</dd></div>
+            <div><dt>MNES / Links</dt><dd id="mnes-state">Waiting</dd></div>
+            <div><dt>Compression protocol</dt><dd id="mccp-protocol">None</dd></div>
+            <div><dt>Compression preference</dt><dd id="mccp-preference">Enabled on next connection</dd></div>
+            <div><dt>Compression state</dt><dd id="mccp-state">Not active</dd></div>
+            <div><dt>Compression</dt><dd id="mccp-algorithm">—</dd></div>
+            <div><dt>Wire received</dt><dd id="mccp-wire-bytes">0 B</dd></div>
+            <div><dt>Expanded</dt><dd id="mccp-expanded-bytes">0 B</dd></div>
+            <div><dt>Bandwidth saved</dt><dd id="mccp-savings">—</dd></div>
+            <div><dt>GMCP</dt><dd id="gmcp-state">Waiting</dd></div>
+            <div><dt>Prompt boundary</dt><dd id="prompt-boundary">Waiting</dd></div>
+          </dl>
+          <section id="pipeline-debug-section" class="pipeline-debug-section" aria-labelledby="pipeline-debug-heading" hidden>
+            <div class="pipeline-debug-header">
+              <h3 id="pipeline-debug-heading">Pipeline Debug</h3>
+              <span id="pipeline-debug-status">Off</span>
+            </div>
+            <div class="pipeline-debug-tools">
+              <button id="pipeline-debug-copy" type="button">Copy</button>
+              <button id="pipeline-debug-clear" type="button">Clear</button>
+            </div>
+            <ol id="pipeline-debug-log" class="pipeline-debug-log" role="log" aria-live="off" tabindex="0" aria-label="Pipeline debug entries"></ol>
+            <p id="pipeline-debug-empty" class="panel-empty">No pipeline entries yet.</p>
+          </section>
+          <section id="long-session-monitor" class="pipeline-debug-section" aria-labelledby="long-session-monitor-heading">
+            <div class="pipeline-debug-header">
+              <h3 id="long-session-monitor-heading">Long-Session Monitor</h3>
+              <span id="long-session-monitor-status">Off</span>
+            </div>
+            <p class="panel-empty">Bounded performance sampling for reproducing slowdown over hours. Off by default.</p>
+            <dl aria-live="off">
+              <div><dt>Elapsed</dt><dd id="long-session-elapsed">—</dd></div>
+              <div><dt>Heap</dt><dd id="long-session-heap">—</dd></div>
+              <div><dt>DOM nodes</dt><dd id="long-session-dom">—</dd></div>
+              <div><dt>Event-loop delay</dt><dd id="long-session-delay">—</dd></div>
+              <div><dt>Terminal backlog</dt><dd id="long-session-terminal-backlog">—</dd></div>
+              <div><dt>Pop-out traffic</dt><dd id="long-session-popouts">—</dd></div>
+              <div><dt>Samples</dt><dd id="long-session-samples">0</dd></div>
+            </dl>
+            <div class="pipeline-debug-tools">
+              <button id="long-session-start" type="button">Start</button>
+              <button id="long-session-stop" type="button" disabled>Stop</button>
+              <button id="long-session-reset" type="button">Reset</button>
+              <button id="long-session-copy" type="button">Copy Report</button>
+            </div>
+          </section>
+        </section>
+
+        <section id="panel-communications" class="panel communications-panel" data-workspace-panel="communications" aria-labelledby="communications-heading">
+          <div class="panel-titlebar">
+            <h2 id="communications-heading">Communications</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="communications" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-communications"
+              aria-label="Open Communications panel menu" title="Communications panel options">⋯</button>
+            <div id="panel-menu-communications" class="panel-menu" role="menu"
+              data-panel-menu="communications" aria-label="Communications panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="communications">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="communications">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="communications">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="communications">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="communications">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="communications">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="communications">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="communications">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="communications">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="communications">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="communications">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="communications">Hide Panel</button>
+            </div>
+          </div>
+          <div class="communications-control-row communications-channel-row">
+            <span id="communications-channels-label" class="communications-control-label">Channels</span>
+            <div id="communications-tabs" class="communications-tabs" role="tablist"
+              aria-labelledby="communications-channels-label"></div>
+          </div>
+          <div class="communications-control-row">
+            <span class="communications-control-label">Display</span>
+            <label class="communications-order-control" for="communications-order">
+              <span class="sr-only">Message order</span>
+              <select id="communications-order" aria-label="Communication message order"
+                title="Choose whether the newest messages appear at the top or bottom">
+                <option value="newest-top">Newest at top</option>
+                <option value="newest-bottom">Newest at bottom</option>
+              </select>
+            </label>
+          </div>
+          <div class="communications-control-row">
+            <span class="communications-control-label">Find</span>
+            <div class="communications-tools">
+              <label class="sr-only" for="communications-search">Search communications</label>
+              <input id="communications-search" type="search" placeholder="Search messages…" autocomplete="off"
+                title="Filter the captured Communications history">
+              <button id="communications-clear" type="button" title="Clear captured Communications history for this workspace">Clear</button>
+            </div>
+          </div>
+          <div id="communications-messages" class="communications-messages" role="log" aria-live="off"
+            tabindex="0" aria-label="Communications messages"></div>
+          <p id="communications-empty" class="communications-empty">No communications yet. New channel traffic will appear here as it arrives.</p>
+        </section>
+
+        <section id="panel-context-deck" class="panel context-deck-panel" data-workspace-panel="contextDeck" aria-labelledby="context-deck-heading">
+          <div class="panel-titlebar">
+            <h2 id="context-deck-heading">NukeFire Console</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="contextDeck" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-context-deck"
+              aria-label="Open NukeFire Console panel menu" title="NukeFire Console panel options">⋯</button>
+            <div id="panel-menu-context-deck" class="panel-menu" role="menu"
+              data-panel-menu="contextDeck" aria-label="NukeFire Console panel menu" hidden>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="contextDeck">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="contextDeck">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="contextDeck">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="contextDeck">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="contextDeck">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="contextDeck">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="contextDeck">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="contextDeck">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="contextDeck">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="contextDeck">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="contextDeck">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="contextDeck">Hide Panel</button>
+            </div>
+          </div>
+          <p class="context-deck-intro">Server-authoritative room, service, zone, character, map, and travel controls from NukeFire.</p>
+          <div class="context-deck-toolbar">
+            <p id="context-deck-status" aria-live="off">Waiting for NukeFire action data.</p>
+            <button id="context-deck-refresh" type="button" title="Request fresh NukeFire Console actions from the server">Refresh Console</button>
+          </div>
+          <section id="groupassist-editor" class="groupassist-editor" aria-labelledby="groupassist-editor-heading">
+            <h3 id="groupassist-editor-heading">GroupAssist Rotation</h3>
+            <p id="groupassist-editor-summary">Connect to load this character's learned GroupAssist actions.</p>
+            <form id="groupassist-editor-form">
+              <label for="groupassist-editor-target">Leader target</label>
+              <input id="groupassist-editor-target" name="target" maxlength="64" value="self"
+                autocomplete="off" spellcheck="false" aria-describedby="groupassist-editor-target-help">
+              <small id="groupassist-editor-target-help">Use self, default for any leader, or one player name.</small>
+              <div id="groupassist-editor-actions" class="groupassist-editor-actions"></div>
+              <div class="groupassist-editor-buttons">
+                <button id="groupassist-editor-save" class="primary" type="submit">Save Rotation</button>
+                <button id="groupassist-editor-clear" type="button">Clear Target</button>
+                <button id="groupassist-editor-refresh" type="button">Refresh</button>
+              </div>
+            </form>
+            <p id="groupassist-editor-status" aria-live="off">No GroupAssist state received.</p>
+          </section>
+          <div id="context-deck-cards" class="context-deck-cards" aria-live="off"></div>
+          <p id="context-deck-empty" class="context-deck-empty">
+            Connect to receive room and character actions.
+          </p>
+          <div id="context-deck-summary" class="sr-only" aria-live="polite"></div>
+        </section>
+
+        <section id="panel-mapper" class="panel mapper-panel" data-workspace-panel="mapper" aria-labelledby="mapper-heading">
+          <div class="panel-titlebar">
+            <h2 id="mapper-heading">Mapper</h2>
+            <button class="panel-menu-button" type="button"
+              data-panel-menu-button="mapper" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="panel-menu-mapper"
+              aria-label="Open Mapper panel menu" title="Mapper panel options">⋯</button>
+            <div id="panel-menu-mapper" class="panel-menu" role="menu"
+              data-panel-menu="mapper" aria-label="Mapper panel menu" hidden>
+              <button type="button" role="menuitemcheckbox" aria-checked="true" data-mapper-section-toggle="gpsNavigator">Show GPS Navigator</button>
+              <button type="button" role="menuitemcheckbox" aria-checked="true" data-mapper-section-toggle="mapperMap">Show Map</button>
+              <button type="button" role="menuitemcheckbox" aria-checked="true" data-mapper-section-toggle="mapperRoomInfo">Show Room Information</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-left" data-panel-id="mapper">Move Left</button>
+              <button type="button" role="menuitem" data-panel-action="move-right" data-panel-id="mapper">Move Right</button>
+
+              <button type="button" role="menuitem" data-panel-action="move-outer-right" data-panel-id="mapper">Move Far Right</button>
+              <button type="button" role="menuitem" data-panel-action="move-bottom" data-panel-id="mapper">Move Below</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="tab-previous" data-panel-id="mapper">Tab with Previous Panel</button>
+              <button type="button" role="menuitem" data-panel-action="tab-next" data-panel-id="mapper">Tab with Next Panel</button>
+              <button type="button" role="menuitem" data-panel-action="separate-tab" data-panel-id="mapper">Separate Tab</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="move-earlier" data-panel-id="mapper">Move Earlier</button>
+              <button type="button" role="menuitem" data-panel-action="move-later" data-panel-id="mapper">Move Later</button>
+              <hr>
+              <button type="button" role="menuitem" data-panel-action="reset-size" data-panel-id="mapper">Reset Panel Size</button>
+              <button type="button" role="menuitem" data-panel-action="pop-out" data-panel-id="mapper">Pop Out Window</button>
+              <button type="button" role="menuitem" data-panel-action="hide" data-panel-id="mapper">Hide Panel</button>
+            </div>
+          </div>
+          <section class="mapper-gps-navigator" aria-labelledby="mapper-gps-heading">
+            <div class="mapper-gps-heading-row">
+              <strong id="mapper-gps-heading">GPS Navigator</strong>
+              <button id="mapper-gps-refresh" type="button">Reload List</button>
+            </div>
+            <label for="mapper-gps-search">Filter destinations</label>
+            <input id="mapper-gps-search" type="search" autocomplete="off"
+              placeholder="Name, zone, category, alias…">
+            <label for="mapper-gps-destination">Destination</label>
+            <select id="mapper-gps-destination" disabled>
+              <option value="">Waiting for the server destination list…</option>
+            </select>
+            <p id="mapper-gps-guidance" class="mapper-gps-guidance" aria-live="off">
+              Choose a destination to see zone and remort guidance.
+            </p>
+            <div class="mapper-gps-actions">
+              <button id="mapper-gps-set" class="primary" type="button" disabled>Set GPS</button>
+              <button id="mapper-gps-clear" type="button">Clear GPS</button>
+            </div>
+            <p id="mapper-gps-status" class="mapper-gps-status" aria-live="off">
+              Destination catalog has not been received yet.
+            </p>
+          </section>
+          <section id="mapper-map-section" class="mapper-map-section" aria-label="Map and controls">
+            <div class="mapper-toolbar" aria-label="Map controls">
+              <button id="mapper-zoom-out" type="button" aria-label="Zoom map out">−</button>
+              <button id="mapper-center" type="button">Center</button>
+              <button id="mapper-zoom-in" type="button" aria-label="Zoom map in">+</button>
+            </div>
+            <details class="mapper-maintenance">
+              <summary>Map tools</summary>
+              <div class="mapper-maintenance-body">
+                <button id="mapper-refresh" type="button" title="Clear transient live map state, then request fresh room, GPS, and BIGMAP data">Hard Reset &amp; Refresh</button>
+                <div class="mapper-clear-row" aria-label="Clear learned map controls">
+                  <label for="mapper-clear-scope">Clear Learned Map</label>
+                  <select id="mapper-clear-scope">
+                    <option value="character">This character’s visit history</option>
+                    <option value="zone">Current zone from this client</option>
+                    <option value="all">Entire client learned map</option>
+                    <option value="server">NukeFire session BIGMAP memory</option>
+                  </select>
+                  <button id="mapper-clear" type="button">Clear</button>
+                </div>
+              </div>
+            </details>
+            <div id="mapper-canvas" class="mapper-canvas" tabindex="0" role="region"
+              aria-label="NukeFire read-only room map. Drag or use the arrow keys to pan, use the mouse wheel or plus and minus keys to zoom, and use Center, C, or Home to recenter on the current room.">
+              <div id="mapper-offline" class="mapper-offline" role="status" aria-live="polite">
+                <img src="assets/nukefire-offline-map.webp" alt="" aria-hidden="true">
+                <div class="mapper-offline-copy">
+                  <strong id="mapper-offline-title">NukeFire Map Offline</strong>
+                  <span id="mapper-offline-message">Connect this session to load the live local map.</span>
+                </div>
+              </div>
+              <svg id="mapper-svg" viewBox="0 0 600 420" role="img" aria-labelledby="mapper-svg-title mapper-svg-description" aria-hidden="true" hidden>
+                <title id="mapper-svg-title">NukeFire map</title>
+                <desc id="mapper-svg-description">No room information received yet.</desc>
+                <g id="mapper-world">
+                  <g id="mapper-edges"></g>
+                  <g id="mapper-rooms"></g>
+                </g>
+              </svg>
+            </div>
+            <div id="resize-mapper-canvas" class="mapper-canvas-resizer"
+              role="separator" tabindex="0" aria-label="Resize map height"
+              aria-orientation="horizontal" aria-valuemin="220" aria-valuemax="1600"
+              aria-valuenow="360" aria-valuetext="Map height 360 pixels"
+              title="Drag to resize the map. Arrow keys resize, Shift uses larger steps, Home resets to minimum, End expands to maximum, and double-click restores the default height."></div>
+            <p id="mapper-status" class="sr-only" aria-live="off">Read-only map · 0 known rooms · 0 visited</p>
+            <div id="mapper-accessible-summary" class="sr-only" aria-live="polite"></div>
+          </section>
+          <section id="mapper-room-info" class="mapper-room-info" aria-label="Current room information">
+            <div class="mapper-details" aria-live="off">
+              <strong id="mapper-room-name">Waiting for room information</strong>
+              <span id="mapper-room-meta">The map will learn as you travel.</span>
+              <span id="mapper-room-state">Current-room details will appear here.</span>
+              <div id="mapper-exits" class="mapper-exits"></div>
+            </div>
+          </section>
+        </section>
+      </aside>
+
+      <div id="resize-left-dock" class="dock-resizer dock-resizer-vertical dock-resizer-left"
+        data-dock-resizer="left" role="separator" tabindex="0"
+        aria-label="Resize left panel dock" aria-orientation="vertical"
+        aria-valuemin="170" aria-valuemax="480" aria-valuenow="220"
+        title="Drag to resize the left dock. Double-click to reset."></div>
+
+      <section class="terminal-shell" aria-labelledby="terminal-title">
+        <div class="terminal-toolbar">
+          <span id="terminal-title">NukeFire output</span>
+          <div>
+            <button id="clear-output" aria-label="Clear game output">Clear</button>
+            <button id="find-button" aria-label="Find in game output">Find</button>
+            <span id="line-count">0 lines</span>
+          </div>
+        </div>
+        <div id="find-panel" hidden>
+          <label class="sr-only" for="find-input">Find text in game output</label>
+          <input id="find-input" placeholder="Find text…" autocomplete="off">
+          <button id="find-previous">Previous</button>
+          <button id="find-next">Next</button>
+          <button id="find-close" aria-label="Close find">×</button>
+        </div>
+        <div id="terminal-output-host" class="terminal-output-host" tabindex="-1" aria-label="NukeFire game output container">
+          <div id="output" class="xterm-output" tabindex="0" role="region"
+            aria-label="NukeFire game output using xterm.js" aria-describedby="output-help"></div>
+          <section id="terminal-recovery" class="terminal-recovery" role="alert" hidden>
+            <h2>Terminal unavailable</h2>
+            <p id="terminal-recovery-message">xterm.js could not initialize. The connection and reader text remain available.</p>
+            <button id="retry-terminal" type="button" class="primary">Retry Terminal</button>
+          </section>
+        </div>
+        <div id="docked-prompt-row" class="docked-prompt-row" role="region"
+          aria-label="Current NukeFire prompt" aria-live="off" hidden>
+          <div id="docked-prompt-content" aria-hidden="true"></div>
+        </div>
+        <div class="input-bar">
+          <span id="input-mode" aria-hidden="true" title="Command input mode">›</span>
+          <input id="command" autocomplete="off" spellcheck="false" aria-label="Command input"
+            title="Return sends. Up and Down Arrow browse command history. Escape restores your draft while browsing history." placeholder="Enter a NukeFire command…">
+          <span id="command-history-status" class="command-history-status" aria-live="off" hidden></span>
+        </div>
+      </section>
+
+
+      <aside id="reader-workspace-panel" class="reader-workspace-panel"
+        role="region" aria-labelledby="reader-workspace-heading">
+        <div class="reader-workspace-header">
+          <h2 id="reader-workspace-heading">Reader Review</h2>
+        </div>
+        <p id="reader-workspace-session-status" class="reader-workspace-status">
+          Active session information will appear here.
+        </p>
+        <p id="reader-workspace-review-status" class="reader-workspace-status" aria-live="off">
+          Reader review is ready. Review actions do not change the underlying game text.
+        </p>
+
+        <section class="reader-workspace-section" aria-labelledby="reader-workspace-output-heading">
+          <h3 id="reader-workspace-output-heading">Reader History</h3>
+          <p class="reader-workspace-status">
+            Alt+Up/Down changes category. Alt+Left/Right moves through messages on Windows/Linux. F8/F9 always move through the selected category, F10 jumps to Latest, and Alt+End also jumps to Latest. macOS keeps Option+Left/Right for native word navigation.
+          </p>
+          <div class="reader-workspace-actions">
+            <button id="reader-workspace-history-category-previous" type="button" title="Previous Reader History category. Default shortcut: Alt+Up.">Previous Category</button>
+            <button id="reader-workspace-history-category-next" type="button" title="Next Reader History category. Default shortcut: Alt+Down.">Next Category</button>
+            <button id="reader-workspace-reader-current" type="button">Current Message</button>
+            <button id="reader-workspace-reader-previous" type="button" title="Previous message in the selected Reader History category. Default shortcut: F8.">Previous Message</button>
+            <button id="reader-workspace-reader-next" type="button" title="Next message in the selected Reader History category. Default shortcut: F9.">Next Message</button>
+            <button id="reader-workspace-reader-latest" type="button" title="Jump to the newest message in the selected Reader History category. Default shortcut: F10 or Alt+End.">Latest Message</button>
+            <button id="reader-workspace-read-last" type="button">Read Last Raw Output Line</button>
+          </div>
+        </section>
+
+        <section class="reader-workspace-section" aria-labelledby="reader-workspace-comms-heading">
+          <h3 id="reader-workspace-comms-heading">Communications</h3>
+          <div class="reader-workspace-actions">
+            <button id="reader-workspace-comms-current" type="button">Current</button>
+            <button id="reader-workspace-comms-older" type="button">Older</button>
+            <button id="reader-workspace-comms-newer" type="button">Newer</button>
+            <button id="reader-workspace-comms-latest" type="button">Latest</button>
+            <button id="reader-workspace-last-tell" type="button" title="Read the newest Tell. Default shortcut: Shift+F10.">Last Tell</button>
+            <button id="reader-workspace-last-communication" type="button">Last Communication</button>
+            <button id="reader-workspace-copy-reviewed" type="button" title="Copy the last reviewed line or message. MUSH settings shortcut: Alt+C.">Copy Reviewed</button>
+          </div>
+        </section>
+
+        <section class="reader-workspace-section" aria-labelledby="reader-workspace-speech-heading">
+          <h3 id="reader-workspace-speech-heading">Reader Controls</h3>
+          <p id="reader-workspace-speech-status" class="reader-workspace-status">
+            Native reader and self-voice status will appear here.
+          </p>
+          <div class="reader-workspace-actions">
+            <button id="reader-workspace-focus-command" type="button">Focus Command</button>
+            <button id="reader-workspace-tutorial" type="button" title="Start or replay the short spoken Reader tutorial.">Reader Tutorial</button>
+            <button id="reader-workspace-unread" type="button" title="Speak a summary of Reader History categories with unread messages.">Unread Summary</button>
+            <button id="reader-workspace-context" type="button" title="Speak the current Reader session, speech path, category, and safety state.">Reader Context</button>
+            <button id="reader-workspace-toggle-self-voice-mute" type="button" title="Mute or unmute NukeFire Self-Voice. Default shortcut: F6.">Mute Self-Voice</button>
+            <button id="reader-workspace-stop-self-voice" type="button" title="Stop current NukeFire speech immediately. Default shortcut: F7.">Stop Self-Voice Now</button>
+          </div>
+        </section>
+      </aside>
+
+      <div id="resize-right-dock" class="dock-resizer dock-resizer-vertical dock-resizer-right"
+        data-dock-resizer="right" role="separator" tabindex="0"
+        aria-label="Resize right panel dock" aria-orientation="vertical"
+        aria-valuemin="170" aria-valuemax="480" aria-valuenow="300"
+        title="Drag to resize the right dock. Double-click to reset." hidden></div>
+
+      <aside id="dock-right" class="dock-region dock-right" data-dock-region="right"
+        aria-label="Right panel dock" hidden></aside>
+
+      <div id="resize-outer-right-dock" class="dock-resizer dock-resizer-vertical dock-resizer-outer-right"
+        data-dock-resizer="outer-right" role="separator" tabindex="0"
+        aria-label="Resize far-right panel dock" aria-orientation="vertical"
+        aria-valuemin="170" aria-valuemax="480" aria-valuenow="260"
+        title="Drag to resize the far-right dock. Double-click to reset." hidden></div>
+
+      <aside id="dock-outer-right" class="dock-region dock-outer-right" data-dock-region="outer-right"
+        aria-label="Far-right panel dock" hidden></aside>
+
+      <div id="resize-bottom-dock" class="dock-resizer dock-resizer-horizontal dock-resizer-bottom"
+        data-dock-resizer="bottom" role="separator" tabindex="0"
+        aria-label="Resize lower panel dock" aria-orientation="horizontal"
+        aria-valuemin="130" aria-valuemax="400" aria-valuenow="170"
+        title="Drag to resize the lower dock. Double-click to reset." hidden></div>
+
+      <section id="dock-bottom" class="dock-region dock-bottom" data-dock-region="bottom"
+        aria-label="Lower panel dock" hidden></section>
+    </main>
+  </div>
+
+  <div id="panel-menu-layer" class="panel-menu-layer"></div>
+
+
+  <div id="reader-setup-overlay" class="disconnect-overlay" hidden>
+    <section id="reader-setup-dialog" class="disconnect-dialog" role="dialog" aria-modal="true"
+      aria-labelledby="reader-setup-title" aria-describedby="reader-setup-message" tabindex="-1">
+      <h2 id="reader-setup-title">Reader Setup</h2>
+      <p id="reader-setup-message">Choose the speech path you normally want for NukeFire. Both choices keep the terminal command line active, enable Reader Workspace, install the standard Reader hotkeys when possible, and leave realtime safety alerts on.</p>
+      <div class="disconnect-actions" role="group" aria-label="Reader speech choice">
+        <button id="reader-setup-native" class="primary" type="button">Use My Screen Reader</button>
+        <button id="reader-setup-live" type="button">Use NukeFire Voice</button>
+      </div>
+      <label class="checkbox"><input id="reader-setup-tutorial" type="checkbox" checked> Start the short spoken tutorial after setup</label>
+      <p id="reader-setup-status" role="status" aria-live="polite">Native Reader is the safest choice for VoiceOver, NVDA, JAWS, or Orca. NukeFire Voice uses the system speech synthesizer.</p>
+      <div class="disconnect-actions">
+        <button id="reader-setup-later" type="button">Not Now</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="disconnect-overlay" class="disconnect-overlay" hidden>
+    <section id="disconnect-dialog" class="disconnect-dialog" role="dialog" aria-modal="true"
+      aria-labelledby="disconnect-title" aria-describedby="disconnect-message" tabindex="-1">
+      <div class="disconnect-brand" aria-hidden="true">
+        <img src="assets/nukefire-wordmark.webp" alt="">
+        <span>CONNECTION CONTROL</span>
+      </div>
+      <h2 id="disconnect-title">Disconnect from NukeFire?</h2>
+      <p id="disconnect-message">This session will close its live connection. Your client settings and learned map remain saved.</p>
+      <div class="disconnect-actions">
+        <button id="disconnect-cancel" class="primary" type="button">Stay Connected</button>
+        <button id="disconnect-confirm" class="danger" type="button">Disconnect</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="close-session-overlay" class="disconnect-overlay" hidden>
+    <section id="close-session-dialog" class="disconnect-dialog" role="dialog" aria-modal="true"
+      aria-labelledby="close-session-title" aria-describedby="close-session-message" tabindex="-1">
+      <div class="disconnect-brand" aria-hidden="true">
+        <img src="assets/nukefire-wordmark.webp" alt="">
+        <span>SESSION CONTROL</span>
+      </div>
+      <h2 id="close-session-title">Close this session?</h2>
+      <p id="close-session-message">This removes the session tab from the current workspace. Use Disconnect instead if you only want to end the live connection.</p>
+      <div class="disconnect-actions">
+        <button id="close-session-cancel" class="primary" type="button">Keep Session</button>
+        <button id="close-session-confirm" class="danger" type="button">Close Session</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="definition-manager-overlay" class="definition-manager-overlay" hidden>
+    <section id="definition-manager-dialog" class="definition-manager-dialog" role="dialog"
+      aria-modal="true" aria-labelledby="definition-manager-title" tabindex="-1">
+      <header class="definition-manager-header">
+        <div>
+          <p class="knowledge-kicker">NUKEFIRE LOCAL DEFINITIONS</p>
+          <h2 id="definition-manager-title">Definition Manager</h2>
+          <p>Browse and maintain the active session’s existing TinTin definitions.</p>
+        </div>
+        <button id="definition-manager-close" type="button">Close</button>
+      </header>
+      <div class="definition-manager-tools">
+        <label>Category
+          <select id="definition-manager-category">
+            <option value="aliases">Aliases</option>
+            <option value="actions">Actions</option>
+            <option value="variables">Variables</option>
+            <option value="functions">Functions</option>
+            <option value="macros">Macros</option>
+            <option value="highlights">Highlights</option>
+            <option value="substitutes">Substitutes</option>
+            <option value="gags">Gags</option>
+            <option value="classes">Classes</option>
+          </select>
+        </label>
+        <label class="definition-manager-search-label">Search this category
+          <input id="definition-manager-search" type="search" autocomplete="off" spellcheck="false"
+            aria-controls="definition-manager-list" placeholder="Filter by name, pattern, command, or class…">
+        </label>
+        <button id="definition-manager-new" class="primary" type="button">New</button>
+      </div>
+      <p id="definition-manager-status" class="knowledge-status" role="status" aria-live="polite">No category loaded.</p>
+      <div class="definition-manager-workspace">
+        <div id="definition-manager-list" class="definition-manager-list" role="listbox"
+          aria-label="Definitions" tabindex="0"></div>
+        <form id="definition-manager-form" class="definition-manager-form" aria-labelledby="definition-manager-editor-title" hidden>
+          <h3 id="definition-manager-editor-title">Edit definition</h3>
+          <label id="definition-manager-key-label">Name
+            <input id="definition-manager-key" autocomplete="off" spellcheck="false" maxlength="256" required>
+          </label>
+          <label id="definition-manager-value-label">Command or value
+            <textarea id="definition-manager-value" rows="6" maxlength="4096"></textarea>
+          </label>
+          <div class="definition-manager-options">
+            <label id="definition-manager-style-label" hidden>Style
+              <input id="definition-manager-style" autocomplete="off" maxlength="160">
+            </label>
+            <label id="definition-manager-priority-label">Priority
+              <input id="definition-manager-priority" type="number" min="1" max="9" step="1" value="5">
+            </label>
+            <label id="definition-manager-enabled-label" class="checkbox-label" hidden>
+              <input id="definition-manager-enabled" type="checkbox" checked> Enabled
+            </label>
+          </div>
+          <p id="definition-manager-validation" class="preference-help" role="alert"></p>
+          <div class="definition-manager-actions">
+            <button id="definition-manager-save" class="primary" type="submit">Save</button>
+            <button id="definition-manager-duplicate" type="button">Duplicate</button>
+            <button id="definition-manager-delete" class="danger" type="button">Delete</button>
+            <button id="definition-manager-cancel" type="button">Cancel</button>
+          </div>
+        </form>
+        <div id="definition-manager-placeholder" class="definition-manager-placeholder">
+          Choose a definition to inspect it, or select New.
+        </div>
+      </div>
+      <footer class="knowledge-footer">
+        <span>Traditional text listings remain available. Escape closes and restores your command draft and selection.</span>
+      </footer>
+    </section>
+  </div>
+
+  <div id="knowledge-overlay" class="knowledge-overlay" hidden>
+    <section id="knowledge-dialog" class="knowledge-dialog" role="dialog"
+      aria-modal="true" aria-labelledby="knowledge-title" tabindex="-1">
+      <header class="knowledge-header">
+        <div>
+          <p class="knowledge-kicker">NUKEFIRE KNOWLEDGE CONSOLE</p>
+          <h2 id="knowledge-title">Search the game, not the web</h2>
+          <p>Live Help, items, commands, skills, and zones from the NukeFire server.</p>
+        </div>
+        <button id="knowledge-close" type="button">Close</button>
+      </header>
+      <div class="knowledge-search-row">
+        <label class="sr-only" for="knowledge-search">Search NukeFire Knowledge</label>
+        <input id="knowledge-search" type="search" autocomplete="off" spellcheck="false"
+          placeholder="Search true damage, 57223, groupassist, Curist, Castle Black…"
+          aria-controls="knowledge-results" aria-describedby="knowledge-status">
+        <span class="knowledge-shortcut" aria-hidden="true">⌘K / Ctrl-K</span>
+      </div>
+      <div class="knowledge-domain-tabs" role="tablist" aria-label="Knowledge categories">
+        <button type="button" role="tab" data-knowledge-domain="all" aria-selected="true">All</button>
+        <button type="button" role="tab" data-knowledge-domain="help" aria-selected="false">Help</button>
+        <button type="button" role="tab" data-knowledge-domain="item" aria-selected="false">Items</button>
+        <button type="button" role="tab" data-knowledge-domain="command" aria-selected="false">Commands</button>
+        <button type="button" role="tab" data-knowledge-domain="skill" aria-selected="false">Skills</button>
+        <button type="button" role="tab" data-knowledge-domain="zone" aria-selected="false">Zones</button>
+        <span>One live index. Server-authoritative results.</span>
+      </div>
+      <p id="knowledge-status" class="knowledge-status" role="status" aria-live="polite">
+        Enter at least two characters to search live NukeFire knowledge.
+      </p>
+      <div class="knowledge-workspace">
+        <div class="knowledge-results-pane">
+          <div id="knowledge-results" class="knowledge-results" role="listbox"
+            aria-label="Knowledge search results" tabindex="0"></div>
+          <p id="knowledge-empty" class="knowledge-empty">No search yet.</p>
+          <button id="knowledge-load-more" class="knowledge-load-more" type="button" hidden>
+            Load more results
+          </button>
+        </div>
+        <article id="knowledge-entry" class="knowledge-entry" aria-live="polite">
+          <p class="knowledge-entry-placeholder">Choose a result to open the full entry.</p>
+        </article>
+      </div>
+      <footer class="knowledge-footer">
+        <button id="knowledge-open-terminal" class="primary" type="button" disabled>
+          Open related NukeFire command
+        </button>
+        <span>Escape closes and returns focus exactly where you were.</span>
+      </footer>
+    </section>
+  </div>
+
+  <div id="preferences-overlay" class="preferences-overlay" hidden>
+    <section id="preferences-dialog" class="preferences-dialog" role="dialog"
+      aria-modal="true" aria-labelledby="preferences-title" tabindex="-1">
+      <header class="preferences-header">
+        <div>
+          <h2 id="preferences-title">Preferences</h2>
+          <p>Settings save automatically. Choose a category to see its controls.</p>
+        </div>
+        <button id="preferences-close" class="primary" type="button">Done</button>
+      </header>
+
+      <div class="preferences-workspace">
+        <nav class="preferences-nav" aria-label="Preference categories">
+          <div class="preferences-tablist" role="tablist" aria-orientation="vertical">
+            <button id="preference-tab-display" class="preference-tab" type="button" role="tab"
+              aria-selected="true" aria-controls="preference-panel-display" tabindex="0"
+              data-preference-category="display">
+              <span class="preference-tab-title">Display</span>
+              <span class="preference-tab-hint">Fonts, colors, prompts, and Mapper text</span>
+            </button>
+            <button id="preference-tab-presets" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="preference-panel-presets" tabindex="-1"
+              data-preference-category="presets">
+              <span class="preference-tab-title">Client Presets</span>
+              <span class="preference-tab-hint">Preview, keep, revert, import, and share</span>
+            </button>
+            <button id="preference-tab-command-input" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="preference-panel-command-input" tabindex="-1"
+              data-preference-category="command-input">
+              <span class="preference-tab-title">Command Input</span>
+              <span class="preference-tab-hint">Prefixes, Enter behavior, and command echo</span>
+            </button>
+            <button id="preference-tab-keyboard" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="keybinding-preferences" tabindex="-1"
+              data-preference-category="keyboard">
+              <span class="preference-tab-title">Keyboard Shortcuts</span>
+              <span class="preference-tab-hint">Physical keys, Numpad, and semantic controls</span>
+            </button>
+            <button id="preference-tab-tintin" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="tintin-import-preferences" tabindex="-1"
+              data-preference-category="tintin">
+              <span class="preference-tab-title">TinTin Scripts</span>
+              <span class="preference-tab-hint">Review and import aliases and Actions</span>
+            </button>
+            <button id="preference-tab-workspace" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="preference-panel-workspace" tabindex="-1"
+              data-preference-category="workspace">
+              <span class="preference-tab-title">Workspace</span>
+              <span class="preference-tab-hint">Panels, layout scope, and vital displays</span>
+            </button>
+            <button id="preference-tab-quick-commands" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="quick-command-preferences" tabindex="-1"
+              data-preference-category="quick-commands">
+              <span class="preference-tab-title">Quick Commands</span>
+              <span class="preference-tab-hint">Built-in and custom command buttons</span>
+            </button>
+            <button id="preference-tab-pipeline-debug" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="preference-panel-pipeline-debug" tabindex="-1"
+              data-preference-category="pipeline-debug">
+              <span class="preference-tab-title">Pipeline Debug</span>
+              <span class="preference-tab-hint">Bounded command-path diagnostics</span>
+            </button>
+            <button id="preference-tab-accessibility" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="preference-panel-accessibility" tabindex="-1"
+              data-preference-category="accessibility">
+              <span class="preference-tab-title">Accessibility</span>
+              <span class="preference-tab-hint">Screen reader and review controls</span>
+            </button>
+          </div>
+        </nav>
+
+        <div id="preferences-content" class="preferences-content">
+        <section id="preference-panel-display" class="preference-section settings-panel" role="tabpanel"
+          data-preference-category="display" aria-labelledby="preference-tab-display display-heading">
+          <h3 id="display-heading">Display</h3>
+          <label class="checkbox"><input id="compression-enabled" type="checkbox" checked
+            aria-describedby="compression-enabled-help"> Enable MCCP2 and MCCPX compression</label>
+          <p id="compression-enabled-help" class="preference-help">
+            Reduces incoming network traffic. Changes take effect on the next connection or reconnect; GMCP remains enabled.
+          </p>
+          <label class="checkbox"><input id="follow-output" type="checkbox" checked> Follow new output while already at the bottom</label>
+          <label class="checkbox"><input id="compact-output" type="checkbox"> Compact line spacing</label>
+          <p class="preference-help">Terminal engine: xterm.js. The legacy DOM transcript renderer has been removed.</p>
+          <fieldset class="terminal-font-size-controls" aria-describedby="terminal-font-size-help">
+            <legend>Terminal text size</legend>
+            <label><span>Scale</span><input id="font-size-scale" type="range" min="12" max="28" step="1" value="16" aria-label="Terminal text size scale in pixels"></label>
+            <label><span>Exact size</span><span class="terminal-font-size-exact"><input id="font-size" type="number" min="12" max="28" step="1" value="16" inputmode="numeric" aria-label="Exact terminal text size in pixels"><span aria-hidden="true">px</span></span></label>
+            <button id="font-size-reset" type="button">Reset to 16 px</button>
+            <output id="font-size-status" aria-live="off">16 pixels</output>
+          </fieldset>
+          <p id="terminal-font-size-help" class="preference-help">Choose 12 through 28 pixels. The exact value applies immediately and is saved for the next session.</p>
+          <label>
+            <span>Interface font</span>
+            <select id="ui-font" aria-label="Interface font">
+              <option value="system">System</option>
+              <option value="arial">Arial</option>
+              <option value="verdana">Verdana</option>
+              <option value="tahoma">Tahoma</option>
+              <option value="trebuchet">Trebuchet MS</option>
+              <option value="atkinson">Atkinson Hyperlegible, if installed</option>
+              <option value="opendyslexic">OpenDyslexic, if installed</option>
+            </select>
+          </label>
+          <label>
+            <span>Interface brightness</span>
+            <select id="interface-brightness" aria-describedby="interface-brightness-help">
+              <option value="dark">Original Dark</option>
+              <option value="brighter">Brighter</option>
+              <option value="high-contrast">High Contrast</option>
+            </select>
+          </label>
+          <p id="interface-brightness-help" class="preference-help">
+            Brightens panels, borders, controls, and labels without changing NukeFire ANSI colors.
+          </p>
+          <label>
+            <span>Terminal font</span>
+            <select id="terminal-font" aria-label="Terminal font" aria-describedby="terminal-font-help">
+              <optgroup label="Built-in and system fonts">
+                <option value="menlo">Menlo</option>
+                <option value="monaco">Monaco</option>
+                <option value="consolas">Consolas</option>
+                <option value="courier">Courier New</option>
+                <option value="system-mono">System monospace</option>
+              </optgroup>
+              <optgroup label="Classic MUD and terminal fonts">
+                <option value="fixedsys">Fixedsys Excelsior, if installed</option>
+                <option value="terminus">Terminus, if installed</option>
+                <option value="inconsolata">Inconsolata, if installed</option>
+                <option value="hack">Hack, if installed</option>
+              </optgroup>
+              <optgroup label="Modern monospace fonts">
+                <option value="maple">Maple Mono, if installed</option>
+                <option value="maple-nl">Maple Mono NL, if installed</option>
+                <option value="jetbrains">JetBrains Mono, if installed</option>
+                <option value="fira-code">Fira Code, if installed</option>
+                <option value="source-code-pro">Source Code Pro, if installed</option>
+                <option value="cascadia">Cascadia Mono or Code, if installed</option>
+                <option value="ibm-plex">IBM Plex Mono, if installed</option>
+                <option value="ubuntu-mono">Ubuntu Mono, if installed</option>
+                <option value="lucida-console">Lucida Console, if installed</option>
+              </optgroup>
+            </select>
+          </label>
+          <p id="terminal-font-help" class="preference-help">
+            Optional fonts use the copy installed on this computer. If a font is unavailable,
+            the terminal falls back to a standard monospace face.
+          </p>
+          <fieldset class="display-text-preferences">
+            <legend>Panel and Mapper Text</legend>
+            <label>
+              <span>Panel labels</span>
+              <select id="panel-label-mode" aria-describedby="panel-label-mode-help">
+                <option value="full">Full — Communications, NukeFire Console, Mapper</option>
+                <option value="compact">Compact — Comms, Console, Map</option>
+              </select>
+            </label>
+            <p id="panel-label-mode-help" class="preference-help">
+              Compact labels save dock and tab space. Screen readers continue to receive the full panel names.
+            </p>
+            <label>
+              <span>Map room text</span>
+              <select id="mapper-room-label-mode" aria-describedby="mapper-room-label-mode-help">
+                <option value="status">Status marks only — @, route and destination</option>
+                <option value="number">Room numbers</option>
+                <option value="name">Short room names</option>
+              </select>
+            </label>
+            <p id="mapper-room-label-mode-help" class="preference-help">
+              Room text is visual decoration. The accessible Mapper summary remains complete and unchanged.
+            </p>
+            <label>
+              <span>Prompt display</span>
+              <select id="prompt-display-mode" aria-describedby="prompt-display-mode-help">
+                <option value="inline">Inline — print prompts in terminal history</option>
+                <option value="docked">Docked — pin the current prompt above command input</option>
+                <option value="hidden">Hidden — suppress the playing prompt visually</option>
+              </select>
+            </label>
+            <p id="prompt-display-mode-help" class="preference-help">
+              Docked mode uses NukeFire's Telnet GA/EOR boundary and keeps completed group-prompt lines in normal output. Login and password prompts always remain inline.
+            </p>
+          </fieldset>
+          <label>
+            <span>Terminal theme</span>
+            <select id="terminal-theme" aria-describedby="terminal-theme-status">
+              <option value="nukefire">NukeFire</option>
+              <option value="amber">Amber CRT</option>
+              <option value="green">Green CRT</option>
+              <option value="ice">Ice Blue</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <div class="terminal-color-grid">
+            <label class="color-control">
+              <span>Text color</span>
+              <input id="terminal-foreground" type="color" value="#d3d7dc" aria-label="Terminal text color">
+            </label>
+            <label class="color-control">
+              <span>Background</span>
+              <input id="terminal-background" type="color" value="#050607" aria-label="Terminal background color">
+            </label>
+          </div>
+          <label class="checkbox terminal-monochrome-control">
+            <input id="terminal-monochrome" type="checkbox">
+            Monochrome output
+          </label>
+          <output id="terminal-theme-status" class="terminal-theme-status" aria-live="off">
+            NukeFire colors
+          </output>
+        </section>
+
+        <section id="preference-panel-presets" class="preference-section client-preset-panel" role="tabpanel"
+          data-preference-category="presets" aria-labelledby="preference-tab-presets client-preset-heading" hidden>
+          <h3 id="client-preset-heading">Client Presets</h3>
+          <p class="preference-help">Preview a bounded visual, layout, accessibility, and soundpack setup. Preview never changes commands, definitions, accounts, history, or game output.</p>
+          <label><span>Preset</span><select id="client-preset-select" aria-describedby="client-preset-description"></select></label>
+          <p id="client-preset-description" class="preference-help"></p>
+          <div class="client-preset-actions">
+            <button id="client-preset-preview" class="primary" type="button">Preview Changes</button>
+            <button id="client-preset-keep" type="button" disabled>Keep and Save</button>
+            <button id="client-preset-revert" type="button" disabled>Revert Preview</button>
+            <button id="client-preset-import" type="button">Import .nfpreset</button>
+          </div>
+          <h4>Proposed changes</h4>
+          <ul id="client-preset-changes" class="client-preset-changes" aria-label="Preset change preview"></ul>
+          <h4>Share my current setup</h4>
+          <label><span>Preset name</span><input id="client-preset-name" maxlength="80" autocomplete="off" value="My NukeFire Setup"></label>
+          <label><span>Description</span><input id="client-preset-notes" maxlength="400" autocomplete="off" placeholder="Optional description"></label>
+          <button id="client-preset-export" type="button">Export Current Setup</button>
+          <p id="client-preset-status" role="status" aria-live="polite">Choose a preset to review its exact changes.</p>
+        </section>
+
+        <section id="preference-panel-command-input" class="preference-section command-input-panel" role="tabpanel"
+          data-preference-category="command-input" aria-labelledby="preference-tab-command-input command-input-heading" hidden>
+          <h3 id="command-input-heading">Command Input</h3>
+          <label class="preference-control" for="client-command-prefix">
+            <span>Client command prefix</span>
+            <select id="client-command-prefix" aria-describedby="client-command-prefix-help">
+              <option value="#"># — number sign</option>
+              <option value="~">~ — tilde</option>
+              <option value="^">^ — caret</option>
+              <option value="/">/ — slash</option>
+              <option value="`">` — backtick</option>
+              <option value="'">' — apostrophe</option>
+            </select>
+          </label>
+          <p id="client-command-prefix-help" class="preference-help">
+            This symbol begins client commands and session routing, such as
+            <code id="client-command-prefix-alias-example">#alias</code> and
+            <code id="client-command-prefix-all-example">#all</code>. Double the selected
+            symbol to send one literal symbol to NukeFire.
+          </p>
+          <label class="checkbox">
+            <input id="repeat-last-command-on-enter" type="checkbox">
+            Repeat last command with Enter
+          </label>
+          <p class="preference-help">
+            When enabled, pressing Enter on an empty command line repeats your most recent
+            non-empty command. Turn this off when blank Enter is needed for pagination.
+          </p>
+          <label class="checkbox">
+            <input id="show-last-command-in-input" type="checkbox" checked>
+            Show last sent command in command line
+          </label>
+          <p class="preference-help">
+            When disabled, the command line clears after sending. Command history and the
+            Up Arrow key continue to work normally.
+          </p>
+          <label class="checkbox">
+            <input id="bright-command-input-focus" type="checkbox">
+            Use bright yellow focus outline on command line
+          </label>
+          <p class="preference-help">
+            When disabled, the command line keeps a quieter visible focus cue. Enable this
+            for a stronger yellow keyboard-focus outline.
+          </p>
+        </section>
+
+        <section id="keybinding-preferences" class="preference-section" role="tabpanel"
+          data-preference-category="keyboard" aria-labelledby="preference-tab-keyboard keybinding-heading" hidden>
+          <h3 id="keybinding-heading">Keyboard Shortcuts</h3>
+          <p class="preference-help">
+            Keyboard shortcuts send commands through the normal NukeFire command pipeline,
+            including aliases, variables, routing, loops, delays, and speedwalks. By default,
+            shortcuts defer to text already being composed. Individual shortcuts may opt in to
+            firing while typing without becoming the command repeated by blank Enter.
+            Native clipboard, editing, navigation, and assistive-technology shortcuts remain
+            reserved and are never intercepted by NukeFire shortcuts or macros.
+          </p>
+          <label class="checkbox">
+            <input id="keybindings-enabled" type="checkbox" checked>
+            Enable keyboard shortcuts
+          </label>
+          <div class="preferences-actions">
+            <button id="keybinding-add" class="primary" type="button">Add Shortcut</button>
+            <button id="keybinding-refresh-controls" type="button">Refresh NukeFire Controls</button>
+            <button id="keybinding-install-numpad" type="button">Install Numpad Movement</button>
+            <button id="keybinding-remove-numpad" type="button">Remove Numpad Movement</button>
+          </div>
+          <div id="keybinding-server-controls" class="preference-help" role="status" aria-live="polite">
+            Connect to NukeFire to load combo profiles, GroupAssist rotations, and path controls.
+            Reader and Communications review actions are always available locally and never send a server command. Accessibility actions are also local.
+          </div>
+          <form id="keybinding-form" class="quick-command-form" aria-labelledby="keybinding-editor-heading" hidden>
+            <h4 id="keybinding-editor-heading">Add Keyboard Shortcut</h4>
+            <div>
+              <span>Key combination</span>
+              <div class="preferences-actions">
+                <button id="keybinding-record" type="button">Record Key</button>
+                <output id="keybinding-recorded" class="preference-help" aria-live="polite">No key recorded.</output>
+              </div>
+            </div>
+            <label>
+              <span>Shortcut type</span>
+              <select id="keybinding-type">
+                <option value="raw">Command or alias</option>
+                <option value="combo-profile">Combo profile</option>
+                <option value="groupassist-rotation">GroupAssist rotation</option>
+                <option value="path-action">Path control</option>
+                <option value="reader-review">Reader review</option>
+                <option value="reader-history">Reader history categories</option>
+                <option value="communications-review">Communications review</option>
+                <option value="accessibility">Accessibility</option>
+              </select>
+            </label>
+            <label id="keybinding-semantic-field" hidden>
+              <span id="keybinding-semantic-label">Server control</span>
+              <select id="keybinding-semantic-id"></select>
+              <small id="keybinding-semantic-help" class="preference-help"></small>
+            </label>
+            <label id="keybinding-command-field">
+              <span id="keybinding-command-label">Command or alias</span>
+              <input id="keybinding-command" maxlength="1024" autocomplete="off" spellcheck="false"
+                placeholder="heal" required>
+              <small id="keybinding-command-help" class="preference-help">
+                Raw shortcuts are sent through aliases, variables, routing, loops, delays, and speedwalks.
+              </small>
+            </label>
+            <label>
+              <span>Group</span>
+              <input id="keybinding-group" maxlength="40" autocomplete="off" placeholder="General">
+            </label>
+            <label class="checkbox">
+              <input id="keybinding-editor-enabled" type="checkbox" checked>
+              Enable this shortcut
+            </label>
+            <label class="checkbox">
+              <input id="keybinding-works-while-typing" type="checkbox">
+              Fire while typing
+            </label>
+            <p class="preference-help">
+              Off is safest for letter shortcuts such as Shift+W: typed text wins. When enabled,
+              this shortcut may fire while a draft is present, but it still never replaces the
+              command used by Repeat last command with Enter.
+            </p>
+            <div id="keybinding-conflict" hidden>
+              <p id="keybinding-conflict-message" class="preference-help" role="alert"></p>
+              <label class="checkbox">
+                <input id="keybinding-replace-conflict" type="checkbox">
+                Replace the existing shortcut using this key
+              </label>
+            </div>
+            <p id="keybinding-recorder-status" class="preference-help" role="status" aria-live="polite">
+              Select Record Key, then press the key or key combination. Escape cancels recording; Tab remains available for navigation.
+            </p>
+            <div class="quick-command-form-actions">
+              <button id="keybinding-save" class="primary" type="submit" disabled>Add Shortcut</button>
+              <button id="keybinding-cancel" type="button">Cancel</button>
+            </div>
+          </form>
+          <p id="keybinding-status" class="preference-help" role="status" aria-live="polite">
+            No keyboard shortcuts configured.
+          </p>
+          <div id="keybinding-list" class="quick-command-list" role="list" aria-label="Configured keyboard shortcuts"></div>
+          <p id="keybinding-empty" class="preference-help">
+            Add a custom shortcut or install the numeric-keypad movement preset.
+          </p>
+        </section>
+
+        <section id="tintin-import-preferences" class="preference-section tintin-import-preferences" role="tabpanel"
+          data-preference-category="tintin" aria-labelledby="preference-tab-tintin tintin-import-heading" hidden>
+          <h3 id="tintin-startup-heading">Global TinTin Startup Profile</h3>
+          <p class="preference-help">
+            Optional GTS-style startup inheritance. When enabled, NukeFire reads this safe script at startup,
+            uses it for the local Main workspace, and gives every newly created character a private copy.
+            Character profiles then load over that copy; characters never share live TinTin state.
+          </p>
+          <label class="checkbox" for="tintin-startup-enabled">
+            <input id="tintin-startup-enabled" type="checkbox">
+            <span>Load a global TinTin startup profile automatically</span>
+          </label>
+          <label for="tintin-startup-file">
+            <span>Startup script</span>
+            <input id="tintin-startup-file" type="text" maxlength="120" value="main.tin"
+              autocomplete="off" autocapitalize="off" spellcheck="false"
+              title="Safe .tin or .txt file in the NukeFire Scripts folder">
+          </label>
+          <div class="tintin-import-actions">
+            <button id="tintin-startup-reload" type="button">Load Startup Profile Now</button>
+            <button id="tintin-startup-save-current" type="button">Save Current TinTin State to Startup File</button>
+          </div>
+          <output id="tintin-startup-status" class="preference-help" role="status" aria-live="polite">
+            Startup inheritance is off.
+          </output>
+
+          <h3 id="tintin-import-heading">Import TinTin++ Script Definitions</h3>
+          <p class="preference-help">
+            Paste TinTin++ definitions or a script fragment. The client uses the same compatibility
+            parser as #READ, previews supported definitions without executing load-time commands,
+            and lets you select what to merge into this character's private TinTin workspace.
+          </p>
+          <label for="tintin-import-source">
+            <span>TinTin++ definitions</span>
+            <textarea id="tintin-import-source" rows="10" maxlength="2000000"
+              autocomplete="off" autocapitalize="off" spellcheck="false"
+              placeholder="#alias {k} {kill %1;kick}&#10;#action {%1 tells you '%2'} {tell %1 I heard you.} {5}"></textarea>
+          </label>
+          <div class="tintin-import-actions">
+            <button id="tintin-import-analyze" class="primary" type="button">Analyze Paste</button>
+            <button id="tintin-import-clear" type="button">Clear</button>
+          </div>
+          <output id="tintin-import-status" class="preference-help" aria-live="polite">
+            Nothing analyzed yet.
+          </output>
+          <div id="tintin-import-review-panel" class="tintin-import-review-panel" hidden>
+            <div id="tintin-import-summary" class="tintin-import-summary" aria-label="TinTin import summary"></div>
+            <div class="tintin-import-destination" aria-labelledby="tintin-import-destination-heading">
+              <h4 id="tintin-import-destination-heading">Destination Script</h4>
+              <div class="tintin-import-destination-grid">
+                <label for="tintin-import-destination-file">
+                  <span>Save selected definitions to</span>
+                  <select id="tintin-import-destination-file" aria-describedby="tintin-import-destination-status">
+                    <option value="__choose__" selected>Choose destination…</option>
+                    <option value="__new__">New script…</option>
+                  </select>
+                </label>
+                <button id="tintin-import-refresh-files" type="button">Refresh Files</button>
+                <label id="tintin-import-new-file-label" for="tintin-import-new-file" hidden>
+                  <span>New script filename</span>
+                  <input id="tintin-import-new-file" type="text" maxlength="120" value="imported.tin"
+                    autocomplete="off" autocapitalize="off" spellcheck="false"
+                    placeholder="combat.tin">
+                </label>
+              </div>
+              <p id="tintin-import-destination-status" class="preference-help" role="status" aria-live="polite">
+                Choose an existing script in the protected NukeFire Scripts folder or create a new one.
+              </p>
+            </div>
+            <div class="tintin-import-options">
+              <label for="tintin-import-write-mode">
+                <span>How to write the destination file</span>
+                <select id="tintin-import-write-mode">
+                  <option value="merge">Add / merge with what is already there</option>
+                  <option value="replace">Replace the entire file with this import</option>
+                </select>
+              </label>
+              <label for="tintin-import-duplicates">
+                <span>When the destination already has the same definition</span>
+                <select id="tintin-import-duplicates">
+                  <option value="keep">Keep the definition already in the file</option>
+                  <option value="replace">Use the imported definition</option>
+                </select>
+              </label>
+              <p id="tintin-import-write-mode-help" class="preference-help">
+                Add / merge preserves the existing file exactly and appends only the accepted import. Replace intentionally rewrites the file from the selected import.
+              </p>
+              <p class="preference-help">
+                Aliases, variables, functions, gags, highlights, substitutions, macros, supported
+                events, class metadata, and compatible settings can be saved. Actions and Events
+                are imported disabled for review; top-level runtime commands are never executed by paste import.
+              </p>
+              <label class="checkbox" for="tintin-import-load-current">
+                <input id="tintin-import-load-current" type="checkbox" checked>
+                <span>Load the resulting script definitions into the current character after saving</span>
+              </label>
+              <label class="checkbox" for="tintin-import-make-startup">
+                <input id="tintin-import-make-startup" type="checkbox">
+                <span>Make this destination the global startup profile</span>
+              </label>
+              <p id="tintin-import-load-help" class="preference-help">
+                Loading uses the same safe #READ parser for persistent definitions and settings. Paste import never executes load-time commands such as #DELAY, #SHOWME, or routed session commands.
+              </p>
+            </div>
+            <div class="tintin-import-selection-actions">
+              <button id="tintin-import-select-safe" type="button">Select Safe Entries</button>
+              <button id="tintin-import-select-none" type="button">Select None</button>
+            </div>
+            <div id="tintin-import-review" class="tintin-import-review" role="list" aria-live="off"></div>
+            <div class="tintin-import-commit-actions">
+              <button id="tintin-import-commit" class="primary" type="button" disabled>Import Selected</button>
+              <button id="tintin-import-undo" type="button" disabled>Undo Last Session Load</button>
+            </div>
+            <output id="tintin-import-result" class="preference-help" aria-live="polite"></output>
+          </div>
+        </section>
+
+        <section id="preference-panel-workspace" class="preference-section workspace-panel" role="tabpanel"
+          data-preference-category="workspace" aria-labelledby="preference-tab-workspace workspace-heading" hidden>
+          <h3 id="workspace-heading">Sidebar Panels</h3>
+          <p id="panel-scope-status" class="preference-help">
+            Panel choices are currently using the default workspace.
+          </p>
+          <label class="checkbox workspace-shared-option">
+            <input id="shared-crew-workspace" type="checkbox">
+            Use one shared crew workspace for every session
+          </label>
+          <p class="preference-help">
+            When enabled, the current layout becomes the crew layout. Switching sessions changes
+            the live character data while panel positions, dock sizes, tabs, and separate windows stay put.
+          </p>
+          <fieldset class="panel-visibility-options" aria-describedby="panel-scope-status">
+            <legend class="sr-only">Visible sidebar panels</legend>
+            <label class="checkbox"><input id="show-panel-vitals" data-panel-toggle="vitals" type="checkbox" checked> Vitals</label>
+            <label class="checkbox"><input id="show-panel-session-vitals" data-panel-toggle="sessionVitals" type="checkbox" checked> Session Vitals</label>
+            <label class="checkbox"><input id="show-panel-affects" data-panel-toggle="affects" type="checkbox" checked> Affects</label>
+            <label class="checkbox"><input id="show-panel-mob-inspector" data-panel-toggle="mobInspector" type="checkbox"> Mob Inspector</label>
+            <label class="checkbox"><input id="show-panel-loot-history" data-panel-toggle="lootHistory" type="checkbox"> Loot History</label>
+            <label class="checkbox"><input id="show-panel-foundlist" data-panel-toggle="foundlist" type="checkbox"> Foundlist / Upgrades</label>
+            <label class="checkbox"><input id="show-panel-quick-commands" data-panel-toggle="quickCommands" type="checkbox"> Quick Commands</label>
+            <label class="checkbox"><input id="show-panel-live-state" data-panel-toggle="liveState" type="checkbox"> NukeFire State</label>
+            <label class="checkbox"><input id="show-panel-protocol" data-panel-toggle="protocol" type="checkbox"> Protocol Diagnostics</label>
+            <label class="checkbox"><input id="show-panel-communications" data-panel-toggle="communications" type="checkbox" checked> Communications</label>
+            <label class="checkbox"><input id="show-panel-context-deck" data-panel-toggle="contextDeck" type="checkbox"> NukeFire Console</label>
+            <label class="checkbox"><input id="show-panel-mapper" data-panel-toggle="mapper" type="checkbox" checked> Mapper</label>
+          </fieldset>
+          <h4>Panel Details</h4>
+          <fieldset class="panel-visibility-options" aria-label="Visible panel details">
+            <label class="checkbox"><input id="show-group-vitals" type="checkbox" checked> Group vitals and targets</label>
+            <label class="checkbox"><input id="show-gps-navigator" type="checkbox" checked> Mapper: GPS navigator</label>
+            <label class="checkbox"><input id="show-mapper-map" type="checkbox" checked> Mapper: map and controls</label>
+            <label class="checkbox"><input id="show-mapper-room-info" type="checkbox" checked> Mapper: room information</label>
+            <label class="checkbox"><input id="show-mapper-exits" type="checkbox" checked> Mapper: exit list inside room information</label>
+          </fieldset>
+          <div class="vitals-display-preferences" aria-labelledby="vitals-display-heading">
+            <h4 id="vitals-display-heading">Vitals Numbers</h4>
+            <label>
+              <span>Main H/M/V display</span>
+              <select id="main-vitals-mode">
+                <option value="values-percent">Current / maximum and percentage</option>
+                <option value="values">Current / maximum</option>
+                <option value="percent">Percentage only</option>
+                <option value="current">Current value only</option>
+              </select>
+            </label>
+            <label>
+              <span>Group H/M/V display</span>
+              <select id="group-vitals-mode">
+                <option value="values-percent">Current / maximum and percentage</option>
+                <option value="values">Current / maximum</option>
+                <option value="percent">Percentage only</option>
+                <option value="current">Current value only</option>
+              </select>
+            </label>
+            <label>
+              <span>Vitals number size</span>
+              <select id="vitals-number-size">
+                <option value="compact">Compact</option>
+                <option value="standard">Standard</option>
+                <option value="large">Large</option>
+              </select>
+            </label>
+            <label class="checkbox">
+              <input id="hide-self-in-group-vitals" type="checkbox" checked>
+              Hide my duplicate row from Group Vitals while grouped
+            </label>
+            <p class="preference-help">
+              Your main Health, Mana, and Movement remain at the top. When the duplicate-row
+              option is enabled, Group Vitals shows the other members while Group Targets still
+              includes everyone attacking or being targeted.
+            </p>
+          </div>
+          <div class="workspace-actions">
+            <button id="reset-sidebar-panels" type="button">Reset Visible Panels</button>
+            <button id="reset-panel-layout" type="button">Restore Default Layout</button>
+          </div>
+          <output id="layout-scope-status" class="preference-help" aria-live="off">
+            Default layout: Affects and Communications left; GPS, Mapper, and Vitals right; terminal centered.
+          </output>
+          <output id="dock-size-status" class="preference-help" aria-live="off">
+            Dock sizes: left 220 pixels, right 300 pixels, lower 170 pixels.
+          </output>
+          <p class="preference-help">
+            Drag a panel title to move, reorder, or combine it as a tab. Drag a tab to reorder
+            it or move it into another panel group. The options menus provide the same
+            keyboard-accessible layout controls. Tab lists support Arrow keys, Home, and End.
+            Drag a dock separator to resize it, or focus the separator and use Arrow keys.
+            Hold Shift for larger resize steps; double-click a separator to reset its size.
+            Every panel options menu also includes Pop Out Window; a separate panel remains live
+            and follows the active session until Dock Panel is chosen.
+          </p>
+        </section>
+
+        <section id="quick-command-preferences" class="preference-section quick-command-preferences" role="tabpanel"
+          data-preference-category="quick-commands" aria-labelledby="preference-tab-quick-commands quick-command-preferences-heading" hidden>
+          <h3 id="quick-command-preferences-heading">Quick Commands</h3>
+          <p class="preference-help">
+            Remove any built-in button you do not use, or restore it later. Custom buttons use the same command path as typed commands, so aliases and Variables work normally.
+          </p>
+          <div class="quick-command-builtins" aria-labelledby="quick-command-builtins-heading">
+            <div class="quick-command-subheading">
+              <h4 id="quick-command-builtins-heading">Built-in buttons</h4>
+              <button id="quick-command-restore-defaults" type="button">Restore All</button>
+            </div>
+            <div id="quick-command-default-list" class="quick-command-list" role="list" aria-live="polite"></div>
+          </div>
+          <h4 id="quick-command-custom-heading">Custom buttons</h4>
+          <form id="quick-command-form" class="quick-command-form" aria-labelledby="quick-command-custom-heading">
+            <input id="quick-command-edit-id" type="hidden">
+            <label>
+              <span>Button label</span>
+              <input id="quick-command-label" maxlength="32" autocomplete="off" placeholder="Assist" required>
+            </label>
+            <label>
+              <span>Command or alias</span>
+              <input id="quick-command-value" maxlength="1024" autocomplete="off" spellcheck="false" placeholder="groupassist" required>
+            </label>
+            <div class="quick-command-form-actions">
+              <button id="quick-command-save" class="primary" type="submit">Add Button</button>
+              <button id="quick-command-cancel" type="button" hidden>Cancel Edit</button>
+            </div>
+          </form>
+          <div id="quick-command-list" class="quick-command-list" role="list" aria-live="polite"></div>
+          <p id="quick-command-empty" class="preference-help">No custom Quick Commands yet.</p>
+        </section>
+
+        <section id="preference-panel-pipeline-debug" class="preference-section" role="tabpanel"
+          data-preference-category="pipeline-debug" aria-labelledby="preference-tab-pipeline-debug pipeline-debug-preferences-heading" hidden>
+          <h3 id="pipeline-debug-preferences-heading">Pipeline Debug</h3>
+          <label class="checkbox">
+            <input id="pipeline-debug-enabled" type="checkbox">
+            Enable for the active session
+          </label>
+          <label>
+            <span>Entries retained</span>
+            <select id="pipeline-debug-limit">
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+          <p class="preference-help">
+            Shows command batching, aliases, Variables, routing, sends, Actions, Gags, Substitutes, and Highlights in the Protocol panel. It is off by default and redacts all details during hidden server input.
+          </p>
+        </section>
+
+        <section id="preference-panel-accessibility" class="preference-section accessibility-panel" role="tabpanel"
+          data-preference-category="accessibility" aria-labelledby="preference-tab-accessibility accessibility-heading" hidden>
+          <h3 id="accessibility-heading">Accessibility</h3>
+          <div class="preference-help" aria-labelledby="reader-preset-heading">
+            <strong id="reader-preset-heading">Reader setup presets</strong>
+            <p>Choose a starting workflow, then tune any individual Accessibility setting afterward. Presets never replace your selected system voice, pitch, or volume.</p>
+            <label>
+              <span>Reader setup</span>
+              <select id="reader-preset-select" aria-label="Reader setup preset">
+                <option value="native-reader">Native Reader</option>
+                <option value="reader-live-voice">Reader + Live Voice</option>
+                <option value="fast-reader">Fast Reader — 2×</option>
+                <option value="quiet-review">Quiet / Review</option>
+              </select>
+            </label>
+            <div class="preferences-actions" aria-label="Reader preset controls">
+              <button id="reader-preset-apply" class="primary" type="button">Apply Reader Preset</button>
+              <button id="reader-hotkeys-install" type="button">Install Reader Hotkeys F5–F10</button>
+              <button id="reader-hotkeys-remove" type="button">Remove Reader Hotkeys</button>
+            </div>
+            <p id="reader-preset-status" role="status" aria-live="polite">
+              Reader presets are optional. Existing keyboard shortcuts are never overwritten by the Reader Hotkey preset.
+            </p>
+          </div>
+          <label class="checkbox"><input id="screen-reader-mode" type="checkbox"> Native screen reader mode</label>
+          <label class="checkbox"><input id="reader-workspace-enabled" type="checkbox"> Reader workspace — terminal and Reader Review only</label>
+          <label class="checkbox"><input id="self-voice-enabled" type="checkbox"> NukeFire self-voice</label>
+          <label class="checkbox"><input id="self-voice-muted" type="checkbox"> Mute NukeFire self-voice</label>
+          <label class="checkbox"><input id="self-voice-foreground-only" type="checkbox" checked> Speak only while NukeFire is in the foreground</label>
+          <label class="checkbox"><input id="self-voice-governor-enabled" type="checkbox" checked> Condense sustained self-voice backlog</label>
+          <label class="checkbox"><input id="self-voice-priority-alerts-enabled" type="checkbox" checked> Prioritize Tell and System self-voice</label>
+          <label class="checkbox"><input id="self-voice-follow-mode" type="checkbox"> Follow self-voice on room movement</label>
+          <label class="checkbox"><input id="self-voice-interrupt-on-command" type="checkbox"> Interrupt Self-Voice when a command is sent</label>
+          <label>
+            <span>Self-Voice speed: <output id="self-voice-rate-value">1.0×</output></span>
+            <input id="self-voice-rate" type="range" min="0.1" max="10" step="0.1" value="1" aria-label="Self-Voice speed">
+          </label>
+          <label>
+            <span>Self-Voice pitch: <output id="self-voice-pitch-value">1.0</output></span>
+            <input id="self-voice-pitch" type="range" min="0" max="2" step="0.05" value="1" aria-label="Self-Voice pitch">
+          </label>
+          <label>
+            <span>Self-Voice volume: <output id="self-voice-volume-value">100%</output></span>
+            <input id="self-voice-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Self-Voice volume">
+          </label>
+          <label>
+            <span>Self-Voice voice</span>
+            <select id="self-voice-voice" aria-label="Self-Voice voice">
+              <option value="">System Default</option>
+            </select>
+          </label>
+          <div class="preference-help" aria-labelledby="instant-vitals-heading">
+            <strong id="instant-vitals-heading">Instant vital speech</strong>
+            <label>
+              <span>Spoken vital format</span>
+              <select id="vital-speech-mode" aria-describedby="instant-vitals-help">
+                <option value="percent-values">Percent, then current and maximum values</option>
+                <option value="percent">Percent only</option>
+                <option value="values">Current and maximum values only</option>
+              </select>
+            </label>
+            <p id="instant-vitals-help">F5 Read Vitals and keyboard actions for Read Health, Read Mana, and Read Movement use the live GMCP cache locally. They do not send a MUD command and do not enter the server command queue.</p>
+          </div>
+          <label class="checkbox"><input id="announce-important" type="checkbox" checked> Announce important events</label>
+          <div class="preferences-actions" aria-label="Self-voice controls">
+            <button id="self-voice-test" type="button">Test Self-Voice</button>
+            <button id="self-voice-toggle-mute" type="button">Mute Self-Voice</button>
+            <button id="self-voice-stop" type="button">Stop Self-Voice Now</button>
+          </div>
+          <div class="preference-help" aria-labelledby="audio-cue-heading">
+            <strong id="audio-cue-heading">Audio cues</strong>
+            <div class="preference-help" aria-labelledby="soundpack-heading">
+              <strong id="soundpack-heading">Soundpack</strong>
+              <label>
+                <span>Installed soundpack</span>
+                <select id="soundpack-select" aria-describedby="soundpack-help soundpack-status">
+                  <option value="builtin">Built-in NukeFire</option>
+                </select>
+              </label>
+              <div class="preferences-actions">
+                <button id="soundpack-use" type="button">Use Selected Soundpack</button>
+                <button id="soundpack-import" type="button">Import Soundpack</button>
+                <button id="soundpack-built-in" type="button">Restore Built-in Soundpack</button>
+              </div>
+              <p id="soundpack-status" role="status" aria-live="polite">Built-in NukeFire soundpack active.</p>
+              <p id="soundpack-help">Import a local .nfsp or .zip containing manifest.json and bounded WAV, MP3, OGG, or M4A files. Packs replace sounds only; they cannot run commands, scripts, or triggers. Missing sounds always use the built-in NukeFire cue.</p>
+              <details id="soundpack-editor">
+                <summary>Soundpack Editor</summary>
+                <p>Duplicate an installed pack before customizing it. Built-in NukeFire creates a blank custom pack whose unassigned events continue using built-in cues.</p>
+                <div class="preference-grid">
+                  <label><span>New pack ID</span><input id="soundpack-editor-id" maxlength="80" placeholder="my.soundpack" autocomplete="off" spellcheck="false"></label>
+                  <label><span>Pack name</span><input id="soundpack-editor-name" maxlength="80" placeholder="My Soundpack" autocomplete="off"></label>
+                  <label><span>Author</span><input id="soundpack-editor-author" maxlength="80" placeholder="Player" autocomplete="off"></label>
+                </div>
+                <div class="preferences-actions">
+                  <button id="soundpack-editor-duplicate" type="button">Duplicate Selected Pack</button>
+                  <button id="soundpack-editor-export" type="button">Export Selected Pack</button>
+                </div>
+                <label><span>Semantic event</span><select id="soundpack-editor-event" aria-describedby="soundpack-editor-event-status"></select></label>
+                <label class="checkbox"><input id="soundpack-editor-enabled" type="checkbox" checked> Enable this semantic event</label>
+                <div class="preference-grid">
+                  <label><span>Event volume percent</span><input id="soundpack-editor-volume" type="number" min="0" max="100" value="100"></label>
+                  <label><span>Cooldown milliseconds</span><input id="soundpack-editor-cooldown" type="number" min="0" max="60000" value="0"></label>
+                </div>
+                <div class="preferences-actions">
+                  <button id="soundpack-editor-assign" type="button">Assign Audio File</button>
+                  <button id="soundpack-editor-save-options" type="button">Save Event Options</button>
+                  <button id="soundpack-editor-clear" type="button">Clear Custom Sound</button>
+                  <button id="soundpack-editor-preview" type="button">Preview Event</button>
+                </div>
+                <p id="soundpack-editor-event-status" role="status" aria-live="polite">Choose an event to inspect its custom assignment.</p>
+              </details>
+            </div>
+            <label class="checkbox"><input id="audio-cues-enabled" type="checkbox"> Enable Audio Cues</label>
+            <label class="checkbox"><input id="audio-cues-muted" type="checkbox"> Mute Audio Cues</label>
+            <label class="checkbox"><input id="audio-cues-foreground-only" type="checkbox" checked> Play Audio Cues only while NukeFire is in the foreground</label>
+            <div class="preference-help" aria-labelledby="communication-cue-heading">
+              <strong id="communication-cue-heading">Communication sounds</strong>
+              <label class="checkbox"><input id="communication-cue-tell" type="checkbox"> Tell sound</label>
+              <label class="checkbox"><input id="communication-cue-auction" type="checkbox"> Auction sound</label>
+              <label class="checkbox"><input id="communication-cue-gossip" type="checkbox"> Gossip sound</label>
+              <label class="checkbox"><input id="communication-cue-skynet" type="checkbox"> Skynet sound</label>
+              <label class="checkbox"><input id="communication-cue-ssf" type="checkbox"> SSF sound</label>
+              <label class="checkbox"><input id="communication-cues-background" type="checkbox"> Allow communication sounds while NukeFire is in the background</label>
+              <p id="communication-cues-status" role="status" aria-live="polite">Communication sounds are off by default and require Audio Cues to be enabled.</p>
+              <p>These cues are independent from Self-Voice. Turn channel speech off and keep its sound on when you want an instant notification and review the message later.</p>
+            </div>
+            <label>
+              <span>Audio Cue volume: <output id="audio-cues-volume-value">65%</output></span>
+              <input id="audio-cues-volume" type="range" min="0" max="1" step="0.05" value="0.65" aria-label="Audio Cue volume">
+            </label>
+            <div class="preferences-actions" aria-label="Audio cue tests">
+              <button type="button" data-audio-cue-test="hit">Test Hit</button>
+              <button type="button" data-audio-cue-test="miss">Test Miss</button>
+              <button type="button" data-audio-cue-test="incoming">Test Incoming</button>
+              <button type="button" data-audio-cue-test="critical">Test Critical</button>
+              <button type="button" data-audio-cue-test="catastrophic">Test Catastrophic Hit</button>
+              <button type="button" data-audio-cue-test="kill">Test Kill</button>
+              <button type="button" data-audio-cue-test="danger">Test Health 25</button>
+              <button type="button" data-audio-cue-test="health-75">Test Health 75</button>
+              <button type="button" data-audio-cue-test="health-50">Test Health 50</button>
+              <button type="button" data-audio-cue-test="health-10">Test Health 10</button>
+              <button type="button" data-audio-cue-test="mana-20">Test Mana 20</button>
+              <button type="button" data-audio-cue-test="mana-5">Test Mana 5</button>
+              <button type="button" data-audio-cue-test="move-50">Test Move 50</button>
+              <button type="button" data-audio-cue-test="move-5">Test Move 5</button>
+              <button type="button" data-audio-cue-test="combat-start">Test Combat Start</button>
+              <button type="button" data-audio-cue-test="combat-end">Test Combat End</button>
+              <button type="button" data-audio-cue-test="group-critical">Test Group Critical</button>
+              <button type="button" data-audio-cue-test="group-down">Test Group Down</button>
+              <button type="button" data-audio-cue-test="tell">Test Tell</button>
+              <button type="button" data-audio-cue-test="auction">Test Auction</button>
+              <button type="button" data-audio-cue-test="gossip">Test Gossip</button>
+              <button type="button" data-audio-cue-test="skynet">Test Skynet</button>
+              <button type="button" data-audio-cue-test="ssf">Test SSF</button>
+              <button id="audio-cues-stop" type="button">Stop Audio Cues</button>
+            </div>
+            <p id="audio-cues-status" role="status" aria-live="polite">
+              Audio Cues are off by default. Enable them, then test the built-in earcons before creating sound triggers. Vitals cues fire only on real downward threshold crossings: health 75/50/25/10, mana 20/5, and movement 50/5.
+            </p>
+            <p>
+              Audio Cues use NukeFire's internal Web Audio engine; they do not launch a media player or execute a system command.
+              Background suppression uses the same whole-application focus state as Self-Voice, so NukeFire pop-out panes still count as foreground.
+              Cues play immediately and are never queued for catch-up after mute or background time.
+            </p>
+            <div id="sound-trigger-preferences" aria-labelledby="sound-trigger-heading">
+              <strong id="sound-trigger-heading">Sound triggers</strong>
+              <p>
+                Match completed plain game lines and play one of the built-in Audio Cues. Patterns use familiar Action-style wildcards: %1 through %99 or %*.
+                Matching text always remains in the terminal and Reader Review. Suppression affects only NukeFire Self-Voice.
+              </p>
+              <label class="checkbox"><input id="sound-triggers-enabled" type="checkbox" checked> Enable Sound Triggers</label>
+              <div class="preferences-actions">
+                <button id="sound-trigger-add" type="button">Add Sound Trigger</button>
+              </div>
+              <form id="sound-trigger-form" class="quick-command-form" aria-labelledby="sound-trigger-editor-heading" hidden>
+                <h4 id="sound-trigger-editor-heading">Add Sound Trigger</h4>
+                <label>
+                  <span>Game-line pattern</span>
+                  <input id="sound-trigger-pattern" maxlength="512" autocomplete="off" spellcheck="false" placeholder="You hit %1 for %2 damage." required>
+                </label>
+                <label>
+                  <span>Audio Cue</span>
+                  <select id="sound-trigger-cue">
+                    <option value="hit">Hit</option>
+                    <option value="miss">Miss</option>
+                    <option value="incoming">Incoming</option>
+                    <option value="critical">Critical</option>
+                    <option value="kill">Kill</option>
+                    <option value="danger">Danger</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Per-trigger cooldown in milliseconds</span>
+                  <input id="sound-trigger-cooldown" type="number" min="0" max="10000" step="50" value="100">
+                </label>
+                <label class="checkbox"><input id="sound-trigger-suppress-self-voice" type="checkbox"> Suppress matching lines from NukeFire Self-Voice</label>
+                <label class="checkbox"><input id="sound-trigger-editor-enabled" type="checkbox" checked> Enable this trigger</label>
+                <div class="preferences-actions">
+                  <button id="sound-trigger-test" type="button">Test Selected Cue</button>
+                  <button id="sound-trigger-save" class="primary" type="submit">Save Sound Trigger</button>
+                  <button id="sound-trigger-cancel" type="button">Cancel</button>
+                </div>
+              </form>
+              <p id="sound-trigger-status" role="status" aria-live="polite">No Sound Triggers configured.</p>
+              <div id="sound-trigger-list" class="quick-command-list" role="list" aria-label="Configured Sound Triggers"></div>
+              <p id="sound-trigger-empty">Add a trigger to turn repetitive game lines into immediate earcons.</p>
+            </div>
+          </div>
+          <p class="preference-help">
+            Native screen reader mode is the standard VoiceOver, NVDA, JAWS, or Orca path.
+            Reader workspace is presentation-only: ordinary panels and their pop-out windows are hidden while their data, automation, Communications, mapper, and session processing continue; turning it off restores the normal workspace.
+            NukeFire self-voice is optional and uses the system speech synthesizer for live game lines and reader announcements.
+            Speed ranges from 0.1× to 10× for experienced reader users; pitch, volume, and any system voices exposed by the platform are independently selectable.
+            Mute keeps Self-Voice enabled but silent until unmuted. Foreground-only speech is on by default: when NukeFire loses application focus, current and queued Self-Voice are discarded while all game, review, Communications, mapper, and automation processing continues; returning to NukeFire resumes only new live speech.
+            Backlog condensation preserves normal bursts, but if fresh output keeps arriving while speech is still behind it keeps the newest lines and announces how many stale lines were condensed; every real line remains available in terminal history and Reader Review.
+            Priority Tell and System lines can barge in over stale live speech; interrupted text remains available in Reader Review and Communications.
+            Follow self-voice interrupts stale speech when the active character starts a recognized movement or arrives in a different Room.Info room.
+            Enabling one live-reading mode disables the other so they do not speak the same game output at once.
+          </p>
+          <div class="preferences-actions" aria-label="Accessibility review actions">
+            <button id="focus-command" type="button">Focus Command</button>
+            <button id="focus-output" type="button">Review Output</button>
+            <button id="read-last-line" type="button">Read Last Line</button>
+            <button id="reader-review-current" type="button">Current Reader Line</button>
+            <button id="reader-review-previous" type="button">Previous Reader Line</button>
+            <button id="reader-review-next" type="button">Next Reader Line</button>
+            <button id="reader-review-latest" type="button">Latest Reader Line</button>
+            <button id="read-vitals" type="button">Read Vitals</button>
+          </div>
+          <p class="preference-help">
+            Command-L focuses the command line. Command-Shift-O reviews output.
+            Command-Shift-L reads the current docked prompt when present, otherwise the last output line.
+            Current, Previous, Next, and Latest Reader Line use an independent per-session review cursor, so new game output does not move the line being reviewed.
+            Command-Shift-V reads vitals.
+          </p>
+        </section>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+  <script src="../node_modules/@xterm/addon-search/lib/addon-search.js"></script>
+  <script src="../node_modules/@xterm/addon-serialize/lib/addon-serialize.js"></script>
+  <script src="../node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js"></script>
+  <script src="../src/osc8-links.js"></script>
+  <script src="../src/ansi-parser.js"></script>
+  <script src="../src/highlight-engine.js"></script>
+  <script src="../src/substitute-engine.js"></script>
+  <script src="../src/communications.js"></script>
+  <script src="../src/communications-review.js"></script>
+  <script src="../src/gmcp-store.js"></script>
+  <script src="../src/display-text.js"></script>
+  <script src="../src/prompt-display.js"></script>
+  <script src="../src/pipeline-debug.js"></script>
+  <script src="../src/long-session-monitor.js"></script>
+  <script src="../src/panel-window-state.js"></script>
+  <script src="../src/panel-drag-layout.js"></script>
+  <script src="../src/gps-guidance.js"></script>
+  <script src="../src/mapper.js"></script>
+  <script src="../src/context-deck.js"></script>
+  <script src="../src/affects.js"></script>
+  <script src="../src/mob-inspector.js"></script>
+  <script src="../src/foundlist.js"></script>
+  <script src="../src/knowledge-store.js"></script>
+  <script src="../src/reader-review.js"></script>
+  <script src="../src/reader-history.js"></script>
+  <script src="../src/reader-safety.js"></script>
+  <script src="../src/reader-onboarding.js"></script>
+  <script src="../src/speech-markers.js"></script>
+  <script src="../src/self-voice.js"></script>
+  <script src="../src/audio-cues.js"></script>
+  <script src="../src/sound-trigger-engine.js"></script>
+  <script src="../src/session-runtime.js"></script>
+  <script src="../src/combat-vitals.js"></script>
+  <script src="../src/tintin-importer.js"></script>
+  <script src="../src/semantic-controls.js"></script>
+  <script src="../src/keybinding-engine.js"></script>
+  <script src="../src/reader-presets.js"></script>
+  <script src="../src/client-preset.js"></script>
+  <script src="../src/macro-engine.js"></script>
+  <script src="../src/client-command-parser.js"></script>
+  <script src="../src/tintin-script-loader.js"></script>
+  <script src="../src/tintin-compatibility-audit.js"></script>
+  <script src="../src/tintin-session-routes.js"></script>
+  <script src="../src/tintin-startup.js"></script>
+  <script src="../src/tintin-script-writer.js"></script>
+  <script src="../src/history-navigation.js"></script>
+  <script src="../src/tintin-input-editor.js"></script>
+  <script src="xterm-adapter.js"></script>
+  <script src="../src/panel-stack-resize.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>
