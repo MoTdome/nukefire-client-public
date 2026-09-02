@@ -314,31 +314,51 @@ cr keys remove movement
 cr keys remove mush
 ```
 
-### MUSH-style Reader controls
+### Two built-in Reader shortcut sets
 
-The Beta.73 MUSH-style setup is centered around:
+Beta.73 has **two different shortcut presets**. This distinction matters because `F5` does a different job in each one.
+
+#### Reader Hotkey preset — 12 shortcuts
+
+This is the smaller general Reader preset:
 
 | Key | Purpose |
 | --- | --- |
-| `Alt+1` … `Alt+9` | recall recent terminal lines |
+| `F5` | read current vitals |
+| `F6` | mute / unmute NukeFire Voice |
+| `F7` | stop current NukeFire Voice speech |
+| `F8` / `F9` | previous / next Reader History message |
+| `F10` | latest Reader History message |
+| `Shift+F10` | last Tell |
+| `Alt+Up` / `Alt+Down` | previous / next Reader History category |
+| `Alt+Left` / `Alt+Right` | previous / next Reader History message where the OS does not reserve the shortcut |
+| `Alt+End` | latest Reader History message |
+
+#### Full MUSH-style setup — 28 shortcuts
+
+`CR LOAD MUSHSETTINGS` installs three conflict-safe groups: **9 rapid line recalls + 6 movement shortcuts + 13 Reader controls**.
+
+| Key | Purpose |
+| --- | --- |
+| `Alt+1` … `Alt+9` | recall the 1st through 9th most recent terminal lines |
 | `Alt+I` | north |
 | `Alt+J` | west |
 | `Alt+K` | south |
 | `Alt+L` | east |
 | `Alt+U` | up |
 | `Alt+N` | down |
-| `Alt+Up` / `Alt+Down` | previous / next Reader History category |
-| `Alt+Left` / `Alt+Right` | previous / next Reader History message where not reserved by native OS navigation |
-| `Alt+End` | latest Reader History message |
-| `Alt+T` | last Tell |
-| `Alt+H` | current vitals |
-| `Alt+C` | copy reviewed text |
-| `F5` | mute / unmute NukeFire Voice in the MUSH preset |
+| `F5` | mute / unmute NukeFire Voice |
 | `F7` | stop current NukeFire Voice speech |
 | `F8` / `F9` | previous / next Reader History message |
 | `F10` | latest Reader History message |
+| `Alt+T` | last Tell |
+| `Alt+H` | read current vitals |
+| `Alt+C` | copy reviewed text |
+| `Alt+Up` / `Alt+Down` | previous / next Reader History category |
+| `Alt+Left` / `Alt+Right` | previous / next Reader History message |
+| `Alt+End` | latest Reader History message |
 
-Use `CR KEYS STATUS` as the authority on a particular installation because player-defined conflicts are intentionally preserved.
+All official shortcut installers are conflict-safe: they preserve bindings they do not own, skip a proposed shortcut when its key signature is already assigned, and remove only records owned by the preset being removed. Use `CR KEYS STATUS` as the authority for the current installation.
 
 ### Load the full MUSH-style preset
 
@@ -601,3 +621,16 @@ This lets the client save a one-time pre-Reader configuration and restore it lat
 Do **not** turn the accessibility bridge into remote command execution. The server should be able to request only named, documented, locally validated actions such as “report Reader status,” “toggle Reader Workspace,” or “set Voice volume.” The client remains authoritative over local files, audio, keyboard conflicts, browser/OS behavior, and arbitrary scripting.
 
 See `../server-integration/accessibility/` for sanitized reference code and porting notes.
+
+
+### Exact Beta.73 client implementation points
+
+The public Beta.73 source contains the complete client-side half of CR. The most useful files for implementors are:
+
+- `src/semantic-controls.js` — request allowlist, schema validation, text bounds, server-control snapshot normalization, and semantic binding resolution;
+- `src/reader-presets.js` — native/live/fast/quiet Reader presets plus the 12-key Reader and 28-key MUSH-style shortcut definitions;
+- `renderer/renderer.js` — receives `NukeFire.Controls.Request`, performs the local Reader action, snapshots/restores pre-Reader settings, and emits `NukeFire.Controls.Result`.
+
+The client accepts **65 explicit control action IDs** in Beta.73. A request is ignored unless `schema` is exactly `1`, `id` is a positive safe integer, `action` is in that allowlist, and `args` is an object. Only a bounded normalized `args.value` string is exposed to the action dispatcher.
+
+The server and client therefore both validate the semantic action name. Neither side treats the action as JavaScript, a shell command, a pathname, or an arbitrary local client command.

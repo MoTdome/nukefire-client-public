@@ -24,3 +24,9 @@ Public comments were rewritten to explain architecture and porting intent. Infor
 ## What remains NukeFire-specific
 
 The GMCP package name `NukeFire.Controls` remains because the public NukeFire Client implements it. Projects adapting both client and server should normally choose their own namespace.
+
+## Additional Beta.73 source used in v3
+
+The v3 reference was also checked against current `interpreter.c`, `output_policy.c/.h`, `src/semantic-controls.js`, `src/reader-presets.js`, and the relevant `renderer/renderer.js` control-handler regions. Full unrelated server source is still intentionally excluded.
+
+The public client repository already contains its production JavaScript, so this bundle adds a small dependency-light client example rather than another full renderer copy.

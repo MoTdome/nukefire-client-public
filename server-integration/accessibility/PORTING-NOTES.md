@@ -145,14 +145,18 @@ If GMCP is absent or the client does not advertise the controls package, SR must
 
 ---
 
-## Files still useful for an exact NukeFire-to-TBA patch
+## Source coverage available in this public reference
 
-The public reference is enough to understand and adapt the design. For a near-drop-in patch matching NukeFire’s exact production wiring, also review/provide:
+This pass was checked against the current Beta.73-era command table, semantic output policy, client request allowlist, Reader presets, and renderer request/result path. The public repository itself already contains the full production client source.
 
-1. **`interpreter.c`** — exact command-table registrations and subcommand values for `sr`, `client`, and `cr`.
-2. **`structs.h` / player preference persistence** — exact preference and prompt flag definitions, plus save/load wiring.
-3. **`output_policy.c` and `output_policy.h`** — required if you want NukeFire’s full `SR OUTPUT`, `SR SPEECH`, semantic category, and dedupe layers instead of the smaller reference.
-4. **The current client file(s) that consume `NukeFire.Controls.Request` and emit `NukeFire.Controls.Result`** — required for a complete end-to-end client implementation example.
-5. Optionally **protocol integration code** around GMCP negotiation if the target codebase does not already support GMCP.
+For a Circle/TBA port, the remaining game-specific work is mostly integration:
 
-Do not publish entire unrelated production files just to obtain these pieces. Extract the smallest coherent units and document their dependencies.
+1. add/persist a screen-reader preference equivalent to `PRF_SCREEN_READER`;
+2. register `sr`, `client`, `cr`, `reader`, `output`, and `speech` as appropriate;
+3. adapt the SR resource/room/group helpers to your game structs;
+4. wire the GMCP capability bit/package name into your existing protocol layer;
+5. call your semantic output context around the game events you want players to control;
+6. choose which critical writes receive the protected-output flag;
+7. expose `screen_reader` in a normal character-status package if you want the cooperating client to automatically follow server accessibility intent.
+
+If your codebase does not already support GMCP, add GMCP generically first rather than embedding Telnet negotiation inside SR/CR command code.

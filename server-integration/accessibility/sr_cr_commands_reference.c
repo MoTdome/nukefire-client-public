@@ -45,6 +45,24 @@ extern void send_reader_inventory(struct char_data *ch);
 extern void send_reader_affects(struct char_data *ch);
 extern void send_reader_danger(struct char_data *ch);
 
+
+/*
+ * Legacy READER compatibility toggle. NukeFire keeps READER separately
+ * registered even though SR is now the richer server accessibility command.
+ */
+void do_reader_compat_reference(struct char_data *ch)
+{
+    bool next;
+
+    if (!ch || is_npc(ch))
+        return;
+
+    next = !player_reader_enabled(ch);
+    set_player_reader_enabled(ch, next);
+    send_to_char(ch, "Screen reader combat summaries are now %s.\r\n",
+                 next ? "ON" : "OFF");
+}
+
 static int percent(long long current, long long maximum)
 {
     if (maximum <= 0)
