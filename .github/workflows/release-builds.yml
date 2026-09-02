@@ -1,0 +1,353 @@
+name: Build and Release Distributions
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git branch, tag, or commit to build. Blank builds the selected workflow revision.
+        required: false
+        default: ''
+      publish_release:
+        description: Publish or update a GitHub Release after all builds pass.
+        required: true
+        type: boolean
+        default: false
+      release_tag:
+        description: Existing release tag to publish. Required when Publish Release is enabled manually.
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nukefire-distributions-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+jobs:
+  metadata:
+    name: Resolve build metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      build_ref: ${{ steps.request.outputs.build_ref }}
+      publish: ${{ steps.request.outputs.publish }}
+      release_tag: ${{ steps.request.outputs.release_tag }}
+      version: ${{ steps.validate.outputs.version }}
+      commit: ${{ steps.validate.outputs.commit }}
+      prerelease: ${{ steps.validate.outputs.prerelease }}
+    steps:
+      - name: Resolve request
+        id: request
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_REF: ${{ inputs.ref }}
+          DISPATCH_PUBLISH: ${{ inputs.publish_release }}
+          DISPATCH_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            build_ref="$GITHUB_REF"
+            publish="true"
+            release_tag="$GITHUB_REF_NAME"
+          else
+            build_ref="${DISPATCH_REF:-$GITHUB_SHA}"
+            publish="${DISPATCH_PUBLISH:-false}"
+            release_tag="${DISPATCH_TAG:-}"
+          fi
+
+          if [[ "$publish" == "true" && -z "$release_tag" ]]; then
+            echo "Manual publication requires release_tag." >&2
+            exit 1
+          fi
+
+          echo "build_ref=$build_ref" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Check out requested revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.request.outputs.build_ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Validate release contract
+        id: validate
+        shell: bash
+        env:
+          PUBLISH: ${{ steps.request.outputs.publish }}
+          RELEASE_TAG: ${{ steps.request.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+
+          version="$(node -p "require('./package.json').version")"
+          product="$(node -p "require('./package.json').build?.productName || ''")"
+          commit="$(git rev-parse HEAD)"
+
+          node - <<'NODE'
+          const pkg = require('./package.json');
+          for (const name of ['dist:mac', 'dist:win', 'verify']) {
+            if (!pkg.scripts || typeof pkg.scripts[name] !== 'string' || !pkg.scripts[name].trim()) {
+              console.error(`package.json is missing required script: ${name}`);
+              process.exit(1);
+            }
+          }
+          NODE
+
+          if [[ "$product" != "NukeFire Client" ]]; then
+            echo "Unexpected electron-builder productName: $product" >&2
+            exit 1
+          fi
+
+          if [[ ! -f package-lock.json ]]; then
+            echo "package-lock.json is required for reproducible npm ci installs." >&2
+            exit 1
+          fi
+
+          if [[ "$PUBLISH" == "true" ]]; then
+            expected_tag="v${version}"
+            if [[ "$RELEASE_TAG" != "$expected_tag" ]]; then
+              echo "Release tag/version mismatch: expected $expected_tag, got $RELEASE_TAG" >&2
+              exit 1
+            fi
+
+            tag_commit="$(git rev-list -n 1 "$RELEASE_TAG" 2>/dev/null || true)"
+            if [[ -z "$tag_commit" ]]; then
+              echo "Release tag does not exist in the repository: $RELEASE_TAG" >&2
+              exit 1
+            fi
+            if [[ "$tag_commit" != "$commit" ]]; then
+              echo "Release tag does not point at the requested build commit." >&2
+              echo "Tag:    $tag_commit" >&2
+              echo "Build:  $commit" >&2
+              exit 1
+            fi
+          fi
+
+          prerelease="false"
+          if [[ "$version" == *-* ]]; then prerelease="true"; fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+          echo "Version: $version"
+          echo "Commit:  $commit"
+          echo "Publish: $PUBLISH"
+          if [[ "$PUBLISH" == "true" ]]; then echo "Tag:     $RELEASE_TAG"; fi
+
+  verify:
+    name: Verify source
+    needs: metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out build revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.metadata.outputs.build_ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Run complete verification suite
+        run: npm run verify
+
+  build:
+    name: Build ${{ matrix.label }}
+    needs: [metadata, verify]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: macos
+            label: macOS Universal DMG and ZIP
+            os: macos-15-intel
+          - id: windows
+            label: Windows x64 Setup and Portable
+            os: windows-2022
+          - id: linux
+            label: Linux x64 AppImage
+            os: ubuntu-24.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out build revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.metadata.outputs.build_ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Build unsigned macOS Universal DMG and ZIP
+        if: matrix.id == 'macos'
+        run: npm run dist:mac -- --config.directories.output=dist-ci
+
+      - name: Build unsigned Windows x64 Setup and Portable EXEs
+        if: matrix.id == 'windows'
+        run: npm run dist:win -- --config.directories.output=dist-ci
+
+      - name: Build unsigned Linux x64 AppImage
+        if: matrix.id == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/electron-builder \
+            --linux AppImage \
+            --x64 \
+            --publish never \
+            --config.directories.output=dist-ci \
+            --config.linux.category=Game \
+            '--config.linux.artifactName=NukeFire-Client-${version}-linux-${arch}.${ext}'
+
+      - name: Upload macOS distributions
+        if: matrix.id == 'macos'
+        uses: actions/upload-artifact@v7
+        with:
+          name: nukefire-macos-universal
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist-ci/*.dmg
+            dist-ci/*.zip
+
+      - name: Upload Windows distributions
+        if: matrix.id == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: nukefire-windows-x64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist-ci/*Setup*.exe
+            dist-ci/*Portable*.exe
+
+      - name: Upload Linux distribution
+        if: matrix.id == 'linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: nukefire-linux-x64
+          if-no-files-found: error
+          retention-days: 14
+          path: dist-ci/*.AppImage
+
+  release:
+    name: Publish GitHub Release
+    needs: [metadata, verify, build]
+    if: needs.metadata.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out exact release revision
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.metadata.outputs.build_ref }}
+          fetch-depth: 0
+
+      - name: Download all platform distributions
+        uses: actions/download-artifact@v7
+        with:
+          pattern: nukefire-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Validate and prepare release assets
+        shell: bash
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+          COMMIT: ${{ needs.metadata.outputs.commit }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t binaries < <(find release-assets -maxdepth 1 -type f \
+            \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' \) \
+            -print | sort)
+
+          if [[ "${#binaries[@]}" -ne 5 ]]; then
+            echo "Expected exactly five platform distributions; found ${#binaries[@]}." >&2
+            printf '  %s\n' "${binaries[@]}" >&2
+            exit 1
+          fi
+
+          git archive --format=zip \
+            --output="release-assets/NukeFire-Client-Source-${VERSION}.zip" \
+            "$COMMIT"
+
+          cat > release-assets/DISTRIBUTION-NOTES.txt <<EOF
+          NUKEFIRE CLIENT ${VERSION} — UNSIGNED DISTRIBUTIONS
+
+          macOS: Universal DMG + ZIP
+          Windows: x64 Setup EXE + Portable EXE
+          Linux: x64 AppImage
+
+          Commit: ${COMMIT}
+
+          These builds are unsigned and are not notarized. macOS Gatekeeper and
+          Windows SmartScreen may warn when opening them. Linux users may need to
+          mark the AppImage executable before launch.
+
+          Every downloadable binary in this release was built by GitHub Actions
+          from the same exact tagged source commit after the complete npm verify
+          suite passed.
+          EOF
+
+          (
+            cd release-assets
+            sha256sum \
+              *.dmg *.zip *.exe *.AppImage DISTRIBUTION-NOTES.txt \
+              > SHA256SUMS.txt
+          )
+
+          echo "Release assets:"
+          find release-assets -maxdepth 1 -type f -printf '  %f\n' | sort
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.metadata.outputs.release_tag }}
+          VERSION: ${{ needs.metadata.outputs.version }}
+          PRERELEASE: ${{ needs.metadata.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+
+          title="NukeFire Client ${VERSION}"
+          notes="release-assets/DISTRIBUTION-NOTES.txt"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$title" --notes-file "$notes"
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            prerelease_args=()
+            if [[ "$PRERELEASE" == "true" ]]; then prerelease_args+=(--prerelease); fi
+            gh release create "$TAG" \
+              release-assets/* \
+              --title "$title" \
+              --notes-file "$notes" \
+              "${prerelease_args[@]}"
+          fi
