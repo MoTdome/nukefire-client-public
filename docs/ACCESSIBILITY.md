@@ -1,215 +1,603 @@
-# Accessibility Foundation
+# NukeFire Client — Accessibility & Reader Guide
 
-## Preferences categories
+> **For NukeFire Client 0.3.1-beta.73 and the accompanying NukeFire server accessibility controls**
 
-Beta.50 presents Preferences as eight keyboard-complete categories rather than a cramped two-column form. Category buttons use tab semantics and a single roving Tab stop. Arrow keys move between categories, Home and End jump to the boundaries, and only controls in the visible category enter the Tab order. The title and Done button remain visible while category content scrolls. Descriptions are not line-clamped or hidden, and smaller windows retain a single-column content flow.
+This guide is written for screen-reader, braille, keyboard-first, and NukeFire Voice users. It also includes an implementation overview for MUD developers who want to adapt the server-side SR/CR model.
 
-Accessibility for visually impaired players is a core architecture requirement of the NukeFire Client.
-It is not a later compatibility layer.
+## Terminology
 
-## Principles
+- **Native screen reader** — VoiceOver, NVDA, JAWS, Narrator, Orca, or another accessibility technology reviewing exposed text.
+- **NukeFire Voice / Self-Voice** — Optional speech produced by the official NukeFire Client. “Self-Voice” and “NukeFire Voice” refer to the same feature.
+- **Reader Workspace** — The client’s command-field-first accessibility layout. Hiding visual panels does not stop their underlying state, Mapper, sessions, or automation.
+- **SR** — Server-side screen-reader presentation. SR works even when the player is using a different MUD client.
+- **CR** — Shorthand for **CLIENT READER**. CR controls features implemented by the official NukeFire Client and therefore requires GMCP plus `NukeFire.Controls 1` support.
+- **SPEECH** — Controls whether visible semantic categories enter NukeFire Voice. It does not remove terminal text or Reader Review history.
+- **OUTPUT** — Controls whether tagged semantic text remains visible, is summarized, or is hidden.
 
-- Every workflow must be keyboard-complete.
-- Incoming game output must never steal command focus or the user's review position.
-- VoiceOver announcements must be controlled; the entire combat stream must not be forced through a live region.
-- Complete lines and prompt boundaries must remain available as plain, braille-friendly text.
-- Color may reinforce meaning, but it may never be the only carrier of meaning.
-- Visual panels and accessible summaries must consume the same structured NukeFire state.
-- Font scaling, high contrast, reduced motion, and configurable verbosity must remain first-class settings.
+---
 
-## Terminal behavior
+## 1. Fastest safe setup
 
-- The game output is a manually reviewable log with automatic live announcements disabled.
-- The command field retains predictable focus while new output arrives.
-- Read Last Line and Read Vitals provide deliberate, on-demand summaries.
-- Blank Enter advances pagination and ends the current visual/plain-text prompt line before the next prompt is rendered.
-- GA and EOR are preserved as prompt-boundary events rather than exposed as visual garbage.
+### Native screen reader
 
-## Keyboard baseline
+```text
+sr setup balanced
+cr setup native
+cr load mushsettings
+cr status
+```
 
-- Command-L: focus command input.
-- Command-Shift-O: review game output.
-- Command-Shift-L: read the last complete line.
-- Command-Shift-V: read current vitals.
-- Command-F: find in output.
+This enables balanced server presentation, selects the official client’s native-screen-reader preset, installs conflict-safe MUSH-style Reader controls, and reports the resulting state.
 
-Bindings must remain configurable later and should avoid VoiceOver's standard Control-Option combinations.
+### NukeFire Voice instead of a native reader
 
-## Milestone acceptance
+```text
+sr setup balanced
+cr setup live
+cr voice test
+cr status
+```
 
-Every milestone must verify:
+Do not run native screen-reader speech and NukeFire Voice over the same live output unless you intentionally want both. If you hear duplicated speech, either turn NukeFire Voice off or select the client preset that matches your intended speech path.
 
-- keyboard access to all new controls;
-- stable focus while output arrives;
-- meaningful accessible names and numeric state;
-- no color-only status;
-- no uncontrolled announcement flood;
-- plain-text access to relevant NukeFire events;
-- regression tests where the behavior can be automated.
+Built-in help:
 
+```text
+sr help
+cr help
+cr help setup
+cr tutorial
+cr tutorial audio
+```
 
-## Communications panel
+---
 
-- Channel filters use tab semantics and support Arrow keys, Home, End, and ordinary Tab navigation.
-- Every message visibly includes a textual channel label; channel identity is never color-only.
-- Unread badges have accessible names containing the numeric unread count.
-- The message list is manually reviewable with `aria-live="off"`; normal incoming chat does not interrupt command entry or flood VoiceOver.
-- Search and Clear are keyboard reachable, and Escape in search returns focus to the message list.
-- Main terminal output remains complete, plain-text reviewable, and independent of Communications filtering.
+## 2. The accessibility layers
 
+Most configuration problems become easier once each layer has one job.
 
-## Context Deck
+| Layer | Owner | Purpose |
+| --- | --- | --- |
+| `SR ...` | MUD server | Screen-reader-friendly room, prompt, combat, resource, group, danger, and output presentation. |
+| `CR ...` | Official NukeFire Client | Reader Workspace, review, Self-Voice, audio, soundpacks, shortcuts, alerts, and client recovery. |
+| `SPEECH ...` | Server policy + client Voice | Whether visible semantic text is spoken by NukeFire Voice. |
+| `OUTPUT ...` | Server | Whether semantic text is full, summarized, hidden, or default. |
+| `GAG ...` | Server/player filter | Literal fallback filtering for old or untagged text. |
 
-- Context cards, status rows, action buttons, form labels, help text, and disabled reasons are available as ordinary semantic DOM content.
-- Text labels accompany every status; `good`, `warning`, and `danger` styling is supplemental rather than color-only.
-- Server-defined action forms use native text, number, and select controls and are fully keyboard reachable.
-- The card collection uses `aria-live=off`; room changes do not automatically read every service and action.
-- A concise polite summary announces only a newly available non-zone service context.
-- Sending an action returns focus to the command field, preserving blank-Enter pagination and normal command entry.
-- Destructive operations require explicit confirmation with clear text describing the consequence.
+Conceptually:
 
-## NukeFire Wasteland HUD visual pass
+```text
+server event
+  -> semantic OUTPUT policy
+  -> personal GAG/filter layer
+  -> exact dedupe / summary policy
+  -> terminal + Reader Review
+  -> SPEECH policy
+  -> NukeFire Voice
+```
 
-- The visible wordmark is decorative (`alt=""`); the header retains a semantic
-  `NukeFire Client` label and screen-reader-only heading.
-- Worn steel, scratches, rivets, and hazard accents do not represent state and do
-  not alter keyboard order, labels, live regions, or command focus.
-- The terminal output surface is not textured or covered by artwork.
-- Screen-reader mode removes the nonessential decorative pseudo-elements while
-  preserving the complete layout and all controls.
+Audio/soundpack cues are independent. A short notification sound can remain enabled even when SPEECH for that category is off.
 
-## First tester-feedback controls
+---
 
-- Panel option menus may be visually promoted to the application overlay layer, but
-  retain their `role=menu`, `role=menuitem`, originating `aria-controls`, keyboard
-  navigation, Escape behavior, and focus return.
-- Newest-first Communications does not use a live region; players choose when to
-  focus and review the log, and older-message reading is not forcibly interrupted.
-- Live-output snapback remains a visible, persisted checkbox and can be disabled by
-  players who need stable manual scrollback review.
+## 3. Server screen-reader command: SR
 
-## Multi-command Actions
+Typing bare `sr` is read-only: it reports status/help instead of unexpectedly changing settings.
 
-- A multi-command action does not move keyboard focus or create a new automatic live
-  region. Successful commands remain visible through ordinary MUD output.
-- Validation failures are reported once for the whole burst rather than announcing
-  each rejected command separately.
-- Every item uses the same paced session queue as typed commands, preserving prompt,
-  blank-Enter pagination, and screen-reader review behavior.
-- The 10-command cap and weighted rate limiter apply equally in screen-reader mode.
+### Enable / disable
 
-## Gag rules
+```text
+sr on
+sr off
+```
 
-- A matching Gag removes the line from terminal and screen-reader history while
-  preserving recognized channel traffic in Communications and its pop-out.
-- Gag management is text-command complete and does not require pointer interaction.
-- No announcement is emitted for every suppressed line, preventing replacement spam.
-- GA/EOR prompt text remains available, and oversized malformed lines fail open.
-- Actions may still react to a hidden line, but existing rate, queue, and protected-command
-  safeguards remain identical in screen-reader mode.
+Accepted exit aliases include `disable`, `normal`, `restore`, and `exit`.
 
-## Tester-approved first-run workspace
+`SR ON` enables server screen-reader presentation and compact combat behavior. When a compatible official client is connected, the server also asks it to snapshot the pre-Reader client state so a later exit can restore it.
 
-- Affects and Communications are immediately visible in the left review dock.
-- Mapper is the selected tab in a Mapper/Context Deck tab group on the right.
-- Vitals remains independently visible below the tabs.
-- Optional helper and diagnostic panels stay hidden to reduce first-launch focus noise.
-- Existing customized layouts are not automatically rearranged during migration.
+`SR OFF` always disables the server flag. If the official client control bridge is available, it additionally requests restoration of the client setup that existed before Reader mode.
 
-## Compact Speedwalk accessibility
+### Setup profiles
 
-Speedwalk is disabled by default and has explicit text commands for on, off, status,
-and stop. Every state change produces concise terminal text; no color-only indicator
-or mouse interaction is required. Route parsing never changes focus or creates a
-live-region announcement per movement. The 200-step cap, atomic validation, literal
-backslash escape, and manual-command interruption provide keyboard-complete recovery
-from an accidental or ambiguous route.
+```text
+sr setup descriptive
+sr setup balanced
+sr setup minimal
+```
 
-## Native application icon
+**Descriptive**
+- full room descriptions;
+- screen-reader presentation;
+- compact prompt/combat behavior;
+- output summary suite.
 
-The NukeFire NF application icon is decorative packaging identity. No connection state,
-warning, command result, navigation instruction, or other meaning relies on recognizing
-its letters, skull, color, glow, or shape. Window titles, shortcuts, controls, and terminal
-content remain available as text, and the icon does not create a live-region announcement.
+**Balanced**
+- brief room descriptions;
+- screen-reader presentation;
+- compact prompt/combat behavior;
+- output summary suite.
 
-## Fast combat terminal rendering
+**Minimal**
+- balanced behavior;
+- additionally enables the quiet communications preset.
 
-- Frame batching changes visual paint timing only; reader/plain-text state is updated
-  as soon as text arrives.
-- The output log remains `aria-live="off"`, preventing combat-output announcement floods.
-- Incoming output never moves keyboard focus.
-- Follow Output remains visible, persisted, default-on, and independently disableable.
-- Pending visual text is resolved before explicit review, search, and session changes so
-  visual and VoiceOver review remain ordered.
-## xterm.js migration requirement
+The setup profile removes visual prompt chips that are noisy for linear speech. Resource values remain available on demand.
 
-xterm.js screen-reader mode is experimental in NukeFire until VoiceOver, NVDA/JAWS,
-and braille-display review confirm ordered, quiet output. Existing reader text, Read
-Last Line, vitals review, keyboard focus, monochrome information, and non-color cues
-remain active regardless of the selected visual renderer. The custom renderer remains
-available until this parity gate passes.
+### Status and diagnostics
 
+```text
+sr status
+sr doctor
+sr layers
+sr recap
+```
 
-## Experimental xterm layout parity
+`SR STATUS` reports the detected profile, room verbosity, prompt mode, compact combat, summary state, semantic output overrides, speech overrides, and gag/filter state.
 
-The xterm host is pinned to the same flexible grid row as the original renderer, and
-the command bar remains in the fixed bottom row. Color preservation does not replace
-plain-text review, labels, or other non-color accessibility information.
+`SR DOCTOR` explains conflicting layers rather than silently changing them.
 
+`SR LAYERS` shows the ordered output stack.
 
-## TinTin conditional accessibility
+`SR RECAP` produces a stable room/resource/combat/group/danger snapshot.
 
-- If, Elseif, and Else are text commands and require no pointer interaction.
-- Errors and selected-branch results use the ordinary terminal/system-message path;
-  no branch changes focus or creates a new modal surface.
-- Only the selected branch produces output, preventing duplicate or misleading
-  screen-reader announcements from inactive branches.
-- Pipeline Debug exposes text-only condition and branch stages when deliberately
-  enabled, while secure-input redaction remains authoritative.
-## Docked prompt accessibility
+### On-demand information
 
-- Inline remains the migration-safe default. Docked and Hidden are explicit user choices.
-- The docked prompt is a stable, non-focusable presentation row immediately above command
-  input with a complete accessible label and `aria-live="off"`; combat prompt churn does
-  not create continuous VoiceOver announcements or an extra Tab stop.
-- Read Last Line returns the latest docked or hidden prompt when present, giving keyboard,
-  screen-reader, and braille users deliberate access without repeated scrollback entries.
-- Completed group/status lines remain in normal reader history. Only the final unfinished
-  GA/EOR prompt tail is removed from terminal history. While that prompt is current, the
-  visual terminal stages its final line break so no empty xterm row is left behind; the
-  stored transcript and reader text are not altered.
-- Login, password, pager, and editor prompts remain inline until a playing character is
-  identified, preserving first-run and secure-input usability.
-- Prompt meaning does not depend on color. ANSI styling remains visual while the stored
-  plain prompt text drives labels and explicit review.
-- Prompt capture never moves focus and remains independent per session.
+```text
+sr all
+sr stats
+sr hp
+sr mana
+sr move
+sr mob
+sr xp
+sr room
+sr exits
+sr gear
+sr inv
+sr afx
+sr group
+sr danger
+sr groupassist
+```
 
+These commands are deliberately text-first and do not require a visual panel.
 
-## Far-right dock accessibility
+### Brief / verbose
 
-- **Move Far Right** is available in every existing keyboard-complete panel menu.
-- The far-right separator exposes `role="separator"`, orientation, current value,
-  minimum, maximum, and a specific accessible name.
-- Arrow keys resize in 10-pixel steps, Shift+Arrow in 30-pixel steps, Home selects
-  the safe minimum, End selects the largest safe width, and double-click restores
-  the default.
-- Empty right-side regions collapse and do not add inert Tab stops. Repositioning or
-  resizing a panel does not move focus into terminal output or clear command input.
-- Right and Far Right remain textually distinct in menus, status messages, and saved
-  layout descriptions; their meaning never relies on color or visual placement alone.
+```text
+sr brief
+sr verbose
+```
 
-## Independent communication notification sounds
+### Server semantic output and speech
 
-- Tell, Auction, Gossip, Skynet, and SSF each have an independent optional Web Audio earcon.
-- Communication sounds remain separate from Self-Voice and native screen-reader speech, so a player may silence channel speech while retaining a short notification sound and review the message later.
-- All five channel sounds default off, share the Audio Cues master mute/volume controls, and retain the existing foreground/background policy.
-- Tell and Auction use the existing semantic Communications classification and duplicate suppression; no terminal text is parsed a second time solely to play the cue.
-- Preferences exposes keyboard-accessible checkboxes and test buttons for each communication sound.
-## GroupAssist
+```text
+sr output ...
+sr speech ...
+sr gag ...
+```
 
-GroupAssist remains a server-side combat rotation. The official client consumes
-the bounded learned-action catalog from `NukeFire.Controls`; it does not infer
-class skills or execute combat actions itself. The NukeFire Console editor sends
-one deliberate configuration command, preserves the command-line draft, and
-uses a non-live status surface. Reader users receive the same authoritative
-catalog and setup model through `SR GROUPASSIST` and ordinary GroupAssist text.
+Use semantic OUTPUT where a category exists. Use SPEECH to silence or restore NukeFire Voice without hiding terminal text. GAG remains useful for literal legacy lines.
+
+---
+
+## 4. Official-client Reader command: CR
+
+`CR` is shorthand for:
+
+```text
+client reader ...
+```
+
+Bare `cr` reports help; it does not silently toggle Reader mode.
+
+### Important: `cr` is not TinTin-like `#cr`
+
+```text
+cr status
+```
+
+is the server accessibility command.
+
+```text
+#cr
+```
+
+is a **TinTin-like scripting command** that sends one blank command. The scripting prefix is what distinguishes them.
+
+### Client availability
+
+CR requires:
+
+1. GMCP negotiation;
+2. the client advertising `NukeFire.Controls 1`;
+3. the server using a strict action allowlist.
+
+If that bridge is unavailable, SR commands continue to work normally. This is intentional: server accessibility must not depend on one proprietary client.
+
+### Coordinated setup
+
+```text
+cr setup native
+cr setup live
+cr setup fast
+cr setup quiet
+```
+
+Before changing the client preset, the server requests a one-time pre-Reader snapshot. The coordinated setup then applies the balanced server SR profile and asks the client to apply the selected local preset.
+
+- **Native** — Reader Workspace, native screen reader handles speech.
+- **Live** — Reader Workspace + NukeFire Voice following live play.
+- **Fast** — live voice preset for experienced high-speed users.
+- **Quiet** — Reader Workspace stays ready while NukeFire Voice remains muted until requested.
+
+### Exit and restoration
+
+```text
+cr off
+cr normal
+cr restore
+cr exit
+```
+
+These disable the server screen-reader flag and request restoration of the saved pre-Reader client state.
+
+### Status, doctor, recovery
+
+```text
+cr status
+cr context
+cr doctor
+cr recover
+cr unread
+```
+
+---
+
+## 5. Reader Review and exact line review
+
+Reader History keeps semantic categories separate from raw terminal-line recall.
+
+### Category navigation
+
+```text
+cr category next
+cr category previous
+cr category status
+```
+
+### Semantic review
+
+```text
+cr review latest
+cr review previous
+cr review next
+cr review repeat
+cr review first
+cr review back 10
+cr review forward 10
+cr review tell
+cr review communication
+```
+
+### Exact terminal lines
+
+```text
+cr lines current
+cr lines previous
+cr lines next
+cr lines latest
+cr lines 1
+...
+cr lines 10
+```
+
+Numbered line recall does not move the parked semantic review cursor.
+
+A core accessibility promise is that review operations keep the command field usable and preserve partially typed input rather than forcing focus into terminal scrollback.
+
+---
+
+## 6. Keyboard controls and MUSH-style setup
+
+Official presets are conflict-safe: existing player shortcuts are reported and preserved rather than silently replaced. Removing a preset removes only shortcuts owned by that preset.
+
+### Install subsets
+
+```text
+cr keys status
+cr keys lines
+cr keys movement
+cr keys mush
+cr keys remove lines
+cr keys remove movement
+cr keys remove mush
+```
+
+### MUSH-style Reader controls
+
+The Beta.73 MUSH-style setup is centered around:
+
+| Key | Purpose |
+| --- | --- |
+| `Alt+1` … `Alt+9` | recall recent terminal lines |
+| `Alt+I` | north |
+| `Alt+J` | west |
+| `Alt+K` | south |
+| `Alt+L` | east |
+| `Alt+U` | up |
+| `Alt+N` | down |
+| `Alt+Up` / `Alt+Down` | previous / next Reader History category |
+| `Alt+Left` / `Alt+Right` | previous / next Reader History message where not reserved by native OS navigation |
+| `Alt+End` | latest Reader History message |
+| `Alt+T` | last Tell |
+| `Alt+H` | current vitals |
+| `Alt+C` | copy reviewed text |
+| `F5` | mute / unmute NukeFire Voice in the MUSH preset |
+| `F7` | stop current NukeFire Voice speech |
+| `F8` / `F9` | previous / next Reader History message |
+| `F10` | latest Reader History message |
+
+Use `CR KEYS STATUS` as the authority on a particular installation because player-defined conflicts are intentionally preserved.
+
+### Load the full MUSH-style preset
+
+```text
+cr load mushsettings
+```
+
+The server first requests a pre-Reader snapshot. If that snapshot cannot be established, the client preset is not applied blindly.
+
+---
+
+## 7. NukeFire Voice / Self-Voice
+
+```text
+cr voice status
+cr voice on
+cr voice off
+cr voice toggle
+cr voice mute
+cr voice unmute
+cr voice stop
+cr voice restart
+cr voice test
+cr voice speed 1.2
+cr voice pitch 1.0
+cr voice volume 80
+cr voice foreground on
+```
+
+Supported numeric bounds are intentionally validated:
+
+- rate/speed: `0.1` through `10.0`;
+- pitch: `0.0` through `2.0`;
+- volume: `0` through `100`.
+
+Foreground-only speech can discard stale queued speech when the application is backgrounded. The speech governor may condense stale speech during sustained output while leaving complete terminal/Reader Review text intact. Priority messages and movement-follow behavior can interrupt stale speech.
+
+---
+
+## 8. SPEECH, OUTPUT, GAG, and dedupe
+
+Use the narrowest layer that matches the problem.
+
+### Keep text, stop NukeFire Voice
+
+```text
+cr speech gossip off
+```
+
+### Hide or summarize a semantic category
+
+```text
+cr output gossip off
+```
+
+### Silence the last semantic category that bothered you
+
+```text
+cr speech last off
+```
+
+Undo:
+
+```text
+cr speech last default
+```
+
+### Literal legacy filtering
+
+Use GAG when no semantic category exists.
+
+### Diagnose interactions
+
+```text
+sr doctor
+sr layers
+cr doctor
+```
+
+---
+
+## 9. Audio cues and communication sounds
+
+### Master audio cues
+
+```text
+cr audio status
+cr audio on
+cr audio off
+cr audio toggle
+cr audio mute
+cr audio unmute
+cr audio stop
+cr audio test
+cr audio volume 70
+cr audio foreground on
+```
+
+### Communication notification sounds
+
+```text
+cr sound status
+cr sound tell on
+cr sound auction off
+cr sound gossip toggle
+cr sound background on
+cr sound test tell
+cr sound reset
+```
+
+These are independent from NukeFire Voice.
+
+---
+
+## 10. Soundpacks
+
+The server sends **semantic event names only**. The official client owns local audio files, volume, muting, foreground rules, and pack editing.
+
+```text
+cr soundpack status
+cr soundpack list
+cr soundpack import
+cr soundpack builtin
+cr soundpack use <pack-id>
+cr soundpack test door.open
+cr soundpack events
+cr soundpack show door.open
+cr soundpack assign door.open
+cr soundpack clear door.open
+cr soundpack volume door.open 70
+cr soundpack duplicate <source-id> <new-id>
+cr soundpack export [pack-id]
+cr soundpack door.open off
+```
+
+Pack/event tokens are deliberately bounded and character-validated before being sent to the client.
+
+The public Beta.73 repository includes three complete example/test packs:
+
+- NukeFire Classic
+- Reader Essential
+- Wasteland Immersive
+
+---
+
+## 11. Practical recipes
+
+### Native screen reader, low interruption
+
+```text
+sr setup balanced
+cr setup native
+cr load mushsettings
+cr alerts on
+cr voice off
+```
+
+### NukeFire Voice, moderate output
+
+```text
+sr setup balanced
+cr setup live
+cr output standard
+cr voice speed 1.2
+cr voice foreground on
+cr alerts on
+```
+
+### Keep Gossip visible, stop speaking it, retain a sound
+
+```text
+cr speech gossip off
+cr sound gossip on
+```
+
+### Lowest-noise semantic output with safety retained
+
+```text
+cr output minimum
+cr alerts on
+```
+
+### Review without losing a partially typed command
+
+```text
+cr lines 1
+cr lines previous
+cr review tell
+cr unread
+```
+
+### Reconnect/copyover health check
+
+```text
+cr status
+cr context
+cr doctor
+cr recover
+```
+
+---
+
+## 12. Implementor overview
+
+NukeFire’s accessibility design intentionally separates **server-owned presentation** from **client-local convenience**.
+
+### Minimum useful SR implementation
+
+A MUD can implement SR without the NukeFire desktop client at all. At minimum:
+
+1. persist one per-player screen-reader preference;
+2. provide `SR ON`, `SR OFF`, `SR STATUS`, and a setup profile;
+3. make resource/prompt output available in plain text;
+4. expose readable room/exits/group/target/equipment/inventory/affect summaries;
+5. reduce duplicate/noisy combat presentation without removing gameplay meaning;
+6. make command feedback bypass any filter that could make accessibility controls themselves disappear.
+
+### Optional CR-style client bridge
+
+For a cooperating client:
+
+1. negotiate GMCP;
+2. client advertises `NukeFire.Controls 1` (or your own namespaced equivalent);
+3. server sends a **strictly allowlisted** semantic action, never arbitrary executable client text;
+4. client validates schema, action, and argument bounds;
+5. client performs the local action;
+6. client replies with a bounded result packet;
+7. server validates the result before echoing it to the player.
+
+Example request:
+
+```text
+NukeFire.Controls.Request {"schema":1,"id":42,"action":"reader.workspace","args":{"value":"on"}}
+```
+
+Example result:
+
+```text
+NukeFire.Controls.Result {"schema":1,"id":42,"ok":true,"action":"reader.workspace","message":"Reader Workspace enabled."}
+```
+
+### Snapshot / restore lifecycle
+
+Before a coordinated setup changes client settings:
+
+```text
+reader.session.begin
+```
+
+On exit:
+
+```text
+reader.exit.restore
+```
+
+This lets the client save a one-time pre-Reader configuration and restore it later instead of permanently overwriting unrelated user preferences.
+
+### Security principle
+
+Do **not** turn the accessibility bridge into remote command execution. The server should be able to request only named, documented, locally validated actions such as “report Reader status,” “toggle Reader Workspace,” or “set Voice volume.” The client remains authoritative over local files, audio, keyboard conflicts, browser/OS behavior, and arbitrary scripting.
+
+See `../server-integration/accessibility/` for sanitized reference code and porting notes.
