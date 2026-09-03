@@ -100,7 +100,7 @@ test('LINE IGNORE suppresses Action processing for local nested output and LINE 
 test('LINE LOG redirects legacy absolute paths to a safe Logs basename', async () => {
   const { manager, logs } = harness();
   const s = manager.createSession({ name: 'Log' });
-  const result = manager.dispatchInput(s.id, '#line log {/Users/SevierBarnes/dropbox/tintin/src/nf_bigmap.txt} {room line}');
+  const result = manager.dispatchInput(s.id, '#line log {/Users/example/dropbox/tintin/src/nf_bigmap.txt} {room line}');
   await new Promise((resolve) => setImmediate(resolve));
   assert.match(result.messages.join('\n'), /nf_bigmap\.txt/iu);
   assert.equal(logs.length, 1);

@@ -165,8 +165,8 @@ test('legacy absolute READ/WRITE requests are redirected to safe Scripts-folder 
   const { manager, events } = createManager();
   const main = manager.createSession({ name: 'Legacy' });
 
-  manager.dispatchInput(main.id, '#read {/home/old/dropbox/hashing.tin}');
-  manager.dispatchInput(main.id, '#write {/home/old/dropbox/signpost.data}');
+  manager.dispatchInput(main.id, '#read {/home/example-old/dropbox/hashing.tin}');
+  manager.dispatchInput(main.id, '#write {/home/example-old/dropbox/signpost.data}');
   const read = events.find((event) => event.type === 'script-read-request');
   const write = events.find((event) => event.type === 'script-write-request');
   assert.equal(read?.payload?.requested, 'hashing.tin');
@@ -192,8 +192,8 @@ test('Class WRITE serializes only definitions in the requested class and class R
   assert.match(written.content, /classvar/u);
   assert.doesNotMatch(written.content, /globalthing/u);
 
-  manager.dispatchInput(id, '#class {signpostDatabase} {write} {/home/mo/signpost.data}');
-  manager.dispatchInput(id, '#class {signpostDatabase} {read} {/home/mo/signpost.data}');
+  manager.dispatchInput(id, '#class {signpostDatabase} {write} {/home/example-user/signpost.data}');
+  manager.dispatchInput(id, '#class {signpostDatabase} {read} {/home/example-user/signpost.data}');
   const write = events.find((event) => event.type === 'class-write-request');
   const read = events.find((event) => event.type === 'class-read-request');
   assert.equal(write?.payload?.requested, 'signpost.data.tin');
@@ -206,8 +206,8 @@ test('loader preserves ALL, FORALL, PATH, PATHDIR, and Class READ/WRITE as inten
 #forall {{one}{two}} {#showme {&0}}
 #pathdir {n} {s} {1}
 #path {new}
-#class {signpostDatabase} {write} {/home/mo/signpost.data}
-#class {signpostDatabase} {read} {/home/mo/signpost.data}
+#class {signpostDatabase} {write} {/home/example-user/signpost.data}
+#class {signpostDatabase} {read} {/home/example-user/signpost.data}
 `;
   const prepared = prepareTinTinRead(source, {}, { filename: 'parity2.tin' });
   assert.equal(prepared.ok, true);
