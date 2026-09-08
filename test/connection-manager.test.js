@@ -89,7 +89,7 @@ test('GMCP initialization advertises and requests the NukeFire packages', async 
 
   assert.deepEqual(messages[0], {
     packageName: 'Core.Hello',
-    body: { client: 'NukeFire Client', version: '0.3.1-beta.73' }
+    body: { client: 'NukeFire Client', version: '0.3.1-beta.74' }
   });
   assert.deepEqual(messages[1], {
     packageName: 'Core.Supports.Set',
