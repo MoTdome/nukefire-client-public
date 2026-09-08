@@ -88,7 +88,9 @@ test('Communications opens beneath Affects in the left dock with accessible filt
   assert.equal(document.querySelector('#panel-live-state').hidden, true);
   assert.equal(document.querySelector('#panel-protocol').hidden, true);
   assert.equal(document.querySelector('#panel-context-deck').hidden, false);
-  assert.equal(document.querySelectorAll('#communications-tabs [role="tab"]').length, 8);
+  assert.equal(document.querySelectorAll('#communications-tabs [role="tab"]').length, 10);
+  assert.equal(document.querySelector('[data-communication-channel="shout"]').getAttribute('aria-label'), 'Shout');
+  assert.equal(document.querySelector('[data-communication-channel="holler"]').getAttribute('aria-label'), 'Holler');
   assert.equal(document.querySelector('#communications-messages').getAttribute('aria-live'), 'off');
   assert.equal(document.querySelector('[data-communication-channel="grats"]').getAttribute('aria-label'), 'Grats');
   assert.equal(document.querySelector('[data-communication-channel="ssf"]'), null);

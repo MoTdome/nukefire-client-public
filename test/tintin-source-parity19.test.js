@@ -111,6 +111,7 @@ test('FORMAT adds the source-era safe transformation family while retaining boun
     columns: 12,
     rows: 40,
     utc: true,
+    now: () => 0,
     nowMilliseconds: () => 0,
     nowMicroseconds: () => 123456,
     evaluateMath: (expression) => evaluateMathExpression(expression)
@@ -118,7 +119,8 @@ test('FORMAT adds the source-era safe transformation family while retaining boun
   assert.equal(formatTinTinEcho('%l|%u|%n|%p|%r', ['HELLO', 'hello', 'hello', '  hi  ', 'abc'], options).text, 'hello|HELLO|Hello|hi|cba');
   assert.equal(formatTinTinEcho('%A %L', ['A', '<fff>red<reset>'], options).text, '65 3');
   assert.equal(formatTinTinEcho('%C %R', [], options).text, '12 40');
-  assert.equal(formatTinTinEcho('%D/%M/%Y', ['0', '0', '0'], options).text, '01/01/1970');
+  assert.equal(formatTinTinEcho('%D/%M/%X/%x', ['ff', '1500', '255', '41'], options).text, '255/1.5k/FF/A');
+  assert.equal(formatTinTinEcho('%t', ['%Y-%m-%d'], options).text, '1970-01-01');
   assert.equal(formatTinTinEcho('%h', ['HEAD'], options).text, '####HEAD####');
 });
 

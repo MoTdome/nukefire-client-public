@@ -4,6 +4,7 @@ const { normalizeText } = require('./communications');
 const { normalizeClassName } = require('./class-manager');
 const { splitTopLevelCommands, normalizeClientCommandPrefix, DEFAULT_CLIENT_COMMAND_PREFIX } = require('./client-command-parser');
 const { LITERAL_PERCENT_SENTINEL } = require('./variable-engine');
+const { compileLuaAutomationRegex, luaRegexMatchContext, normalizeLuaAutomationPattern } = require('./lua-automation-pattern');
 
 const ACTION_PATTERN_MAX = 512;
 const ACTION_COMMAND_MAX = 4096;
@@ -17,6 +18,7 @@ const DEFAULT_RATE_WINDOW_MS = 1000;
 const DEFAULT_DUPLICATE_COOLDOWN_MS = 250;
 const DEFAULT_NOTICE_INTERVAL_MS = 2000;
 const DEFAULT_MAX_ACTION_COMMANDS = 64;
+const DEFAULT_MAX_LUA_TRANSIENT_TRIGGERS = 256;
 
 function normalizeActionPattern(value) {
   return String(value ?? '')
@@ -281,6 +283,8 @@ class ActionEngine {
     this.commandPrefix = normalizeClientCommandPrefix(options.commandPrefix, DEFAULT_CLIENT_COMMAND_PREFIX);
     this.actions = new Map();
     this.ordered = [];
+    this.luaTransientTriggers = new Map();
+    this.maxLuaTransientTriggers = Math.max(1, Math.trunc(Number(options.maxLuaTransientTriggers) || DEFAULT_MAX_LUA_TRANSIENT_TRIGGERS));
     this.actionAnchoredBuckets = new Map();
     this.actionFallback = [];
     this.actionHasInsensitivePrefilters = false;
@@ -418,7 +422,68 @@ class ActionEngine {
   }
 
   hasEnabledDefinitions() {
-    return this.enabled && this.ordered.some((record) => record.enabled);
+    return this.enabled && (this.ordered.some((record) => record.enabled) || [...this.luaTransientTriggers.values()].some((record) => record.enabled));
+  }
+
+
+  defineLuaTransient(idValue, kindValue, patternValue) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    const kind = String(kindValue || '').trim().toLowerCase();
+    const pattern = normalizeLuaAutomationPattern(patternValue);
+    if (!id || !pattern || !['substring', 'regex', 'exact'].includes(kind)) return null;
+    if (!this.luaTransientTriggers.has(id) && this.luaTransientTriggers.size >= this.maxLuaTransientTriggers) return null;
+    const matcher = kind === 'regex' ? compileLuaAutomationRegex(pattern) : null;
+    if (kind === 'regex' && !matcher) return null;
+    const record = Object.freeze({ id, kind, pattern, matcher, enabled: true });
+    this.luaTransientTriggers.set(id, record);
+    return { id, kind, pattern, enabled: true };
+  }
+
+  setLuaTransientEnabled(idValue, enabled) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    const current = this.luaTransientTriggers.get(id);
+    if (!current) return false;
+    this.luaTransientTriggers.set(id, Object.freeze({ ...current, enabled: Boolean(enabled) }));
+    return true;
+  }
+
+  removeLuaTransient(idValue) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    return id > 0 && this.luaTransientTriggers.delete(id);
+  }
+
+  clearLuaTransients() {
+    const count = this.luaTransientTriggers.size;
+    this.luaTransientTriggers.clear();
+    return count;
+  }
+
+  matchLuaTransients(lineValue, maximum = 32) {
+    const line = normalizeText(lineValue);
+    if (!this.enabled || !line || this.luaTransientTriggers.size === 0) return [];
+    const results = [];
+    const limit = Math.max(1, Math.min(64, Math.trunc(Number(maximum) || 32)));
+    for (const record of this.luaTransientTriggers.values()) {
+      if (!record.enabled) continue;
+      let matches = [];
+      let namedMatches = {};
+      if (record.kind === 'substring') {
+        const offset = line.indexOf(record.pattern);
+        if (offset === -1) continue;
+        matches = [record.pattern];
+      } else if (record.kind === 'exact') {
+        if (line !== record.pattern) continue;
+        matches = [line];
+      } else {
+        record.matcher.lastIndex = 0;
+        const match = record.matcher.exec(line);
+        if (!match) continue;
+        ({ matches, namedMatches } = luaRegexMatchContext(match));
+      }
+      results.push({ id: record.id, line, matches, namedMatches });
+      if (results.length >= limit) break;
+    }
+    return results;
   }
 
   clear() {
@@ -634,5 +699,6 @@ module.exports = {
   DEFAULT_RATE_LIMIT,
   DEFAULT_RATE_WINDOW_MS,
   DEFAULT_DUPLICATE_COOLDOWN_MS,
-  DEFAULT_MAX_ACTION_COMMANDS
+  DEFAULT_MAX_ACTION_COMMANDS,
+  DEFAULT_MAX_LUA_TRANSIENT_TRIGGERS
 };

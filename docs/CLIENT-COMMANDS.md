@@ -9,6 +9,221 @@ Client commands are handled by the desktop client. They are not sent to the MUD
 unless the prefix is doubled. For example, `##help` sends the literal command
 `#help` to NukeFire.
 
+## Lua foundation
+
+```text
+#lua {echo("hello")}
+#lua {send("look")}
+#lua {execute("myalias mutant")}
+#lua {expandAlias("myalias mutant")}
+```
+
+Lua is a first-class NukeFire automation command. Typed `#lua` and Lua invoked
+from Aliases, Actions, Events, Delays, and other client automation all reach the
+same SessionManager command core before entering the isolated per-session Lua
+Worker.
+
+The two command-routing calls intentionally have different meanings:
+
+- `send(command)` sends one validated command directly to the MUD and bypasses
+  Alias expansion. This mirrors the familiar Mudlet `send()` model.
+- `execute(command)` feeds a bounded command back through NukeFire's normal
+  TinTin/client parser. `expandAlias(command)` is provided as a Mudlet-familiar
+  name for the same path.
+
+`getVariable(name)` and `setVariable(name, value)` use the same per-session
+VariableEngine as TinTin scripting. Lua has no second persistent variable store.
+The complete supported VariableEngine capacity is visible to Lua on each
+execution. Lua globals themselves remain private to one live NukeFire session and
+are discarded when that session is removed.
+
+Structured TinTin tables use that same VariableEngine tree:
+
+```lua
+local route = getTable("route")
+echo(route[1], route[2])
+
+setTable("targets", {
+  primary = "mutant",
+  secondary = "guard"
+})
+```
+
+Numeric TinTin keys become 1-based Lua array entries when they are contiguous;
+named keys become Lua fields. `setTable()` validates and replaces the table
+subtree atomically, preserving NukeFire's existing Variable limits and
+`VARIABLE UPDATE` event semantics.
+
+Lua also receives a bounded, read-only-style snapshot of NukeFire's canonical
+GMCP store before each execution. Mudlet-familiar access therefore works without
+creating a second GMCP parser or cache:
+
+```lua
+echo(gmcp.Char.Vitals.hp)
+echo(gmcp.Room.Info.name)
+echo(nf.gmcp.Char.Vitals.hp)
+
+sendGMCP("Core.KeepAlive")
+sendGMCP('Char.Skills.Get {"group":"magic"}')
+sendGMCP("NukeFire.Example", { enabled = true, count = 2 })
+```
+
+The one-string `sendGMCP()` form accepts the package name followed by an optional
+raw GMCP body. NukeFire additionally accepts a Lua table as the second argument
+and JSON-encodes it through the bounded bridge. `nf.gmcp` aliases the same snapshot
+as global `gmcp`; `nf.gmcpMeta` reports snapshot truncation and basic source
+metadata. Persistent canonical packages are available here. Transient combat,
+sound, loot, and request-style GMCP messages are deliberately not retained in the
+snapshot; those belong to the later event/callback API.
+
+For new NukeFire Lua, the canonical namespace is also available without removing
+the familiar globals:
+
+```lua
+nf.send("look")
+nf.execute("myalias mutant")
+nf.variables.set("target", "mutant")
+local targets = nf.variables.getTable("targets")
+```
+
+### Mudlet-familiar temporary automation
+
+Lua can create temporary automation using familiar Mudlet names while NukeFire
+keeps one authoritative automation stack underneath:
+
+```lua
+local hitTrigger = tempRegexTrigger(
+  "^You hit (?<target>.+) for (\d+) damage.$",
+  function()
+    echo(matches.target .. " took " .. matches[3])
+  end
+)
+
+local once = tempTimer(1.5, function()
+  send("score")
+end)
+
+local vitalsHandler = registerAnonymousEventHandler(
+  "gmcp.Char.Vitals",
+  function(eventName)
+    if gmcp.Char.Vitals.hp < 1000 then echo("Low health") end
+  end
+)
+```
+
+`tempTrigger()` performs a bounded substring match; `tempExactMatchTrigger()`
+requires the complete line; `tempRegexTrigger()` and `tempAlias()` use bounded
+regular expressions. Obvious catastrophic nested-quantifier patterns are refused
+before they enter the main-thread matcher. Temporary definitions are stored in
+the existing Alias, Action, and Event engines but are marked transient: they do
+not appear in `#write`, Definition persistence, or TinTin profile snapshots and
+they disappear with the Lua session.
+
+During a callback, Mudlet-familiar context globals are available:
+
+- `line` is the incoming trigger line.
+- `command` is the command matched by a temporary alias.
+- `matches[1]` is the complete regular-expression match, followed by capture
+  groups in `matches[2]`, `matches[3]`, and so on. Named captures are also
+  available as `matches.name`.
+
+Temporary records return numeric IDs and can be controlled with
+`enableAlias()` / `disableAlias()` / `killAlias()`, the corresponding Trigger
+and Timer functions, and `killAnonymousEventHandler()`. These functions are also
+available through `nf`. For triggers using `expireAfter`, a callback return value
+of `true` preserves Mudlet's convention that the current match does not count
+against expiration. Repeating timers re-arm only after their Lua callback
+finishes, preventing a slow callback from building an unbounded timer backlog.
+
+`registerAnonymousEventHandler()` can subscribe to ordinary NukeFire/TinTin
+Events and to GMCP names such as `gmcp.Char.Vitals`. A generic `gmcp` event also
+receives the specific GMCP event name. `raiseEvent()` uses the same event bridge;
+when the name also corresponds to a supported TinTin Event, both scripting
+surfaces can observe it.
+
+The callback layer remains bounded per session (definition count, callback rate,
+pattern/context size, Worker time, and memory). Match decisions stay in the
+existing NukeFire engines; only a successful match crosses into the Lua Worker.
+
+### Existing NukeFire Mudlet-package compatibility
+
+The public `rparet/nukefire-mudlet` package is a useful real-world portability
+target. Its gameplay automation depends heavily on MSDP-style live values, named
+and cross-profile Events, profile identity/time/focus helpers, reconnect, and a
+few small Lua utility functions. NukeFire supports those patterns without adding
+a second protocol or weakening the Lua sandbox.
+
+`msdp` is a compatibility view projected from the same canonical GMCP store used
+by `gmcp`; it is not a separate MSDP connection or cache. The common NukeFire
+fields requested by that package are projected, including health/mana/movement,
+stats, experience, money, opponent state, room/area/exits, and affects. Changes
+raise familiar events such as `msdp.HEALTH`, `msdp.OPPONENT_LEVEL`, and
+`msdp.ROOM_VNUM`.
+
+```lua
+registerAnonymousEventHandler("msdp.HEALTH", function()
+  if tonumber(msdp.HEALTH) < tonumber(msdp.HEALTH_MAX) / 4 then
+    cecho("<orange_red>Low health<reset>\n")
+  end
+end)
+
+sendMSDP("REPORT", "HEALTH", "HEALTH_MAX", "ROOM_VNUM")
+```
+
+`sendMSDP()` accepts the package's common `REPORT`, `UNREPORT`, `RESET`, and
+`XTERM_256_COLORS` setup calls as compatibility no-ops. NukeFire already receives
+the authoritative values through GMCP, so these calls do not open a second
+protocol path or duplicate network traffic. Connection lifecycle also publishes
+`sysConnectionEvent`, `sysDisconnectionEvent`, and `sysProtocolEnabled`; the latter
+reports GMCP and an MSDP compatibility capability so existing setup handlers can
+run safely.
+
+Named and multi-profile Event patterns are supported through the same callback
+engine:
+
+```lua
+registerNamedEventHandler(
+  getProfileName(),
+  "crewCommand",
+  "crew.command",
+  function(_, command, sourceProfile)
+    expandAlias(command)
+  end
+)
+
+raiseGlobalEvent("crew.command", "north")
+```
+
+`raiseGlobalEvent()` broadcasts only to the other open NukeFire sessions and
+appends the source profile name. `getProfileName()`, `getEpoch()`, `hasFocus()`,
+`reconnect()`, `cecho()`, `table.contains()`, `table.union()`, and `spairs()` are
+also provided because existing NukeFire Mudlet scripts use those helpers.
+`reconnect()` is constrained to the owning session's already configured host and
+port.
+
+Compatibility deliberately stops at the sandbox/UI boundary. Mudlet Geyser/EMCO
+widgets, `installPackage()`/remote package downloading, arbitrary
+`getMudletHomeDir()` filesystem access, `table.save()`/`table.load()` paths, `io`,
+and Mudlet's map database are not emulated. NukeFire already has native panes,
+Communications, Mapper, and controlled persistent stores. Lua source/profile
+persistence now uses those host-managed facilities rather than opening the
+filesystem to scripts.
+
+Because Lua runs asynchronously in the Worker, `#lua` schedules its work and
+returns control to the TinTin command dispatcher. Commands later in the same
+semicolon-separated TinTin batch may therefore run before the Lua script finishes.
+When strict ordering matters, have Lua call `execute()` or `expandAlias()` for the
+next NukeFire command after its Lua work is complete.
+
+Lua remains deny-by-default: no filesystem, shell/process, arbitrary networking,
+Node/Electron/DOM globals, unrestricted filesystem/package `require()`, `io`, `os`,
+`debug`, or `package`. Script size, execution time, memory, command size, session
+count, and nested Lua re-entry remain bounded. NukeFire-managed module source is
+persistent and `require(name)` resolves only that protected store; richer package
+management/editor tooling remains a later milestone. The temporary trigger/timer/event
+compatibility surface above already reuses NukeFire's existing engines rather than
+creating a parallel automation stack.
+
 ## Prefix-aware command history
 
 Up and Down retain ordinary full-history navigation when the command line is empty.
@@ -546,3 +761,10 @@ data. Use `#read {Prime.tin}` afterward to load a clean script set again.
 
 Doubling the selected prefix removes one prefix character and sends the rest to
 the MUD. With `~` selected, use `~~help`; with `/` selected, use `//help`.
+
+
+### Beta.74 Lua managed packages / Mallard-familiar bridge
+
+Lua now has protected per-session `storage.get/set/delete`, read-only `settings.get`, NukeFire-owned `nf.modules`, and a managed `require()` that resolves module names only from that store. Module names are bounded identifiers such as `row_state` or `lib.format`; paths, `io`, `os`, and the standard Lua `package` filesystem loader remain unavailable.
+
+Thin compatibility wrappers `gmcp.on()`, `world.on()`, `mud.send()`, and `mud.trigger()` reuse the existing NukeFire GMCP, session event, guarded send, and Action engines. `mud.trigger()` is callback-only: it does **not** expose Mallard/Mudlet-style gagging and cannot synchronously hold terminal rendering behind a Lua Worker decision. Arbitrary HTML/JS panels remain outside this compatibility layer.

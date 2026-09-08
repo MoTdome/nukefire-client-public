@@ -32,7 +32,7 @@ test('Preferences and persisted accessibility settings expose Tell and Auction i
   for (const id of ['communication-cue-tell', 'communication-cue-auction']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'), id);
   }
-  assert.match(renderer, /COMMUNICATION_CUE_CHANNELS = Object\.freeze\(\['tell', 'auction', 'gossip', 'skynet', 'ssf'\]\)/u);
+  assert.match(renderer, /COMMUNICATION_CUE_CHANNELS = Object\.freeze\(\['tell', 'auction', 'gossip', 'group', 'grats', 'shout', 'holler', 'skynet', 'ssf'\]\)/u);
   assert.match(renderer, /communicationCueTell/u);
   assert.match(renderer, /communicationCueAuction/u);
   assert.match(settings, /tell: false,[\s\S]*auction: false,[\s\S]*gossip: false/u);

@@ -12,16 +12,20 @@ async function makeRuntime(options = {}) {
   const diagnostics = [];
   const sends = [];
   const variableSets = [];
+  const tableSets = [];
+  const gmcpSends = [];
   const runtime = new LuaRuntime({
     hardTimeoutMs: 900,
     onEcho: (event) => echoes.push(event),
     onDiagnostic: (event) => diagnostics.push(event),
     onSend: (event) => sends.push(event),
     onVariableSet: (event) => variableSets.push(event),
+    onTableSet: (event) => tableSets.push(event),
+    onSendGmcp: (event) => gmcpSends.push(event),
     ...options
   });
   await runtime.start();
-  return { runtime, echoes, diagnostics, sends, variableSets };
+  return { runtime, echoes, diagnostics, sends, variableSets, tableSets, gmcpSends };
 }
 
 const hostContext = {
@@ -32,8 +36,17 @@ const hostContext = {
   variables: [
     { name: 'target', value: 'mutant' },
     { name: 'cool website', value: 'https://nukefire.org' },
-    { name: 'session[name]', value: 'Anne' }
-  ]
+    { name: 'session[name]', value: 'Anne' },
+    { name: 'route[1]', value: 'north' },
+    { name: 'route[2]', value: 'east' },
+    { name: 'combat[threshold]', value: '25' }
+  ],
+  gmcpJson: JSON.stringify({
+    Char: { Vitals: { hp: 1234, maxhp: 5678 } },
+    Room: { Info: { num: 3014, name: 'The Yard' } },
+    NukeFire: { Context: { mode: 'normal' } }
+  }),
+  gmcpMetaJson: JSON.stringify({ truncated: false, bytes: 180, messageCount: 42, lastPackage: 'Room.Info' })
 };
 
 test('Beta.60a.2 starts Wasmoon in a worker and reports Lua 5.4', async () => {
@@ -71,12 +84,16 @@ test('sandbox still denies filesystem shell package debug coroutine and host glo
   try {
     await runtime.createSession('alpha');
     const result = await runtime.execute('alpha', `
-      local names = { os, io, debug, package, coroutine, require, dofile, loadfile, load, loadstring,
+      local denied = { os, io, debug, package, coroutine, dofile, loadfile, load, loadstring,
         process, Buffer, global, globalThis, window, document }
       local sealed = true
-      for i = 1, 16 do if names[i] ~= nil then sealed = false end end
-      return sealed and type(send) == 'function' and type(getVariable) == 'function'
+      for i = 1, 15 do if denied[i] ~= nil then sealed = false end end
+      return sealed and type(require) == 'function'
+        and type(send) == 'function' and type(getVariable) == 'function'
         and type(setVariable) == 'function' and type(getSession) == 'function'
+        and type(getTable) == 'function' and type(setTable) == 'function'
+        and type(sendGMCP) == 'function' and type(gmcp) == 'table' and type(nf) == 'table'
+        and type(execute) == 'function' and type(expandAlias) == 'function'
     `, {}, hostContext);
     assert.deepEqual(result.values, [true]);
   } finally { await runtime.close(); }
@@ -102,6 +119,19 @@ test('send rejects multiline commands instead of smuggling a command batch', asy
   } finally { await runtime.close(); }
 });
 
+test('execute and Mudlet-familiar expandAlias emit bounded full-pipeline requests instead of direct sends', async () => {
+  const events = [];
+  const runtime = new LuaRuntime({ hardTimeoutMs: 900 });
+  await runtime.start();
+  try {
+    await runtime.createSession('alpha');
+    const result = await runtime.execute('alpha', 'return execute("kk mutant"), expandAlias("heal me")', {}, hostContext, (event) => events.push(event));
+    assert.deepEqual(result.values, [true, true]);
+    assert.deepEqual(events.filter((event) => event.event === 'execute-command').map((event) => event.command), ['kk mutant', 'heal me']);
+    assert.ok(events.filter((event) => event.event === 'execute-command').every((event) => Number(event.requestId) > 0));
+  } finally { await runtime.close(); }
+});
+
 test('getVariable reads the current NukeFire variable snapshot including extended names', async () => {
   const { runtime } = await makeRuntime();
   try {
@@ -112,6 +142,16 @@ test('getVariable reads the current NukeFire variable snapshot including extende
   } finally { await runtime.close(); }
 });
 
+test('getVariable sees the full 2048-record NukeFire variable capacity instead of the old 256-record snapshot', async () => {
+  const { runtime } = await makeRuntime();
+  try {
+    await runtime.createSession('alpha');
+    const variables = Array.from({ length: 2048 }, (_, index) => ({ name: `v${index}`, value: String(index) }));
+    const result = await runtime.execute('alpha', 'return getVariable("v2047")', {}, { session: { id: 'alpha' }, variables });
+    assert.deepEqual(result.values, ['2047']);
+  } finally { await runtime.close(); }
+});
+
 test('setVariable normalizes once, updates same-execution reads, and emits one host request', async () => {
   const { runtime, variableSets } = await makeRuntime();
   try {
@@ -119,6 +159,58 @@ test('setVariable normalizes once, updates same-execution reads, and emits one h
     const result = await runtime.execute('alpha', 'local ok=setVariable(" Next Target ", "  dragon  "); local tableok=setVariable("route[1]", "north"); return ok, getVariable("next target"), tableok, getVariable("route[1]")', {}, hostContext);
     assert.deepEqual(result.values, [true, 'dragon', true, 'north']);
     assert.deepEqual(variableSets.map(({ sessionId, name, value }) => ({ sessionId, name, value })), [{ sessionId: 'alpha', name: 'next target', value: 'dragon' }, { sessionId: 'alpha', name: 'route[1]', value: 'north' }]);
+  } finally { await runtime.close(); }
+});
+
+test('getTable reconstructs the shared TinTin VariableEngine tree as Lua arrays and tables', async () => {
+  const { runtime } = await makeRuntime();
+  try {
+    await runtime.createSession('alpha');
+    const result = await runtime.execute('alpha', 'local r=getTable("route"); local c=getTable("combat"); return r[1],r[2],c.threshold,getTable("missing")', {}, hostContext);
+    assert.deepEqual(result.values, ['north', 'east', '25', null]);
+  } finally { await runtime.close(); }
+});
+
+test('setTable updates same-execution reads and emits one bounded structured host replacement', async () => {
+  const { runtime, tableSets } = await makeRuntime();
+  try {
+    await runtime.createSession('alpha');
+    const result = await runtime.execute('alpha', 'local ok=setTable("route", {"south", {door="red",steps=3}}); local r=getTable("route"); return ok,r[1],r[2].door,r[2].steps', {}, hostContext);
+    assert.deepEqual(result.values, [true, 'south', 'red', '3']);
+    assert.equal(tableSets.length, 1);
+    assert.equal(tableSets[0].sessionId, 'alpha');
+    assert.equal(tableSets[0].name, 'route');
+    assert.deepEqual(tableSets[0].records, [
+      { name: 'route[1]', value: 'south' },
+      { name: 'route[2][door]', value: 'red' },
+      { name: 'route[2][steps]', value: '3' }
+    ]);
+  } finally { await runtime.close(); }
+});
+
+test('gmcp is refreshed from the canonical host snapshot and shared with the nf namespace', async () => {
+  const { runtime } = await makeRuntime();
+  try {
+    await runtime.createSession('alpha');
+    const first = await runtime.execute('alpha', 'gmcp.Char.Vitals.hp=1; return gmcp.Char.Vitals.hp,gmcp.Room.Info.name,nf.gmcp==gmcp,nf.gmcpMeta.messageCount', {}, hostContext);
+    assert.deepEqual(first.values, [1, 'The Yard', true, 42]);
+    const refreshedContext = { ...hostContext, gmcpJson: JSON.stringify({ Char: { Vitals: { hp: 2222 } }, Room: { Info: { name: 'A New Room' } } }) };
+    const second = await runtime.execute('alpha', 'return gmcp.Char.Vitals.hp,gmcp.Room.Info.name', {}, refreshedContext);
+    assert.deepEqual(second.values, [2222, 'A New Room']);
+  } finally { await runtime.close(); }
+});
+
+test('sendGMCP supports Mudlet one-string commands plus NukeFire table-body convenience', async () => {
+  const { runtime, gmcpSends } = await makeRuntime();
+  try {
+    await runtime.createSession('alpha');
+    const result = await runtime.execute('alpha', 'return sendGMCP("Core.KeepAlive"),sendGMCP("Char.Skills.Get {\\"group\\":\\"magic\\"}"),sendGMCP("NukeFire.Test",{foo="bar",n=2}),sendGMCP("NukeFire.Bad","raw")', {}, hostContext);
+    assert.deepEqual(result.values, [true, true, true, false]);
+    assert.deepEqual(gmcpSends.map((event) => event.command), [
+      'Core.KeepAlive',
+      'Char.Skills.Get {"group":"magic"}',
+      'NukeFire.Test {"foo":"bar","n":2}'
+    ]);
   } finally { await runtime.close(); }
 });
 
@@ -166,17 +258,20 @@ test('allocator cap still rejects runaway Lua memory', async () => {
 
 test('LuaLabService bridges send and variable writes through the supplied host adapter', async () => {
   const sent = [];
+  const executed = [];
   const variables = new Map([['target', 'mutant']]);
   const service = new LuaLabService({
     getHostContext: (sessionId) => ({ session: { id: sessionId, name: 'Alpha', connected: true }, variables: [...variables].map(([name, value]) => ({ name, value })) }),
     sendCommand: (sessionId, command) => { sent.push([sessionId, command]); return { queued: true }; },
-    setVariable: (_sessionId, name, value) => { variables.set(name, value); return { name, value }; }
+    setVariable: (_sessionId, name, value) => { variables.set(name, value); return { name, value }; },
+    executeCommand: (sessionId, command, context) => { executed.push([sessionId, command, context.luaDepth]); return { handled: true, deliveries: [], messages: [] }; }
   });
   try {
-    const result = await service.execute('alpha', 'send("kill " .. getVariable("target")); setVariable("lasttarget", getVariable("target")); return getVariable("lasttarget")');
+    const result = await service.execute('alpha', 'send("kill " .. getVariable("target")); execute("kk " .. getVariable("target")); setVariable("lasttarget", getVariable("target")); return getVariable("lasttarget")', { luaDepth: 2 });
     assert.equal(result.ok, true);
     assert.deepEqual(result.values, ['mutant']);
     assert.deepEqual(sent, [['alpha', 'kill mutant']]);
+    assert.deepEqual(executed, [['alpha', 'kk mutant', 2]]);
     assert.equal(variables.get('lasttarget'), 'mutant');
   } finally { await service.close(); }
 });
@@ -193,7 +288,7 @@ test('parent watchdog hard-kills an adversarial loop and service restarts cleanl
   } finally { await service.close(); }
 });
 
-test('interactive a.2 wiring uses SessionManager for Lua send variables and session metadata', () => {
+test('interactive Lua wiring is owned by SessionManager while preserving the guarded legacy IPC surface', () => {
   const root = path.join(__dirname, '..');
   const main = fs.readFileSync(path.join(root, 'main.js'), 'utf8');
   const preload = fs.readFileSync(path.join(root, 'preload.js'), 'utf8');
@@ -208,5 +303,10 @@ test('interactive a.2 wiring uses SessionManager for Lua send variables and sess
   assert.match(main, /session\.tintin\?\.variableEngine\?\.list\(\)/u);
   assert.match(main, /characterName:/u);
   assert.match(preload, /executeLuaLab:/u);
-  assert.match(renderer, /handleLocalLuaLabCommand/u);
+  assert.match(main, /onLuaExecute:/u);
+  assert.match(main, /dispatchLuaInput\(sessionId, command/u);
+  assert.match(main, /onSessionRemoved:/u);
+  assert.doesNotMatch(renderer, /handleLocalLuaLabCommand/u);
+  assert.doesNotMatch(renderer, /parseLocalLuaLabCommand/u);
+  assert.match(renderer, /case 'lua-result': handleLuaResult/u);
 });

@@ -83,3 +83,17 @@ test('renderer loads the macro engine after physical-key support and before live
   assert.match(source, /sessionDisplayEngines\(activeSessionRecord\(\)\)\.macro\?\.findForEvent\?\.\(event\)/u);
   assert.match(source, /await sendCommand\(commands\.join\(';'\), \{ preserveInput: true, recordHistory: false \}\)/u);
 });
+
+
+test('common WinTin and xterm F6-F12 and navigation escape sequences import as physical keys', () => {
+  const expected = new Map([
+    ['\\e[17~', 'F6'], ['\\e[19~', 'F8'], ['\\e[24~', 'F12'],
+    ['\\e[A', 'ArrowUp'], ['\\e[B', 'ArrowDown'], ['\\e[C', 'ArrowRight'], ['\\e[D', 'ArrowLeft'],
+    ['\\e[H', 'Home'], ['\\e[F', 'End'], ['\\e[5~', 'PageUp'], ['\\e[6~', 'PageDown']
+  ]);
+  for (const [sequence, code] of expected) {
+    const parsed = parseMacroKey(sequence);
+    assert.equal(parsed.error, '', sequence);
+    assert.equal(parsed.code, code, sequence);
+  }
+});

@@ -1,6 +1,7 @@
 'use strict';
 
 const { normalizeClassName } = require('./class-manager');
+const { compileLuaAutomationRegex, luaRegexMatchContext } = require('./lua-automation-pattern');
 const {
   tokenizeBraced,
   splitTopLevelCommands,
@@ -16,6 +17,7 @@ const DEFAULT_MAX_ALIAS_COMMANDS = 128;
 const DEFAULT_ALIAS_PRIORITY = 5;
 const MIN_ALIAS_PRIORITY = 1;
 const MAX_ALIAS_PRIORITY = 9;
+const DEFAULT_MAX_LUA_TRANSIENT_ALIASES = 256;
 const FORBIDDEN_ALIAS_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const FORBIDDEN_ALIAS_NAME_CHARACTERS = '{}[]\\;#@"\'';
 
@@ -306,6 +308,8 @@ class AliasEngine {
     );
     this.aliases = new Map();
     this.patternAliases = [];
+    this.luaTransientAliases = new Map();
+    this.maxLuaTransientAliases = Math.max(1, Math.trunc(Number(options.maxLuaTransientAliases) || DEFAULT_MAX_LUA_TRANSIENT_ALIASES));
     this.orderedAliases = [];
     this.aliasPatternBuckets = new Map();
     this.aliasGenericPatterns = [];
@@ -479,6 +483,53 @@ class AliasEngine {
     return null;
   }
 
+
+  defineLuaTransient(idValue, regexValue) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    const matcher = compileLuaAutomationRegex(regexValue);
+    if (!id || !matcher) return null;
+    if (!this.luaTransientAliases.has(id) && this.luaTransientAliases.size >= this.maxLuaTransientAliases) return null;
+    const record = Object.freeze({ id, pattern: String(regexValue), matcher, enabled: true });
+    this.luaTransientAliases.set(id, record);
+    return { id, pattern: record.pattern, enabled: true };
+  }
+
+  setLuaTransientEnabled(idValue, enabled) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    const current = this.luaTransientAliases.get(id);
+    if (!current) return false;
+    this.luaTransientAliases.set(id, Object.freeze({ ...current, enabled: Boolean(enabled) }));
+    return true;
+  }
+
+  removeLuaTransient(idValue) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    return id > 0 && this.luaTransientAliases.delete(id);
+  }
+
+  clearLuaTransients() {
+    const count = this.luaTransientAliases.size;
+    this.luaTransientAliases.clear();
+    return count;
+  }
+
+  matchLuaTransients(commandValue, maximum = 16) {
+    const command = String(commandValue ?? '').replace(/[\r\n]+$/u, '');
+    if (!command || this.luaTransientAliases.size === 0) return [];
+    const results = [];
+    const limit = Math.max(1, Math.min(32, Math.trunc(Number(maximum) || 16)));
+    for (const record of this.luaTransientAliases.values()) {
+      if (!record.enabled) continue;
+      record.matcher.lastIndex = 0;
+      const match = record.matcher.exec(command);
+      if (!match) continue;
+      const context = luaRegexMatchContext(match);
+      results.push({ id: record.id, command, ...context });
+      if (results.length >= limit) break;
+    }
+    return results;
+  }
+
   expandCommands(inputValue) {
     const original = String(inputValue ?? '').replace(/[\r\n]+$/u, '');
     const trace = [];
@@ -606,5 +657,6 @@ module.exports = {
   DEFAULT_MAX_ALIAS_COMMANDS,
   DEFAULT_ALIAS_PRIORITY,
   MIN_ALIAS_PRIORITY,
-  MAX_ALIAS_PRIORITY
+  MAX_ALIAS_PRIORITY,
+  DEFAULT_MAX_LUA_TRANSIENT_ALIASES
 };

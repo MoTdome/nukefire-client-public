@@ -183,6 +183,7 @@ test('panel changes save to the active character and reset restores the focused 
     protocol: false,
     communications: true,
     contextDeck: true,
+    luaPanes: false,
     mapper: true
   });
 });

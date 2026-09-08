@@ -11,6 +11,7 @@ const DEFAULT_MAX_TABLE_DEPTH = 4;
 const FORBIDDEN_VARIABLE_NAMES = new Set(['__proto__', 'constructor', 'prototype']);
 const LITERAL_PERCENT_SENTINEL = '\uE000';
 const LITERAL_DOLLAR_SENTINEL = '\uE001';
+const LITERAL_STAR_SENTINEL = '\uE002';
 const SIMPLE_PERCENT_VARIABLE_NAME = /^[a-z][a-z0-9_-]*$/u;
 const SIMPLE_DOLLAR_VARIABLE_NAME = /^[a-z_][a-z0-9_]*$/u;
 const FORBIDDEN_EXTENDED_NAME_CHARACTERS = /[\u0000-\u001F\u007F{}\\;$%]/u;
@@ -96,10 +97,36 @@ function normalizeVariableValue(value) {
     .normalize('NFKC')
     .replaceAll(LITERAL_PERCENT_SENTINEL, '')
     .replaceAll(LITERAL_DOLLAR_SENTINEL, '')
+    .replaceAll(LITERAL_STAR_SENTINEL, '')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/gu, '')
     .replace(/[\r\n]+/gu, ' ')
     .trim()
     .slice(0, VARIABLE_VALUE_MAX);
+}
+
+function starVariableReferenceAt(sourceValue, indexValue) {
+  const source = String(sourceValue ?? '');
+  const index = Math.max(0, Number(indexValue) || 0);
+  if (source[index] !== '*') return null;
+  if (source[index + 1] === '*') return { literal: true, raw: '**', end: index + 2 };
+
+  const baseMatch = source.slice(index + 1).match(/^([A-Za-z_][A-Za-z0-9_]*)/u);
+  if (!baseMatch) return null;
+  let cursor = index + 1 + baseMatch[1].length;
+  const keys = [];
+  while (source[cursor] === '[' && keys.length < DEFAULT_MAX_TABLE_DEPTH + 2) {
+    const group = readBracketGroup(source, cursor);
+    if (!group) return null;
+    keys.push(group.content);
+    cursor = group.end;
+  }
+  return {
+    literal: false,
+    base: baseMatch[1],
+    keys,
+    raw: source.slice(index, cursor),
+    end: cursor
+  };
 }
 
 function detachedRecord(record) {
@@ -479,6 +506,57 @@ class VariableEngine {
     return this.tableEntries(base).map((entry) => entry.record);
   }
 
+  replaceTableTree(nameValue, recordsValue, classNameValue = '') {
+    const base = normalizeVariableName(nameValue);
+    const basePath = parseVariablePath(base);
+    if (!base || !basePath) return null;
+    const source = Array.isArray(recordsValue) ? recordsValue.slice(0, this.maxVariables + 1) : [];
+    if (source.length > this.maxVariables) return null;
+    const fallbackClassName = normalizeClassName(classNameValue);
+    const prepared = new Map();
+
+    for (const raw of source) {
+      const name = normalizeVariableName(raw?.name);
+      const path = parseVariablePath(name);
+      if (!name || !path || path.base !== basePath.base || path.keys.length <= basePath.keys.length) return null;
+      for (let index = 0; index < basePath.keys.length; index += 1) {
+        if (path.keys[index] !== basePath.keys[index]) return null;
+      }
+      const directPrefix = `${base}[`;
+      if (!name.startsWith(directPrefix)) return null;
+      const existingClassName = this.variables.get(name)?.className || '';
+      prepared.set(name, Object.freeze({
+        name,
+        value: normalizeVariableValue(raw?.value),
+        scope: 'global',
+        className: existingClassName || fallbackClassName
+      }));
+    }
+
+    const next = new Map(this.variables);
+    next.delete(base);
+    const prefix = `${base}[`;
+    for (const storedName of [...next.keys()]) {
+      if (storedName.startsWith(prefix)) next.delete(storedName);
+    }
+
+    // Creating a nested table replaces any scalar ancestors, matching define().
+    if (basePath.keys.length) {
+      let ancestor = basePath.base;
+      next.delete(ancestor);
+      for (const key of basePath.keys.slice(0, -1)) {
+        ancestor += `[${key}]`;
+        next.delete(ancestor);
+      }
+    }
+
+    if (next.size + prepared.size > this.maxVariables) return null;
+    for (const [name, record] of prepared) next.set(name, record);
+    this.variables = next;
+    this.revision += 1;
+    return this.tableEntries(base).map((entry) => entry.record);
+  }
+
   clear() {
     if (this.variables.size > 0) {
       this.variables.clear();
@@ -525,16 +603,99 @@ class VariableEngine {
       let output = '';
 
       for (let index = 0; index < source.length;) {
-        if (source[index] === '\\' && (source[index + 1] === '%' || source[index + 1] === '$')) {
-          output += source[index + 1] === '%' ? LITERAL_PERCENT_SENTINEL : LITERAL_DOLLAR_SENTINEL;
+        if (source[index] === '\\' && (source[index + 1] === '%' || source[index + 1] === '$' || source[index + 1] === '*')) {
+          output += source[index + 1] === '%'
+            ? LITERAL_PERCENT_SENTINEL
+            : source[index + 1] === '$'
+              ? LITERAL_DOLLAR_SENTINEL
+              : LITERAL_STAR_SENTINEL;
           index += 2;
           continue;
         }
 
-        // TinTin nested table query forms. The original client exposes
-        // $table[] as a braced list of direct child keys and $table[%*] as a
-        // braced list of direct child values. Dynamic parent selectors are
-        // expanded first, e.g. $signsInRoom[$curRoomSignKey][%*].
+        // Current TinTin uses *variable forms for nested variable names/keys.
+        // Preserve NukeFire's veteran $table[] key-list behavior while also
+        // supporting the modern spelling: *table[] returns direct child keys,
+        // *table[+1]/[-1] returns a relative child key, and *table[pattern]
+        // returns matching child keys. Selectors are expanded through the same
+        // bounded recursion path as dollar and ampersand table references.
+        if (source[index] === '*') {
+          const query = starVariableReferenceAt(source, index);
+          if (query?.literal) {
+            output += LITERAL_STAR_SENTINEL;
+            index = query.end;
+            continue;
+          }
+          if (query) {
+            const rootBase = normalizeVariableName(query.base);
+            const rootExists = Boolean(rootBase) && (this.hasNode(rootBase) || locals.has(rootBase));
+            if (!rootExists) {
+              output += query.raw;
+              index = query.end;
+              continue;
+            }
+
+            if (!query.keys.length) {
+              expandedNames.push(rootBase);
+              output += rootBase;
+              index = query.end;
+              continue;
+            }
+
+            const resolvedKeys = [];
+            let queryError = false;
+            for (const rawKey of query.keys.slice(0, -1)) {
+              const expandedKey = expandText(rawKey, stack);
+              if (error || !String(expandedKey).trim()) { queryError = true; break; }
+              resolvedKeys.push(String(expandedKey).trim());
+            }
+            if (!queryError) {
+              const parent = normalizeVariableName(`${query.base}${resolvedKeys.map((key) => `[${key}]`).join('')}`);
+              if (parent) {
+                const rawSelector = query.keys.at(-1);
+                const selector = rawSelector === '' || rawSelector === '%*'
+                  ? rawSelector
+                  : String(expandText(rawSelector, stack)).trim();
+                if (error) return '';
+
+                if (selector === '' || selector === '%*' || selector.includes('%')) {
+                  const entries = this.tableEntries(parent);
+                  const matcher = selector && selector !== '%*' ? compileTableKeyPattern(selector) : null;
+                  const selected = matcher ? entries.filter((entry) => matcher.test(entry.key)) : entries;
+                  expandedNames.push(parent);
+                  output += selected.map((entry) => `{${entry.key}}`).join('');
+                  index = query.end;
+                  continue;
+                }
+
+                if (/^[+-]\d+$/u.test(selector)) {
+                  const resolved = this.resolveIndexedName(`${parent}[${selector}]`);
+                  if (resolved && this.hasNode(resolved)) {
+                    const parsed = parseVariablePath(resolved);
+                    const key = parsed?.keys.at(-1) || '';
+                    expandedNames.push(resolved);
+                    output += key;
+                  }
+                  index = query.end;
+                  continue;
+                }
+
+                const requested = normalizeVariableName(`${parent}[${selector}]`);
+                if (requested && this.hasNode(requested)) {
+                  expandedNames.push(requested);
+                  output += selector;
+                }
+                index = query.end;
+                continue;
+              }
+            }
+          }
+        }
+
+        // Modern TinTin nested table query forms. Dollar substitution always
+        // returns values, including the empty selector: $table[] and
+        // $table[%*] are value lists. Keys are obtained with *table[].
+        // Dynamic parent selectors are expanded first.
         const tableQuery = tableQueryReferenceAt(source, index);
         if (tableQuery) {
           const resolvedKeys = [];
@@ -556,9 +717,7 @@ class VariableEngine {
               const entries = this.tableEntries(base);
               const matcher = tableQuery.query ? compileTableKeyPattern(tableQuery.query) : null;
               const selected = matcher ? entries.filter((entry) => matcher.test(entry.key)) : entries;
-              const values = tableQuery.query === ''
-                ? selected.map((entry) => entry.key)
-                : selected.map((entry) => entry.record.value);
+              const values = selected.map((entry) => entry.record.value);
               output += values.map((value) => `{${String(value ?? '')}}`).join('');
               index = tableQuery.end;
               continue;
@@ -685,7 +844,8 @@ class VariableEngine {
         ? ''
         : value
           .replaceAll(LITERAL_PERCENT_SENTINEL, '%')
-          .replaceAll(LITERAL_DOLLAR_SENTINEL, '$'),
+          .replaceAll(LITERAL_DOLLAR_SENTINEL, '$')
+          .replaceAll(LITERAL_STAR_SENTINEL, '*'),
       expanded: expandedNames.length > 0,
       names: expandedNames,
       error
@@ -700,8 +860,10 @@ module.exports = {
   normalizeVariableValue,
   parseVariablePath,
   variableReferenceAt,
+  starVariableReferenceAt,
   LITERAL_PERCENT_SENTINEL,
   LITERAL_DOLLAR_SENTINEL,
+  LITERAL_STAR_SENTINEL,
   VARIABLE_NAME_MAX,
   VARIABLE_VALUE_MAX,
   VARIABLE_EXPANDED_MAX,

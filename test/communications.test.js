@@ -18,6 +18,8 @@ const {
 
 test('classifies only recognizable communication lines', () => {
   assert.equal(classifyLine("Mo gossips, 'Hello wasteland.'").channel, 'gossip');
+  assert.equal(classifyLine("Mo shouts, 'Anyone here?'").channel, 'shout');
+  assert.equal(classifyLine("You holler, 'Downstairs!'").channel, 'holler');
   assert.equal(classifyLine("Rance tells the group, 'North.'").channel, 'group');
   assert.equal(classifyLine("Shai tells you, 'Ready.'").channel, 'tell');
   assert.equal(classifyLine('[Newbie] Vect: Where is recall?').channel, 'newbie');
@@ -51,11 +53,11 @@ test('normalizes advertised and detected optional communication channels', () =>
       advertisedChannels: [{ name: 'ssf' }],
       messages: [{ channel: 'bonejack' }]
     }).map((channel) => channel.id),
-    ['all', 'gossip', 'newbie', 'group', 'tell', 'grats', 'auction', 'ssf', 'bonejack', 'system']
+    ['all', 'gossip', 'shout', 'holler', 'newbie', 'group', 'tell', 'grats', 'auction', 'ssf', 'bonejack', 'system']
   );
   assert.deepEqual(
     visibleChannels({ advertisedChannels: [], messages: [] }).map((channel) => channel.id),
-    ['all', 'gossip', 'newbie', 'group', 'tell', 'grats', 'auction', 'system']
+    ['all', 'gossip', 'shout', 'holler', 'newbie', 'group', 'tell', 'grats', 'auction', 'system']
   );
 });
 

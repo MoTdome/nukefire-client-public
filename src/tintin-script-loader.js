@@ -1599,6 +1599,14 @@
     };
   }
 
+  function migrateLegacyNukeFireTableKeySyntax(sourceValue) {
+    const source = String(sourceValue ?? '');
+    if (!/\/\*\s*NukeFire Client (?:TinTin command file|imported TinTin definitions)\./u.test(source)) return { source, migrated: 0 };
+    let migrated = 0;
+    const output = source.replace(/\$([A-Za-z_][A-Za-z0-9_]*(?:\[[^\]\r\n]+\])*)\[\]/gu, (_match, path) => { migrated += 1; return `*${path}[]`; });
+    return { source: output, migrated };
+  }
+
   function parseReadDirective(commandValue, commandCharacter) {
     const value = String(commandValue || '').trim();
     const directive = directiveName(value, commandCharacter);
@@ -1668,7 +1676,9 @@
         filesRead += 1;
       }
 
-      const original = normalizeLineEndings(contentValue);
+      const rawOriginal = normalizeLineEndings(contentValue);
+      const migratedLegacy = migrateLegacyNukeFireTableKeySyntax(rawOriginal);
+      const original = migratedLegacy.source;
       if (!original.trim()) {
         errors.push(`${filename}: TinTin script is empty.`);
         return activeClassValue;
@@ -1863,6 +1873,7 @@
     prepareTinTinReadTree,
     parseReadDirective,
     formatTinTinReadReport,
+    migrateLegacyNukeFireTableKeySyntax,
     stripComments,
     detectCommandCharacter,
     rewriteLoadedCommandCharacter,

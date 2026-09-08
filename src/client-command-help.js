@@ -28,6 +28,55 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     ])
   }),
   Object.freeze({
+    name: 'lua',
+    aliases: Object.freeze([]),
+    summary: 'Run bounded per-session Lua that shares NukeFire variables and the protected command core.',
+    usages: Object.freeze(['lua {echo("hello")}', 'lua status', 'lua errors', 'lua errors clear', 'lua reload', 'lua {local id=tempRegexTrigger("^Hit (.+)$", function() echo(matches[2]) end)}']),
+    details: Object.freeze([
+      'Lua runs in the isolated NukeFire Worker with no filesystem, shell, network, Node, Electron, DOM, io, os, debug, package, or arbitrary JavaScript bridge. require(name) is a NukeFire-managed module loader only and cannot resolve filesystem paths.',
+      'send(command) is Mudlet-familiar direct delivery to the MUD and intentionally bypasses Alias expansion.',
+      'execute(command) and expandAlias(command) feed a bounded command back through the normal NukeFire/TinTin automation pipeline, including Aliases and client commands.',
+      'getVariable(name) / setVariable(name, value) and getTable(name) / setTable(name, table) use the same per-session VariableEngine as TinTin scripting. Numeric TinTin list keys become 1-based Lua arrays; named keys become Lua table fields.',
+      "gmcp is a bounded Mudlet-familiar snapshot of the session's canonical NukeFire GmcpStore, refreshed before each Lua execution. Examples include gmcp.Char.Vitals and gmcp.Room.Info; transient combat/sound/loot event packets are intentionally not retained in that snapshot.",
+      "sendGMCP(\"Core.KeepAlive\") uses Mudlet's familiar one-string form. NukeFire also accepts sendGMCP(\"Package.Name\", luaTable) as a bounded convenience and routes it through the existing GMCP connection path.",
+      'Mudlet-familiar temporary helpers tempAlias, tempTrigger, tempRegexTrigger, tempExactMatchTrigger, tempTimer, registerAnonymousEventHandler, and raiseEvent reuse NukeFire Alias/Action/Event/timer engines. They are session-local and are never written into TinTin profiles.',
+      'Lua callbacks receive familiar line, command, and matches globals. Regex matches use matches[1] for the complete match and following indexes for captures; named captures are also available by name.',
+      'kill/enable/disable Alias, Trigger, and Timer helpers plus killAnonymousEventHandler control the same temporary records. expireAfter follows Mudlet behavior: returning true from a trigger callback prevents that match from counting toward expiration.',
+      'GMCP publishes gmcp.Package.Name events through the same callback layer, while raiseEvent can notify both Lua handlers and compatible NukeFire/TinTin Events without creating a second Event store.',
+      'For NukeFire Mudlet-package portability, msdp is a read-only compatibility projection of the canonical GMCP store. Relevant GMCP changes raise msdp.FIELD events; sendMSDP REPORT/UNREPORT/RESET/XTERM_256_COLORS setup calls are accepted as compatibility no-ops because NukeFire already has the data through GMCP.',
+      'Mudlet-familiar registerNamedEventHandler plus stop/resume/delete/getNamedEventHandlers reuse the same temporary Event callback engine. raiseGlobalEvent broadcasts only to other open NukeFire sessions and appends the sending profile name, matching the common multi-profile NukeFire Mudlet pattern.',
+      'getProfileName(), getEpoch(), hasFocus(), reconnect(), cecho(), table.contains(), table.union(), and spairs() cover common non-GUI helpers used by existing NukeFire Mudlet scripts. reconnect() can only reconnect the owning configured session and never exposes an arbitrary host/port.',
+      'Mudlet-familiar convenience helpers sendAll(), speedwalk(), getCmdLine()/printCmdLine()/setCmdLine()/appendCmdLine()/clearCmdLine(), getCurrentLine()/getLines(), and lightweight decho()/hecho() reuse NukeFire-owned command, Speedwalk, input-draft, and bounded visible-output state. getLines also accepts negative relative indexes such as getLines(-10, -1).',
+      'Mudlet lifecycle compatibility publishes sysConnectionEvent, sysDisconnectionEvent, and sysProtocolEnabled (GMCP plus synthetic MSDP compatibility). Geyser/EMCO, package downloading, arbitrary filesystem persistence, io, and Mudlet map-database APIs are intentionally not emulated; protected Lua storage/modules stay inside NukeFire-owned state instead.',
+      'The nf namespace aliases the same approved API (including nf.send, nf.execute, nf.variables, nf.gmcp, and nf.sendGMCP) and adds managed nf.modules access. storage.get/set/delete persists bounded per-session JSON-compatible data; settings.get reads protected package settings; neither surface exposes a path or file handle.',
+      'nf.pane.create(id, spec) creates a bounded native Custom Pane using declarative text, value, and bar rows. Each active custom pane is its own NukeFire workspace panel and can be dragged, moved between docks, or joined/separated as a tab. Returned panes support set(rowId, value), show(), hide(), clear(), and destroy(); Lua supplies data only, never HTML, CSS, JavaScript, DOM access, renderer code, or a gag/render-veto path.',
+      'Mallard-familiar gmcp.on(package, callback), world.on("connect"/"disconnect", callback), mud.send(command, options), and safe mud.trigger(regex, callback) are thin wrappers over the same GMCP/session/send/Action engines. mud.trigger callbacks intentionally have no gag capability.',
+      'Lua may be invoked by normal input, Aliases, Actions, Events, Delays, and other NukeFire automation paths. Nested Lua re-entry is bounded to prevent recursive scripts from running forever.',
+      'Lua executes asynchronously in the Worker. Commands later in the same TinTin command batch may continue before Lua finishes; when ordering matters, call execute() or expandAlias() from Lua for the next command after the Lua work is complete.',
+      'Managed module source survives client restarts in NukeFire-owned state. require("row_state") and require("lib.format") can load only names previously placed in nf.modules; path traversal and arbitrary disk reads remain impossible.',
+      'Use LUASCRIPT for native multi-line saved scripts and optional per-session Auto-run; saved script source remains inside the same NukeFire-managed boundary.',
+      'LUA STATUS reports whether the per-session Lua VM is initialized, the Lua version, saved/autorun script counts, Custom Pane count, run/failure totals, retained error count, and the most recent error.',
+      'LUA ERRORS [count] shows the bounded per-session error history with script/source line information and a short stack excerpt. LUA ERRORS CLEAR clears retained history without pretending a failed script has become healthy.',
+      'LUA RELOAD is a short form of LUASCRIPT RELOAD: it starts a fresh per-session Lua VM, clears transient callbacks/Custom Panes, and reruns enabled autorun scripts.',
+      'Saved-script execution labels Lua chunks by managed script name, so errors can report locations such as main:37 rather than only an anonymous Worker location. Repeated identical errors are coalesced in the bounded history.'
+    ])
+  }),
+  Object.freeze({
+    name: 'luascript',
+    aliases: Object.freeze(['luascripts']),
+    summary: 'Create, edit, run, and auto-load protected multi-line Lua scripts for the current NukeFire session.',
+    usages: Object.freeze(['luascript', 'luascript new main', 'luascript list', 'luascript run main', 'luascript autorun main on', 'luascript reload']),
+    details: Object.freeze([
+      'A bare LUASCRIPT command opens the native multi-line Lua Scripts editor for the active session. File > Lua Scripts opens the same editor.',
+      'Saved scripts are stored in NukeFire-managed Lua state and share the same protected module source used by require(); no filesystem path, file handle, shell, or package loader is exposed to Lua.',
+      'Each script may enable Auto-run. Auto-run scripts load when saved sessions are restored at client startup and before the first explicit Connect for a newly created session, so GMCP/Event handlers can be ready before normal play.',
+      'SAVE & RUN executes the saved source in the current Lua VM. RELOAD AUTORUN deliberately starts a fresh Lua VM for that session, clears transient custom panes and Lua callbacks, and then runs every Auto-run script again.',
+      'Script names use managed module syntax such as main, combat, or panes.vitals. Each script is bounded to 64 KiB and is session-isolated.',
+      'Deleting a saved script also removes its managed module source. Ordinary nf.modules entries that were never registered as saved scripts remain separate.',
+      'The editor is NukeFire-native. It does not add Lua filesystem access, HTML/CSS/JavaScript panes, DOM access, or any gag/render-veto capability.'
+    ])
+  }),
+  Object.freeze({
     name: 'read',
     aliases: Object.freeze([]),
     summary: 'Load supported definitions from the visible NukeFire Scripts folder.',
@@ -115,7 +164,7 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     summary: 'Clear all or one family of live TinTin definitions in the active session.',
     usages: Object.freeze(['kill', 'killall', 'kill {aliases|variables|functions|actions|gags|highlights|substitutes|macros|events|tickers|delays}', 'kill {family} {name}']),
     details: Object.freeze([
-      'Bare KILL or KILLALL follows TinTin semantics and clears the reloadable TinTin lists for only the active session.',
+      'Bare KILL and KILL ALL clear the reloadable TinTin lists for only the active session. KILLALL remains accepted as a legacy alias; modern TinTin prefers KILL ALL.',
       'A family name clears only that definition family; an optional item name removes the matching definition from that family.',
       'Clearing all state also cancels pending delays and queued Speedwalk work for the active session.',
       'Script files, sessions, connection profiles, command history, output, maps, accessibility preferences, and other client settings are not erased.'
@@ -142,7 +191,7 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     usages: Object.freeze(['echo {format} {argument1} {argument2} ...']),
     details: Object.freeze([
       'Supports %% plus %s, %d, %f, %g, %t, %c, %a, and safe %m math with bounded width and precision.',
-      'The shared formatter also accepts veteran %h/%l/%n/%p/%r/%u, %A/%C/%D/%G/%L/%M/%R/%Y transforms; complex %w word-wrap tables remain deferred.',
+      'The shared formatter also accepts veteran %h/%l/%n/%p/%r/%u and modern TinTin %A/%C/%D/%G/%L/%M/%R/%X/%x transforms; use %t with strftime tokens for dates.',
       'Use %{name} for a NukeFire variable inside the format string; arguments use normal variable expansion.',
       'Echo output uses normal terminal and screen-reader display, may be highlighted or substituted, and never triggers Actions.',
       'Row positioning remains deliberately deferred.'
@@ -167,7 +216,7 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     summary: 'Format text with Echo-compatible specifiers and store it in a variable.',
     usages: Object.freeze(['format {variable} {format} {argument1} {argument2} ...']),
     details: Object.freeze([
-      'Supports the safe Echo format set plus veteran %h/%l/%n/%p/%r/%u, %A/%C/%D/%G/%L/%M/%R/%Y transformations and %m bounded math.',
+      'Supports the safe Echo format set plus veteran %h/%l/%n/%p/%r/%u, modern TinTin %A/%C/%D/%G/%L/%M/%R/%X/%x transformations, %t dates, and %m bounded math.',
       'Complex TinTin %w word-wrap table output remains deferred; %T/%U keep NukeFire’s established no-empty-argument adaptation.',
       'Format stores plain variable text; terminal color directives remain display-only in Echo.',
       'Existing variable class membership is preserved when Math or Format updates its value.'
@@ -378,8 +427,9 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     ]),
     details: Object.freeze([
       'MANAGE opens Variables in the active session Definition Manager. Bare VARIABLE keeps the traditional text listing.',
-      'Use native TinTin $name or ${name}; existing %name and %{name} remain compatible.',
-      'Use $$name or \\$name for a literal $name. Braced names may contain safe spaces or punctuation.'
+      'Use native TinTin $name or ${name}; existing %name and %{name} remain compatible. Nested $table[+1]/[-1] value lookups and &table[] size/index queries are supported.',
+      'Modern TinTin *table[] returns direct child key names and *table[+1]/[-1] returns a relative child key; $table[] returns direct child values. NukeFire-generated legacy files are migrated from the older $table[] key-list form when they load.',
+      'Use $$name or \\$name for a literal $name, and **name or \\*name for a literal *name. Braced names may contain safe spaces or punctuation.'
     ])
   }),
   Object.freeze({
@@ -476,7 +526,8 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     details: Object.freeze([
       'MANAGE opens Highlights in the active session Definition Manager. Bare HIGHLIGHT keeps the traditional text listing.',
       'Patterns support literal text, ^ and $ anchors, %1 through %9, and %* wildcards. Lower priorities win overlaps.',
-      'Styles support TinTin color names and documented <abc> color codes, plus light, dark, underline, reverse, italic, reset, and background colors with b.',
+      'Styles support TinTin color names and documented <abc> color codes, plus 12-bit <Frgb>/<Brgb> and 24-bit <Frrggbb>/<Brrggbb> truecolor. Adjacent foreground/background forms such as <F0F0><B500> are accepted.',
+      'Light, dark, underline, reverse, italic, reset, and named background colors with b remain supported.',
       'Highlights alter visual terminal runs only. Actions, Gags, Communications, vitals, Find, copy, and screen-reader text keep the original words.',
       'Blink and row/column positioning are intentionally outside this interval.'
     ])
@@ -520,7 +571,8 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     ]),
     details: Object.freeze([
       'MANAGE opens Macros in the active session Definition Manager. Bare MACRO keeps the traditional text listing.',
-      'Examples include F1, Ctrl+F1, Command+K, Numpad8, and Alt+PageUp. Common TinTin terminal sequences for F1-F5, Ctrl-Z, and the numeric keypad import as physical NukeFire keys.',
+      'Examples include F1, Ctrl+F1, Command+K, Numpad8, and Alt+PageUp. Common TinTin/WinTin terminal sequences for F1-F12, navigation keys, Ctrl-Z, and the numeric keypad import as physical NukeFire keys.',
+      'TinTin Ctrl-V is a terminal sequence-discovery aid rather than part of the stored macro syntax. In NukeFire, use the physical key name directly; imported common escape sequences are translated automatically.',
       'Macro bodies may contain up to 32 brace-aware commands and return through the normal Alias, Variable, routing, repeat, delay, loop, and Speedwalk pipeline.',
       'Plain typing sequences such as nn and ^nn, held-key repeat, and macro recording remain intentionally deferred.'
     ])
@@ -590,24 +642,40 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
       'list {variable} {size} {result variable}',
       'list {variable} {insert} {index} {value}',
       'list {variable} {delete} {index}',
-      'list {variable} {sort} {item} ...',
+      'list {variable} {sort} [item ...]',
+      'list {variable} {order} [item ...]',
+      'list {variable} {indexate} [key]',
+      'list {variable} {tabulate} [key]',
+      'list {variable} {collapse} {separator}',
+      'list {variable} {explode} {separator}',
+      'list {variable} {filter} {keep regex} [remove regex]',
+      'list {variable} {refine} {keep math} [remove math]',
       'list {variable} {clear}',
-      'list {variable} {order}',
-      'list {variable} {reverse}'
+      'list {variable} {reverse} [item ...]'
     ]),
     details: Object.freeze([
-      'Lists stay private to the session and are capped at 512 items. ADD, CREATE, TOKENIZE, FIND, GET, SET, SIZE, INSERT, DELETE, SORT, CLEAR, ORDER, and REVERSE are supported with TinTin-style 1-based indexing and negative tail indexes where the source accepts them.',
-      'Read entries with $name[+1], $name[-1], or a bounded dynamic selector such as $name[$index]. Use &name[] for the current size.',
+      'Lists stay private to the session and are capped at 512 items. The bounded modern family includes ADD, CLEAR, COLLAPSE, COPY, CREATE, DELETE, EXPLODE, FILTER, FIND, GET, INDEXATE, INSERT, NUMERATE, ORDER, REFINE, REVERSE, SET, SHUFFLE, SIMPLIFY, SIZE, SORT, SWAP, TABULATE, and TOKENIZE.',
+      'SORT globally alphabetizes the list after optional additions. ORDER performs numeric ordering. INDEXATE selects a nested field for list-table sorting, and TABULATE turns list values or an indexed list-table field into table keys while preserving nested records.',
+      'Read values with $name[+1], $name[-1], or a bounded dynamic selector such as $name[$index]. Use *name[] for keys and &name[] for the current size.',
       'Adjacent top-level brace arguments such as {beta}{delta} remain distinct TinTin arguments rather than being concatenated.'
+    ])
+  }),
+  Object.freeze({
+    name: 'cat',
+    aliases: Object.freeze([]),
+    summary: 'Concatenate scalar text or merge TinTin table data into one variable.',
+    usages: Object.freeze(['cat {variable} {argument}']),
+    details: Object.freeze([
+      'Scalar CAT appends expanded text to the destination. Table-shaped arguments merge through the same bounded NukeFire/TinTin variable engine rather than creating a second data store.'
     ])
   }),
   Object.freeze({
     name: 'replace',
     aliases: Object.freeze([]),
-    summary: 'Replace literal text inside one private TinTin variable.',
-    usages: Object.freeze(['replace {variable} {old text} {new text}']),
+    summary: 'Replace bounded TinTin regular-expression matches inside one private variable.',
+    usages: Object.freeze(['replace {variable} {regular expression} {new text}']),
     details: Object.freeze([
-      'Replacement is literal, bounded, and updates only the issuing session variable. It does not evaluate regular expressions or host scripts.'
+      'Replacement uses the same bounded TinTin regular-expression engine as REGEXP. The full match is &0 and captures are exposed as &1 through &99; host scripts are never evaluated.'
     ])
   }),
   Object.freeze({
@@ -665,7 +733,7 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     details: Object.freeze([
       'FORALL accepts adjacent braced lists, semicolon lists, whitespace lists, and expanded table queries, bounded to 512 items and 32 commands per body.',
       'The current item replaces TinTin command variable &0 for that iteration. Return and Continue retain bounded script control-flow behavior.',
-      'Use $table[] to obtain direct child keys as a braced list and $table[%*] to obtain direct child values; nested dynamic table paths are supported.'
+      'Use *table[] to obtain direct child keys. Modern TinTin $table[] and $table[%*] return direct child values; nested dynamic table paths are supported.'
     ])
   }),
   Object.freeze({
@@ -675,7 +743,7 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     usages: Object.freeze(['foreach {list} {variable} {command; command; ...}']),
     details: Object.freeze([
       'Brace/semicolon lists are bounded to 512 items and command bodies to 32 commands with a maximum nesting depth of 4.',
-      'Legacy *table[%*] key iteration remains supported. Source-style $table[] key lists and $table[%*] value lists are also available for FORALL and LIST CREATE. Functions may use bounded Foreach and Return.'
+      'Modern *table[] / *table[%*] key iteration and $table[] / $table[%*] value iteration are available for FOREACH, FORALL, and LIST CREATE. Functions may use bounded Foreach and Return.'
     ])
   }),
   Object.freeze({
@@ -701,9 +769,10 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     name: 'line',
     aliases: Object.freeze([]),
     summary: 'Apply TinTin line-local execution, filtering, substitution, and confined logging modifiers.',
-    usages: Object.freeze(['line oneshot {command}', 'line gag [amount]', 'line ignore {command}', 'line local {command}', 'line strip {command}', 'line verbose {command}', 'line substitute {variables|functions} {command}', 'line log {filename} [text]', 'line logverbatim {filename} {text}']),
+    usages: Object.freeze(['line oneshot {command}', 'line gag [amount]', 'line ignore {command}', 'line json {variable} {command}', 'line local {command}', 'line quiet {command}', 'line strip {command}', 'line verbatim {command}', 'line verbose {command}', 'line substitute {variables|functions} {command}', 'line log {filename} [text]', 'line logverbatim {filename} {text}']),
     details: Object.freeze([
-      'IGNORE runs nested local output without feeding that output back through Actions. LOCAL allows client-side work but blocks nested server-bound sends.',
+      'IGNORE runs nested local output without feeding that output back through Actions. LOCAL allows client-side work but blocks nested server-bound sends. QUIET suppresses nested command feedback, while VERBATIM deliberately skips variable/function substitution.',
+      'JSON serializes one bounded scalar or nested TinTin variable/table and exposes the JSON text as &0 to the nested command.',
       'LOG and LOGVERBATIM redirect veteran absolute filenames by basename into NukeFire’s confined Logs folder; arbitrary host paths are never reopened. LINE LOG with only a filename arms a one-shot capture of the next completed incoming MUD line, matching TinTin source behavior.',
       'ONESHOT, bounded GAG, STRIP, VERBOSE, and variable/function substitution use the normal private session pipeline.'
     ])
@@ -921,7 +990,7 @@ function listClientCommandHelp(prefixValue = DEFAULT_CLIENT_COMMAND_PREFIX) {
     `  ${prefix}function/${prefix}functions`,
     '',
     'FLOW AND COMMANDS',
-    `  ${prefix}math  ${prefix}if/${prefix}elseif/${prefix}else  ${prefix}delay  ${prefix}loop  ${prefix}while/${prefix}continue`,
+    `  ${prefix}math  ${prefix}if/${prefix}elseif/${prefix}else  ${prefix}return  ${prefix}delay  ${prefix}loop  ${prefix}while/${prefix}continue`,
     `  ${prefix}list  ${prefix}foreach/${prefix}forall  ${prefix}ticker/${prefix}unticker  ${prefix}line  ${prefix}speedwalk`,
     `  ${prefix}map find <vnum>  ${prefix}path run  ${prefix}path stop  ${prefix}pathdir  ${prefix}dirs`,
     `  ${prefix}<number> <command>  ${prefix}${prefix}<server command>`,

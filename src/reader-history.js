@@ -16,6 +16,8 @@
     Object.freeze({ id: 'damage', label: 'Damage', speechPolicy: 'interrupt', always: false }),
     Object.freeze({ id: 'client-reader', label: 'Client Reader', speechPolicy: 'quiet', always: false })
   ]);
+  const NAVIGATION_PRIORITY = Object.freeze(['main', 'comm:gossip', 'comm:ssf', 'comm:tell']);
+  const NAVIGATION_PRIORITY_INDEX = new Map(NAVIGATION_PRIORITY.map((id, index) => [id, index]));
 
   function positiveInteger(value, fallback) {
     const number = Number(value);
@@ -120,9 +122,20 @@
     availableCategories(options = {}) {
       const includeEmpty = options.includeEmpty === true;
       return this.order
-        .map((id) => this.categories.get(id))
-        .filter(Boolean)
-        .filter((category) => includeEmpty || category.always || (this.entries.get(category.id)?.length || 0) > 0);
+        .map((id, index) => ({ category: this.categories.get(id), index }))
+        .filter((entry) => Boolean(entry.category))
+        .filter((entry) => includeEmpty || entry.category.always || (this.entries.get(entry.category.id)?.length || 0) > 0)
+        .sort((left, right) => {
+          const leftPriority = NAVIGATION_PRIORITY_INDEX.get(left.category.id);
+          const rightPriority = NAVIGATION_PRIORITY_INDEX.get(right.category.id);
+          if (leftPriority !== undefined || rightPriority !== undefined) {
+            if (leftPriority === undefined) return 1;
+            if (rightPriority === undefined) return -1;
+            return leftPriority - rightPriority;
+          }
+          return left.index - right.index;
+        })
+        .map((entry) => entry.category);
     }
 
     select(categoryId, options = {}) {
@@ -293,6 +306,7 @@
     DEFAULT_MAX_ENTRIES_PER_CATEGORY,
     DEFAULT_MAX_CHARACTERS_PER_CATEGORY,
     CORE_CATEGORIES,
+    NAVIGATION_PRIORITY,
     ReaderHistory
   });
 });

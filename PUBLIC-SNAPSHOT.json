@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "0.3.1-beta.73",
-  "source_tag": "v0.3.1-beta.73",
-  "source_commit": "550c6de6f663203005dc114db92cab0e813fb280",
-  "created_at": "2026-09-02T22:35:51.439213+00:00",
+  "public_snapshot": "beta74-development-30bcdfa",
+  "source_tag": null,
+  "source_commit": "30bcdfae2e397833de930f32329175a712b7008f",
+  "created_at": "2026-09-08T20:33:23.950161+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,5 +46,14 @@
     }
   },
   "server_integration_examples_included": false,
-  "server_integration_status": "placeholder/readme only; source examples pending review"
+  "server_integration_status": "placeholder/readme only; source examples pending review",
+  "source_branch": "milestone-1.9-client-development",
+  "package_version": "0.3.1-beta.73",
+  "excluded_private_paths": [
+    "docs/PROJECT_LEDGER.md"
+  ],
+  "verification": {
+    "private_source": "1723/1723 tests PASS before public reconciliation",
+    "public_candidate": "npm ci + git diff --check + npm run check + npm run verify: PASS"
+  }
 }

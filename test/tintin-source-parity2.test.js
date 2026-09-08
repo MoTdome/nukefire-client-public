@@ -41,7 +41,7 @@ function expand(manager, sessionId, text) {
   return manager.withTinTinSession(session, () => manager.variableExpansion(text));
 }
 
-test('TinTin nested table queries expose direct keys with [] and values with [%*]', () => {
+test('TinTin nested table queries expose keys with star and values with dollar selectors', () => {
   const { manager } = createManager();
   const session = manager.createSession({ name: 'Signs' });
   const id = session.id;
@@ -50,10 +50,10 @@ test('TinTin nested table queries expose direct keys with [] and values with [%*
   manager.dispatchInput(id, '#var {signsInRoom[room 42][north]} {North sign}');
   manager.dispatchInput(id, '#var {signsInRoom[room 42][south gate]} {South sign}');
 
-  assert.equal(expand(manager, id, '$signsInRoom[$curRoomSignKey][]').value, '{north}{south gate}');
+  assert.equal(expand(manager, id, '*signsInRoom[$curRoomSignKey][]').value, '{north}{south gate}');
   assert.equal(expand(manager, id, '$signsInRoom[$curRoomSignKey][%*]').value, '{North sign}{South sign}');
 
-  manager.dispatchInput(id, '#list {keyList} create $signsInRoom[$curRoomSignKey][]');
+  manager.dispatchInput(id, '#list {keyList} create *signsInRoom[$curRoomSignKey][]');
   assert.equal(expand(manager, id, '$keyList[+1]').value, 'north');
 });
 

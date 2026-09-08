@@ -30,10 +30,10 @@
     'format', 'function', 'gag', 'grep', 'help', 'highlight', 'history', 'if', 'forall',
     'ignore', 'info', 'keypad', 'kill', 'killall', 'line', 'list', 'local', 'log', 'loop',
     'macro', 'map', 'math', 'message', 'mouse', 'nop', 'parse', 'path', 'pathdir',
-    'port', 'prompt', 'read', 'regexp', 'repeat', 'replace', 'return', 'run',
+    'port', 'prompt', 'read', 'regexp', 'replace', 'return', 'run',
     'scan', 'screen', 'script', 'send', 'session', 'showme', 'snoop', 'speedwalk',
     'split', 'ssl', 'substitute', 'suspend', 'switch', 'system', 'tab', 'test', 'textin',
-    'ticker', 'time', 'unaction', 'unalias', 'undelay', 'unevent', 'unfunction', 'ungag',
+    'ticker', 'unaction', 'unalias', 'undelay', 'unevent', 'unfunction', 'ungag',
     'unhighlight', 'unmacro', 'unpathdir', 'unprompt', 'unsplit', 'unsubstitute', 'untab',
     'unticker', 'unvariable', 'variable', 'while', 'write', 'zap'
   ]);
@@ -43,7 +43,7 @@
     'alias', 'unalias', 'variable', 'unvariable', 'function', 'unfunction',
     'action', 'unaction', 'gag', 'ungag', 'highlight', 'unhighlight',
     'substitute', 'unsubstitute', 'macro', 'unmacro', 'class', 'delay', 'undelay', 'loop',
-    'while', 'break', 'continue', 'foreach', 'forall', 'if', 'elseif', 'else', 'case', 'default', 'math', 'format', 'parse', 'replace', 'switch', 'send',
+    'while', 'break', 'continue', 'foreach', 'forall', 'if', 'elseif', 'else', 'case', 'default', 'math', 'format', 'parse', 'replace', 'switch', 'send', 'cat',
     'echo', 'showme', 'return', 'local', 'unlocal', 'speedwalk', 'snoop', 'read',
     'write', 'kill', 'help', 'profile', 'ignore', 'message', 'reload', 'edit', 'debug', 'nop', 'unevent', 'unticker', 'commands', 'dirs', 'info', 'history', 'grep', 'zap', 'regex'
   ]);
@@ -60,7 +60,7 @@
     const name = normalizeEventName(value);
     return Boolean(name) && (SUPPORTED_EVENTS.has(name) || SUPPORTED_EVENT_PREFIXES.some((prefix) => name.startsWith(prefix)));
   }
-  const SUPPORTED_LIST_OPERATIONS = new Set(['add', 'clear', 'create', 'delete', 'find', 'get', 'insert', 'ins', 'order', 'reverse', 'set', 'size', 'sort', 'tokenize']);
+  const SUPPORTED_LIST_OPERATIONS = new Set(['add','clear','collapse','copy','create','delete','explode','filter','find','get','indexate','insert','ins','numerate','order','refine','reverse','set','shuffle','simplify','size','sort','swap','tabulate','tokenize']);
   const NUKefireOwnedConfig = new Set([
     'buffer size', 'charset', 'command color', 'mouse', 'packet patch', 'screen reader',
     'telnet', 'wordwrap'
@@ -70,7 +70,7 @@
     daemon: 'Host/background process execution is intentionally unavailable to TinTin scripts.',
     port: 'Opening a local listener from a script is intentionally blocked.',
     run: 'External process execution is intentionally blocked.',
-    scan: 'Arbitrary host-file scanning is intentionally blocked.',
+    scan: 'TinTin #SCAN reads local files/directories; host-file access stays outside NukeFire scripting. The plain MUD command scan is unaffected.',
     script: 'Shell/script execution and host command capture are intentionally blocked.',
     ssl: 'TinTin scripts cannot create arbitrary external network sessions; NukeFire owns connections.',
     system: 'Shell/system command execution is intentionally blocked.',
@@ -307,7 +307,7 @@
       return {
         classification: CLASSIFICATIONS.NEEDS,
         detail: operation
-          ? `TinTin #LIST ${operation.toUpperCase()} is not implemented yet; current native operations are ADD, CREATE, TOKENIZE, FIND, DELETE, CLEAR, INSERT/INS, ORDER, and REVERSE.`
+          ? `TinTin #LIST ${operation.toUpperCase()} is not implemented yet; current native operations include the bounded modern TinTin list family.`
           : 'TinTin #LIST query/operation form is not fully implemented yet.'
       };
     }
@@ -331,11 +331,7 @@
     }
 
     if (directive === 'foreach') {
-      const listExpression = String(tokens[0] || '').trim();
-      if (/^\*[A-Za-z_][A-Za-z0-9_]*\[\]$/u.test(listExpression)) {
-        return { classification: CLASSIFICATIONS.NEEDS, detail: 'Legacy star-prefixed *table[] FOREACH syntax is still not implemented; modern $table[] key queries and bounded #FORALL are supported.' };
-      }
-      return { classification: CLASSIFICATIONS.NATIVE, detail: 'Bounded TinTin #FOREACH is supported.' };
+      return { classification: CLASSIFICATIONS.NATIVE, detail: 'Bounded TinTin #FOREACH is supported, including *table[] nested-key lists.' };
     }
 
     if (directive === 'forall') {
@@ -379,7 +375,7 @@
       const operation = normalizeOperation(tokens[0]);
       if (operation === 'oneshot' && tokens.length >= 2) return { classification: CLASSIFICATIONS.NATIVE, detail: 'TinTin #LINE ONESHOT is supported.' };
       if (operation === 'gag' && tokens.length <= 2) return { classification: CLASSIFICATIONS.TRANSLATED, detail: 'TinTin #LINE GAG suppresses the next bounded number of incoming server lines without disabling Actions.' };
-      if (['ignore', 'local', 'strip', 'verbose'].includes(operation) && tokens.length >= 2) {
+      if (['ignore', 'json', 'local', 'quiet', 'strip', 'verbatim', 'verbose'].includes(operation) && tokens.length >= 2) {
         return { classification: CLASSIFICATIONS.TRANSLATED, detail: `TinTin #LINE ${operation.toUpperCase()} maps to bounded NukeFire-local command execution semantics.` };
       }
       if (['log', 'logverbatim'].includes(operation) && tokens.length >= 2) {

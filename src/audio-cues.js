@@ -11,7 +11,7 @@
     'health-75', 'health-50', 'health-10',
     'mana-20', 'mana-5', 'move-50', 'move-5',
     'combat-start', 'combat-end', 'group-critical', 'group-down',
-    'tell', 'auction', 'gossip', 'skynet', 'ssf'
+    'tell', 'auction', 'gossip', 'group', 'grats', 'shout', 'holler', 'skynet', 'ssf', 'stairs'
   ]);
 
   const CUE_DEFINITIONS = Object.freeze({
@@ -97,6 +97,28 @@
     gossip: Object.freeze([
       Object.freeze({ offset: 0, frequency: 740, duration: 0.045, gain: 0.48, type: 'sine' }),
       Object.freeze({ offset: 0.065, frequency: 930, duration: 0.055, gain: 0.5, type: 'sine' })
+    ]),
+    group: Object.freeze([
+      Object.freeze({ offset: 0, frequency: 640, duration: 0.045, gain: 0.48, type: 'sine' }),
+      Object.freeze({ offset: 0.06, frequency: 820, duration: 0.055, gain: 0.5, type: 'sine' })
+    ]),
+    grats: Object.freeze([
+      Object.freeze({ offset: 0, frequency: 660, duration: 0.04, gain: 0.46, type: 'triangle' }),
+      Object.freeze({ offset: 0.05, frequency: 880, duration: 0.045, gain: 0.48, type: 'triangle' }),
+      Object.freeze({ offset: 0.105, frequency: 1100, duration: 0.05, gain: 0.5, type: 'triangle' })
+    ]),
+    shout: Object.freeze([
+      Object.freeze({ offset: 0, frequency: 520, duration: 0.055, gain: 0.5, type: 'triangle' }),
+      Object.freeze({ offset: 0.07, frequency: 760, duration: 0.06, gain: 0.52, type: 'triangle' })
+    ]),
+    holler: Object.freeze([
+      Object.freeze({ offset: 0, frequency: 460, duration: 0.055, gain: 0.5, type: 'triangle' }),
+      Object.freeze({ offset: 0.07, frequency: 700, duration: 0.06, gain: 0.52, type: 'triangle' })
+    ]),
+    stairs: Object.freeze([
+      Object.freeze({ offset: 0, frequency: 420, duration: 0.05, gain: 0.46, type: 'sine' }),
+      Object.freeze({ offset: 0.065, frequency: 620, duration: 0.055, gain: 0.48, type: 'sine' }),
+      Object.freeze({ offset: 0.135, frequency: 840, duration: 0.065, gain: 0.5, type: 'sine' })
     ]),
     skynet: Object.freeze([
       Object.freeze({ offset: 0, frequency: 1180, endFrequency: 590, duration: 0.06, gain: 0.52, type: 'square' }),

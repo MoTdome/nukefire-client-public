@@ -87,11 +87,40 @@ test('COMMAND ECHO round-trips through TinTin #read/#write config state', () => 
   assert.match(written.content, /#config \{COMMAND ECHO\} \{OFF\}/u);
 });
 
-test('Lua command echo is quiet by default while explicit echo() and errors remain visible', () => {
+test('Lua command echo is quiet by default while explicit echo() and errors remain visible', async () => {
+  const events = [];
+  const manager = new SessionManager({
+    connectionFactory: (handlers) => new FakeConnection(handlers),
+    handlers: {
+      onEvent: (event) => events.push(event),
+      onSessionsChanged: () => {},
+      onLuaExecute: () => Promise.resolve({
+        ok: true,
+        values: [42],
+        echoes: [['visible']],
+        sends: [],
+        variableSets: [],
+        executions: []
+      })
+    }
+  });
+  const alpha = manager.createSession({ name: 'Alpha' });
+
+  const quiet = manager.dispatchInput(alpha.id, '#lua {echo("visible"); return 42}');
+  assert.deepEqual(quiet.messages, []);
+  await new Promise((resolve) => setImmediate(resolve));
+  const quietResult = events.filter((event) => event.type === 'lua-result').at(-1);
+  assert.ok(quietResult);
+  assert.deepEqual(quietResult.payload.echoes, [['visible']]);
+  assert.deepEqual(quietResult.payload.values, [42]);
+
+  manager.dispatchInput(alpha.id, '#config {COMMAND ECHO} {ON}');
+  const loud = manager.dispatchInput(alpha.id, '#lua {return 42}');
+  assert.deepEqual(loud.messages, ['[Lua] running...']);
+
   const renderer = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'renderer.js'), 'utf8');
-  assert.match(renderer, /function commandEchoEnabledForSession/u);
-  assert.match(renderer, /if \(commandEcho\) appendSystemMessage\('\[Lua\] running\.\.\.'\)/u);
-  assert.match(renderer, /for \(const args of result\?\.echoes \|\| \[\]\) \{\s*appendSystemMessage\(`\[Lua\]/u);
-  assert.match(renderer, /if \(commandEcho && \(result\.values \|\| \[\]\)\.length\)/u);
-  assert.match(renderer, /appendSystemMessage\(`\[Lua \$\{kind\}\] \$\{message\}`\)/u);
+  assert.match(renderer, /const commandEcho = record\?\.tintin\?\.config\?\.commandEcho === true/u);
+  assert.match(renderer, /for \(const args of payload\?\.echoes \|\| \[\]\)/u);
+  assert.match(renderer, /if \(commandEcho && \(payload\.values \|\| \[\]\)\.length\)/u);
+  assert.match(renderer, /write\(`Lua Error — \$\{location\}: \$\{message\}`, 'error'\)/u);
 });

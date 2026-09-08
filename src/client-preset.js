@@ -24,7 +24,7 @@
     'audioCuesEnabled', 'audioCuesMuted', 'audioCuesForegroundOnly', 'audioCuesVolume',
     'communicationCues', 'announceImportant'
   ]);
-  const COMMUNICATION_KEYS = new Set(['tell', 'auction', 'gossip', 'skynet', 'ssf', 'background']);
+  const COMMUNICATION_KEYS = new Set(['tell', 'auction', 'gossip', 'group', 'grats', 'shout', 'holler', 'skynet', 'ssf', 'background']);
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
   function object(value) { return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; }

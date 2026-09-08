@@ -58,7 +58,7 @@ test('built-in audio cue vocabulary is bounded, short, and intentionally distinc
     'health-75', 'health-50', 'health-10',
     'mana-20', 'mana-5', 'move-50', 'move-5',
     'combat-start', 'combat-end', 'group-critical', 'group-down',
-    'tell', 'auction', 'gossip', 'skynet', 'ssf'
+    'tell', 'auction', 'gossip', 'group', 'grats', 'shout', 'holler', 'skynet', 'ssf', 'stairs'
   ]);
   assert.equal(DEFAULT_AUDIO_CUE_VOLUME, 0.65);
   const signatures = new Set();

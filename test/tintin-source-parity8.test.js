@@ -26,7 +26,9 @@ test('nested TinTin tables reconstruct virtual parent nodes for key, value, size
   engine.define('gains[gator][cnt]', '2');
   engine.define('gains[rat][exp]', '50');
 
-  assert.equal(engine.expand('$gains[]').value, '{gator}{rat}');
+  assert.equal(engine.expand('*gains[]').value, '{gator}{rat}');
+  assert.equal(engine.expand('*gains[+1]').value, 'gator');
+  assert.equal(engine.expand('*gains[-1]').value, 'rat');
   assert.equal(engine.expand('$gains[gator][%*]').value, '{2}{100}');
   assert.equal(engine.expand('&gains[]').value, '2');
   assert.equal(engine.expand('&gains[gator]').value, '1');
@@ -92,10 +94,10 @@ test('mo-style nested gains can be iterated through the virtual parent key list'
   manager.dispatchInput(session.id, '#var {mob} {rat}');
   manager.dispatchInput(session.id, '#math {gains[$mob][exp]} {50}');
   manager.dispatchInput(session.id, '#math {gains[$mob][cnt]} {1}');
-  manager.dispatchInput(session.id, '#foreach {$gains[]} {tempMob} {#math {seen[$tempMob]} {1}}');
+  manager.dispatchInput(session.id, '#foreach {*gains[]} {tempMob} {#math {seenstar[$tempMob]} {1}}');
 
-  assert.equal(variable(manager, 'seen[gator]')?.value, '1');
-  assert.equal(variable(manager, 'seen[rat]')?.value, '1');
+  assert.equal(variable(manager, 'seenstar[gator]')?.value, '1');
+  assert.equal(variable(manager, 'seenstar[rat]')?.value, '1');
 });
 
 test('signpost-style key lists can address and remove nested table entries by positive relative index', () => {
@@ -105,7 +107,7 @@ test('signpost-style key lists can address and remove nested table entries by po
   manager.dispatchInput(session.id, '#var {room} {atrium}');
   manager.dispatchInput(session.id, '#var {signsInRoom[$room][1]} {first}');
   manager.dispatchInput(session.id, '#var {signsInRoom[$room][2]} {second}');
-  manager.dispatchInput(session.id, '#list {keyList} {create} {$signsInRoom[$room][] }');
+  manager.dispatchInput(session.id, '#list {keyList} {create} {*signsInRoom[$room][] }');
 
   assert.equal(manager.variableEngine.expand('$keyList[+1]').value, '1');
   assert.equal(manager.variableEngine.expand('&signsInRoom[$room][$keyList[+1]]').value, '1');

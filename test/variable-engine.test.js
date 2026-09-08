@@ -85,6 +85,28 @@ test('supports TinTin dollar escaping without changing ordinary money text', () 
   assert.equal(engine.expand('pay $100 and keep $$').value, 'pay $100 and keep $');
 });
 
+test('uses modern TinTin star keys and dollar values for empty table selectors', () => {
+  const engine = new VariableEngine();
+  engine.define('targets[alpha]', 'A');
+  engine.define('targets[amber]', 'B');
+  engine.define('targets[beta]', 'C');
+  engine.define('room', 'atrium');
+  engine.define('signsinroom[atrium][north]', 'North stairs');
+  engine.define('signsinroom[atrium][south]', 'South stairs');
+
+  assert.equal(engine.expand('$targets[]').value, '{A}{B}{C}');
+  assert.equal(engine.expand('*targets[]').value, '{alpha}{amber}{beta}');
+  assert.equal(engine.expand('*targets[%*]').value, '{alpha}{amber}{beta}');
+  assert.equal(engine.expand('*targets[a%*]').value, '{alpha}{amber}');
+  assert.equal(engine.expand('*targets[+1]').value, 'alpha');
+  assert.equal(engine.expand('*targets[-1]').value, 'beta');
+  assert.equal(engine.expand('*targets[amber]').value, 'amber');
+  assert.equal(engine.expand('*targets').value, 'targets');
+  assert.equal(engine.expand('*signsinroom[$room][]').value, '{north}{south}');
+  assert.equal(engine.expand('*missing[]').value, '*missing[]');
+  assert.equal(engine.expand('say **targets and \\*targets').value, 'say *targets and *targets');
+});
+
 test('resolves mixed percent and dollar nesting with shared recursion guards', () => {
   const engine = new VariableEngine();
   engine.define('target', '$species guard');

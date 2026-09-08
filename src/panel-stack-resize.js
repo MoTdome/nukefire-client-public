@@ -122,6 +122,7 @@
     let handlePositionFrame = 0;
     let drag = null;
     const observers = [];
+    const resizeObservers = [];
 
     function allPanels() {
       return [...document.querySelectorAll('[data-workspace-panel]')];
@@ -269,7 +270,14 @@
       handle.style.visibility = geometry.visible ? 'visible' : 'hidden';
     }
 
+    function hideAllHandles() {
+      for (const handle of document.querySelectorAll('.panel-height-resizer')) {
+        handle.style.visibility = 'hidden';
+      }
+    }
+
     function positionVisibleHandles() {
+      hideAllHandles();
       const seenTargets = new Set();
       for (const panel of allPanels()) {
         if (panel.hidden) continue;
@@ -394,8 +402,10 @@
         const heights = normalizeHeightMap(getPanelHeights());
         const seenTargets = new Set();
 
+        for (const panel of allPanels()) ensureHandle(panel);
+        hideAllHandles();
+
         for (const panel of allPanels()) {
-          ensureHandle(panel);
           if (panel.hidden) continue;
           const target = targetForPanel(panel);
           if (!target || seenTargets.has(target)) continue;
@@ -448,10 +458,21 @@
 
     for (const dock of docks) {
       const observer = new MutationObserver((records) => {
-        if (records.some((record) => record.type === 'childList' && record.target === dock)) refresh();
+        if (records.some((record) => record.type === 'childList' || record.type === 'attributes')) refresh();
       });
-      observer.observe(dock, { childList: true });
+      observer.observe(dock, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['hidden', 'data-tab-active']
+      });
       observers.push(observer);
+
+      if (typeof ResizeObserver === 'function') {
+        const resizeObserver = new ResizeObserver(() => scheduleHandlePositionRefresh());
+        resizeObserver.observe(dock);
+        resizeObservers.push(resizeObserver);
+      }
     }
 
     document.addEventListener('pointermove', moveDrag, { passive: false });
@@ -471,6 +492,7 @@
       resetAllForCurrentWorkspace,
       destroy() {
         for (const observer of observers) observer.disconnect();
+        for (const observer of resizeObservers) observer.disconnect();
         if (refreshFrame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(refreshFrame);
         if (handlePositionFrame && typeof cancelAnimationFrame === 'function') {
           cancelAnimationFrame(handlePositionFrame);

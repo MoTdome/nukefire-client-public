@@ -53,7 +53,7 @@ test('TinTin LIST supports source GET SET SIZE and SORT semantics', () => {
   assert.equal(expand(manager, id, '$q[1]').value, 'gamma');
 
   manager.dispatchInput(id, '#list {q} sort {alpha}');
-  assert.deepEqual([1,2,3].map((n) => expand(manager, id, `$q[${n}]`).value), ['alpha', 'gamma', 'delta']);
+  assert.deepEqual([1,2,3].map((n) => expand(manager, id, `$q[${n}]`).value), ['alpha', 'delta', 'gamma']);
 });
 
 test('TinTin TICKER and DELAY support list/query forms and ticker defaults to 60 seconds', () => {

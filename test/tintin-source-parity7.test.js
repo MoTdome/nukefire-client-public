@@ -144,7 +144,7 @@ test('LIST source abbreviations, pattern FIND, delete count, and packed ADD/SORT
 
   assert.match(manager.dispatchInput(session.id, '#list {items} {delete} {2} {2}').messages[0], /deleted 2 items/u);
   assert.match(manager.dispatchInput(session.id, '#list {items} {add} {zeta;eta}').messages[0], /added 2 items/u);
-  assert.match(manager.dispatchInput(session.id, '#list {items} {srt} {aardvark;omega}').messages[0], /inserted 2 items/u);
+  assert.match(manager.dispatchInput(session.id, '#list {items} {srt} {aardvark;omega}').messages[0], /added 2 items and sorted 6 total/u);
   manager.dispatchInput(session.id, '#list {items} {length} {length}');
   assert.equal(manager.snapshot().variables.find((entry) => entry.name === 'length')?.value, '6');
 

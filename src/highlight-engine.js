@@ -363,10 +363,53 @@
     return { name: colorName, bright, value: (bright ? BRIGHT_COLORS : DARK_COLORS)[colorName] };
   }
 
+  function trueColorToken(tokenValue) {
+    const token = String(tokenValue || '');
+    const match = token.match(/^<([FB])([0-9a-f]{3}|[0-9a-f]{6})>$/iu);
+    if (!match) return null;
+    const hex = match[2].toLowerCase();
+    const expanded = hex.length === 3
+      ? [...hex].map((digit) => `${digit}${digit}`).join('')
+      : hex;
+    return {
+      target: match[1].toUpperCase() === 'B' ? 'bg' : 'fg',
+      value: `#${expanded}`
+    };
+  }
+
+  function tokenizeHighlightStyle(styleValue) {
+    const source = String(styleValue || '');
+    const tokens = [];
+    let current = '';
+    for (let index = 0; index < source.length;) {
+      const character = source[index];
+      if (/\s/u.test(character)) {
+        if (current) tokens.push(current);
+        current = '';
+        index += 1;
+        continue;
+      }
+      if (character === '<') {
+        const closing = source.indexOf('>', index + 1);
+        if (closing !== -1) {
+          if (current) tokens.push(current);
+          current = '';
+          tokens.push(source.slice(index, closing + 1));
+          index = closing + 1;
+          continue;
+        }
+      }
+      current += character;
+      index += 1;
+    }
+    if (current) tokens.push(current);
+    return tokens;
+  }
+
   function parseHighlightStyle(styleValue) {
     const source = normalizeHighlightStyle(styleValue);
     if (!source) return { style: null, error: 'Highlight style cannot be empty.' };
-    const tokens = source.split(/\s+/u).filter(Boolean);
+    const tokens = tokenizeHighlightStyle(source);
     const overlay = {};
     let backgroundNext = false;
     let recognized = 0;
@@ -415,6 +458,18 @@
         // NukeFire intentionally does not animate blinking text, but dropping
         // that one attribute is safer and more compatible than rejecting the
         // entire Highlight definition.
+        recognized += 1;
+        continue;
+      }
+
+      const trueColor = trueColorToken(token);
+      if (trueColor) {
+        if (backgroundNext && trueColor.target !== 'bg') {
+          return { style: null, error: 'Highlight background marker needs a background color after it.' };
+        }
+        overlay[trueColor.target] = trueColor.value;
+        overlay[`${trueColor.target}BasicIndex`] = null;
+        backgroundNext = false;
         recognized += 1;
         continue;
       }

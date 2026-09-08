@@ -39,11 +39,41 @@ test('TinTin style names, attributes, backgrounds, and color codes compile safel
   assert.equal(coded.style.fg, '#aa0000');
   assert.equal(coded.style.bg, '#55ddff');
 
+  const truecolor12 = parseHighlightStyle('<F0F0><B500>');
+  assert.equal(truecolor12.error, '');
+  assert.equal(truecolor12.style.fg, '#00ff00');
+  assert.equal(truecolor12.style.bg, '#550000');
+
+  const truecolor24 = parseHighlightStyle('<F00FF00><B550000> underline');
+  assert.equal(truecolor24.error, '');
+  assert.equal(truecolor24.style.fg, '#00ff00');
+  assert.equal(truecolor24.style.bg, '#550000');
+  assert.equal(truecolor24.style.underline, true);
+
   const blink = parseHighlightStyle('blink Red');
   assert.equal(blink.error, '');
   assert.equal(blink.style.fg, '#ff5555');
   assert.match(parseHighlightStyle('Red b').error, /needs a color/u);
+  assert.match(parseHighlightStyle('<F12>').error, /Unknown highlight style token/u);
+  assert.match(parseHighlightStyle('<Bxyz>').error, /Unknown highlight style token/u);
   assert.match(parseHighlightStyle('not-a-color').error, /Unknown highlight style token/u);
+});
+
+test('adjacent TinTin truecolor highlights remain confined to the matched span', () => {
+  const engine = new HighlightEngine();
+  engine.define('CRITICAL', '<F0F0><B500>', 5);
+  const output = applyHighlightsToRuns([
+    { text: 'before CRITICAL after', style: { fg: '#abcdef', bg: '#123456', bold: true }, link: null }
+  ], engine);
+  assert.equal(output.map((run) => run.text).join(''), 'before CRITICAL after');
+  const matched = output.find((run) => run.text === 'CRITICAL');
+  assert.equal(matched.style.fg, '#00ff00');
+  assert.equal(matched.style.bg, '#550000');
+  assert.equal(output[0].style.fg, '#abcdef');
+  assert.equal(output[0].style.bg, '#123456');
+  assert.equal(output.at(-1).style.fg, '#abcdef');
+  assert.equal(output.at(-1).style.bg, '#123456');
+  assert.equal(output.at(-1).style.bold, true);
 });
 
 test('highlight matching supports literals, anchors, numbered wildcards, and percent-star', () => {

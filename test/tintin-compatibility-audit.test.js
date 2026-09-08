@@ -31,13 +31,8 @@ test('current native, translated, compatibility-noop, and blocked ownership is e
 });
 
 test('LIST audit separates the current native operations from remaining veteran gaps', () => {
-  for (const operation of ['add', 'create', 'tokenize', 'find', 'get', 'set', 'size', 'delete', 'clear', 'insert', 'ins', 'sort', 'order', 'reverse']) {
-    assert.equal(audit.classifyDirective('list', ['items', operation]).classification, C.NATIVE);
-  }
-  for (const operation of ['simplify', 'filter']) {
-    const result = audit.classifyDirective('list', ['items', operation]);
-    assert.equal(result.classification, C.NEEDS, operation);
-    assert.match(result.detail, new RegExp(operation, 'iu'));
+  for (const operation of ['add', 'clear', 'collapse', 'copy', 'create', 'delete', 'explode', 'filter', 'find', 'get', 'indexate', 'insert', 'ins', 'numerate', 'order', 'refine', 'reverse', 'set', 'shuffle', 'simplify', 'size', 'sort', 'swap', 'tokenize']) {
+    assert.equal(audit.classifyDirective('list', ['items', operation]).classification, C.NATIVE, operation);
   }
 });
 
@@ -49,9 +44,16 @@ test('new veteran runtime forms classify correctly while query gaps stay visible
   assert.equal(audit.classifyDirective('line', ['oneshot', 'score']).classification, C.NATIVE);
   assert.equal(audit.classifyDirective('session', ['derf', '$address']).classification, C.NEEDS);
   assert.equal(audit.classifyDirective('session', ['derf', 'mud.example', '4000']).classification, C.TRANSLATED);
-  assert.equal(audit.classifyDirective('foreach', ['*queue[]', 'q', 'look']).classification, C.NEEDS);
+  assert.equal(audit.classifyDirective('foreach', ['*queue[]', 'q', 'look']).classification, C.NATIVE);
   assert.equal(audit.classifyDirective('foreach', ['*queue[%*]', 'q', 'look']).classification, C.NATIVE);
   assert.equal(audit.classifyDirective('if', ['&queue[]', '#send', '1'], { argumentMeta: [{value:'&queue[]',braced:false},{value:'#send',braced:false},{value:'1',braced:false}] }).classification, C.NATIVE);
+});
+
+test('TinTin SCAN is described as blocked host-file access without confusing the plain MUD scan command', () => {
+  const result = audit.classifyDirective('scan', ['txt', 'notes.txt']);
+  assert.equal(result.classification, C.BLOCKED);
+  assert.match(result.detail, /local files\/directories/u);
+  assert.match(result.detail, /plain MUD command scan is unaffected/u);
 });
 
 test('event audit recognizes private, clock, and protocol event families now supported', () => {
@@ -144,11 +146,12 @@ test('veteran second-setup shapes expose SEND LIST TICKER and Alias-name gaps wi
   });
   const todo = result.entries.filter((entry) => entry.classification === C.NEEDS);
   assert.equal(result.entries.find((entry) => entry.directive === 'send')?.classification, C.TRANSLATED);
-  assert.ok(todo.filter((entry) => entry.directive === 'list').length >= 1);
+  assert.equal(todo.filter((entry) => entry.directive === 'list').length, 0);
   assert.equal(result.entries.find((entry) => entry.directive === 'ticker')?.classification, C.NATIVE);
   assert.ok(todo.some((entry) => entry.directive === 'alias'));
   assert.ok(todo.some((entry) => entry.directive === 'session'));
-  assert.ok(todo.some((entry) => entry.directive === 'foreach'));
+  assert.equal(todo.some((entry) => entry.directive === 'foreach'), false);
+  assert.equal(result.entries.filter((entry) => entry.directive === 'foreach').every((entry) => entry.classification === C.NATIVE), true);
   const report = audit.formatTinTinCompatibilityAudit(result).join('\n');
   assert.doesNotMatch(report, /password|secret_derf|hunter2/iu);
   assert.match(report, /NOTHING EXECUTED/u);

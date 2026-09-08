@@ -36,7 +36,7 @@ const CLIENT_DIRECTIVE_ALIASES = Object.freeze({
 // so ambiguity is intentionally order-sensitive (for example #una is
 // #UNACTION, while #unal is #UNALIAS).
 const TINTIN_COMMAND_TABLE = Object.freeze([
-  'action', 'advertise', 'alias', 'all', 'bell', 'break', 'buffer', 'case',
+  'action', 'advertise', 'alias', 'all', 'bell', 'break', 'buffer', 'case', 'cat',
   'chat', 'class', 'commands', 'config', 'continue', 'cr', 'cursor', 'debug',
   'default', 'delay', 'dirs', 'echo', 'else', 'elseif', 'end', 'event',
   'forall', 'foreach', 'format', 'function', 'gag', 'grep', 'help', 'highlight',

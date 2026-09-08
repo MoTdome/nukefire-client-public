@@ -402,6 +402,10 @@ const DEFAULT_SETTINGS = Object.freeze({
       tell: false,
       auction: false,
       gossip: false,
+      group: false,
+      grats: false,
+      shout: false,
+      holler: false,
       skynet: false,
       ssf: false,
       background: false
@@ -1464,6 +1468,10 @@ function normalizeSettings(input = {}, now = new Date().toISOString()) {
             tell: booleanValue(cues.tell, DEFAULT_SETTINGS.accessibility.communicationCues.tell),
             auction: booleanValue(cues.auction, DEFAULT_SETTINGS.accessibility.communicationCues.auction),
             gossip: booleanValue(cues.gossip, DEFAULT_SETTINGS.accessibility.communicationCues.gossip),
+            group: booleanValue(cues.group, DEFAULT_SETTINGS.accessibility.communicationCues.group),
+            grats: booleanValue(cues.grats, DEFAULT_SETTINGS.accessibility.communicationCues.grats),
+            shout: booleanValue(cues.shout, DEFAULT_SETTINGS.accessibility.communicationCues.shout),
+            holler: booleanValue(cues.holler, DEFAULT_SETTINGS.accessibility.communicationCues.holler),
             skynet: booleanValue(cues.skynet, DEFAULT_SETTINGS.accessibility.communicationCues.skynet),
             ssf: booleanValue(cues.ssf, DEFAULT_SETTINGS.accessibility.communicationCues.ssf),
             background: booleanValue(cues.background, DEFAULT_SETTINGS.accessibility.communicationCues.background)
@@ -1577,6 +1585,10 @@ function settingsFromLegacy(legacy = {}) {
         tell: legacy.communicationCueTell,
         auction: legacy.communicationCueAuction,
         gossip: legacy.communicationCueGossip,
+        group: legacy.communicationCueGroup,
+        grats: legacy.communicationCueGrats,
+        shout: legacy.communicationCueShout,
+        holler: legacy.communicationCueHoller,
         skynet: legacy.communicationCueSkynet,
         ssf: legacy.communicationCueSsf,
         background: legacy.communicationCuesBackground

@@ -460,8 +460,55 @@ const SIDEBAR_PANELS = Object.freeze([
   Object.freeze({ id: 'protocol', label: 'Protocol', selector: '#panel-protocol' }),
   Object.freeze({ id: 'communications', label: 'Communications', selector: '#panel-communications' }),
   Object.freeze({ id: 'contextDeck', label: 'NukeFire Console', selector: '#panel-context-deck' }),
-  Object.freeze({ id: 'mapper', label: 'Mapper', selector: '#panel-mapper' })
+  Object.freeze({ id: 'mapper', label: 'Mapper', selector: '#panel-mapper' }),
+  Object.freeze({ id: 'luaPanes', label: 'Custom Panes', selector: '#panel-lua-panes' })
 ]);
+
+const activeCustomPaneWorkspacePanels = new Map();
+
+function customPaneWorkspacePanelId(paneIdValue) {
+  const paneId = String(paneIdValue || '').trim();
+  return paneId ? `customPane-${paneId}` : '';
+}
+
+function customPaneWorkspaceSectionId(paneIdValue) {
+  const paneId = String(paneIdValue || '').trim();
+  return paneId ? `panel-custom-pane-${paneId}` : '';
+}
+
+function workspacePanelDefinitions() {
+  return [...SIDEBAR_PANELS, ...activeCustomPaneWorkspacePanels.values()];
+}
+
+function workspacePanelDefinition(panelId) {
+  const id = String(panelId || '');
+  return activeCustomPaneWorkspacePanels.get(id)
+    || SIDEBAR_PANELS.find((panel) => panel.id === id)
+    || null;
+}
+
+function workspacePanelDefaultVisibility(panel) {
+  if (!panel) return false;
+  if (typeof DEFAULT_PANEL_VISIBILITY?.[panel.id] === 'boolean') return DEFAULT_PANEL_VISIBILITY[panel.id];
+  return panel.defaultVisible !== false;
+}
+
+function workspacePanelDefaultLayout(panel, index = 0) {
+  const builtIn = DEFAULT_PANEL_LAYOUT?.[panel?.id];
+  if (builtIn) return builtIn;
+  const candidate = panel?.defaultLayout;
+  if (candidate && DOCK_REGIONS.includes(candidate.region)) {
+    return Object.freeze({
+      region: candidate.region,
+      order: Number.isFinite(Number(candidate.order)) ? Math.max(0, Math.trunc(Number(candidate.order))) : 100 + index
+    });
+  }
+  return Object.freeze({ region: 'right', order: 100 + index });
+}
+
+function isCustomPaneWorkspacePanel(panelId) {
+  return activeCustomPaneWorkspacePanels.has(String(panelId || ''));
+}
 
 const DEFAULT_PANEL_VISIBILITY = Object.freeze({
   vitals: true,
@@ -475,7 +522,8 @@ const DEFAULT_PANEL_VISIBILITY = Object.freeze({
   protocol: false,
   communications: true,
   contextDeck: true,
-  mapper: true
+  mapper: true,
+  luaPanes: false
 });
 
 const DEFAULT_PANEL_LAYOUT = Object.freeze({
@@ -490,7 +538,8 @@ const DEFAULT_PANEL_LAYOUT = Object.freeze({
   foundlist: Object.freeze({ region: 'right', order: 3 }),
   contextDeck: Object.freeze({ region: 'right', order: 4 }),
   vitals: Object.freeze({ region: 'right', order: 5 }),
-  sessionVitals: Object.freeze({ region: 'right', order: 6 })
+  sessionVitals: Object.freeze({ region: 'right', order: 6 }),
+  luaPanes: Object.freeze({ region: 'right', order: 7 })
 });
 
 const DEFAULT_TAB_GROUPS = Object.freeze({
@@ -505,7 +554,8 @@ const DEFAULT_TAB_GROUPS = Object.freeze({
   protocol: 'protocol',
   communications: 'communications',
   contextDeck: 'mapper',
-  mapper: 'mapper'
+  mapper: 'mapper',
+  luaPanes: 'luaPanes'
 });
 
 const DEFAULT_ACTIVE_TABS = Object.freeze({
@@ -519,7 +569,8 @@ const DEFAULT_ACTIVE_TABS = Object.freeze({
   liveState: 'liveState',
   protocol: 'protocol',
   communications: 'communications',
-  mapper: 'mapper'
+  mapper: 'mapper',
+  luaPanes: 'luaPanes'
 });
 
 
@@ -699,6 +750,55 @@ const dockElements = Object.freeze({
   'outer-right': $('#dock-outer-right'),
   bottom: $('#dock-bottom')
 });
+
+
+function installLuaPanesPanelSurface() {
+  if ($('#panel-lua-panes')) return;
+  const template = $('#panel-live-state') || $('#panel-vitals');
+  const section = document.createElement('section');
+  section.id = 'panel-lua-panes';
+  section.className = template?.className || 'panel';
+  section.dataset.workspacePanel = 'luaPanes';
+
+  const titlebar = document.createElement('div');
+  titlebar.className = 'panel-titlebar';
+  const heading = document.createElement('h2');
+  heading.id = 'lua-panes-heading';
+  heading.textContent = 'Custom Panes';
+  const scriptsButton = document.createElement('button');
+  scriptsButton.type = 'button';
+  scriptsButton.className = 'secondary';
+  scriptsButton.textContent = 'Lua Scripts…';
+  scriptsButton.addEventListener('click', () => { void requestLuaScriptEditor(); });
+  titlebar.append(heading, scriptsButton);
+
+  const list = document.createElement('div');
+  list.id = 'lua-panes-list';
+  list.className = 'lua-panes-list';
+  list.setAttribute('aria-labelledby', heading.id);
+  const empty = document.createElement('p');
+  empty.id = 'lua-panes-empty';
+  empty.textContent = 'No player-created panes are active.';
+  list.append(empty);
+  section.append(titlebar, list);
+  workspaceRoot?.append(section);
+
+  if (!$('#lua-panes-native-style')) {
+    const style = document.createElement('style');
+    style.id = 'lua-panes-native-style';
+    style.textContent = `
+      #lua-panes-list { display: grid; gap: .45rem; padding: .6rem; }
+      .custom-pane-panel .custom-pane-body { display: grid; gap: .25rem; padding: .6rem; }
+      .custom-pane-row { display: grid; grid-template-columns: minmax(5rem, auto) 1fr; gap: .6rem; align-items: center; margin: .2rem 0; }
+      .custom-pane-row progress { width: 100%; min-width: 7rem; }
+      .custom-pane-bar { display: grid; gap: .15rem; }
+      .custom-pane-bar-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    `;
+    document.head?.append(style);
+  }
+}
+
+installLuaPanesPanelSurface();
 const dockResizerElements = Object.freeze({
   left: $('#resize-left-dock'),
   right: $('#resize-right-dock'),
@@ -904,6 +1004,7 @@ const state = {
   quickKeyEditId: '',
   tintinImport: { analysis: null, undoSnapshot: null, scriptFiles: [], scriptsDirectory: '', destinationReady: false, destinationDefinitions: null, destinationIncludes: [], destinationFileContent: '', destinationAnalysisError: '' },
   definitionManager: { open: false, category: 'aliases', selectedKey: '', mode: '', returnFocus: null, draft: null },
+  luaScriptEditor: { open: false, sessionId: '', selected: '', source: '', autoRun: false, dirty: false, returnFocus: null },
   clientPresets: { imported: [], previewSnapshot: null, previewSoundpackId: '', previewPresetId: '' },
   tintinStartup: { enabled: false, filename: 'main.tin', loaded: false, loadedFilename: '', totalLoaded: 0, unsupported: 0, definitions: null },
   hiddenDefaultQuickCommands: [],
@@ -979,7 +1080,7 @@ const state = {
     soundpackInvalid: [],
     soundpackEvents: [],
     soundpackDisabledEvents: [],
-    communicationCues: { tell: false, auction: false, gossip: false, skynet: false, ssf: false, background: false },
+    communicationCues: { tell: false, auction: false, gossip: false, group: false, grats: false, shout: false, holler: false, skynet: false, ssf: false, background: false },
     announceImportant: true
   },
   readerOnboarding: {
@@ -1296,10 +1397,12 @@ function normalizeDisplayTextPreferences(input = {}) {
 }
 
 function panelVisualLabel(panelId) {
+  const dynamic = activeCustomPaneWorkspacePanels.get(String(panelId || ''));
+  if (dynamic) return dynamic.label || 'Custom Pane';
   if (typeof displayTextApi.panelLabel === 'function') {
     return displayTextApi.panelLabel(panelId, state.displayText.panelLabels);
   }
-  const panel = SIDEBAR_PANELS.find((candidate) => candidate.id === panelId);
+  const panel = workspacePanelDefinition(panelId);
   return panel?.label || 'Panel';
 }
 
@@ -1310,7 +1413,7 @@ function applyDisplayTextPreferences(input = {}, options = {}) {
   if ($('#panel-label-mode')) $('#panel-label-mode').value = state.displayText.panelLabels;
   if ($('#mapper-room-label-mode')) $('#mapper-room-label-mode').value = state.displayText.mapperRoomLabels;
 
-  for (const panel of SIDEBAR_PANELS) {
+  for (const panel of workspacePanelDefinitions()) {
     const heading = $(`${panel.selector} .panel-titlebar h2`);
     if (heading) {
       heading.textContent = panelVisualLabel(panel.id);
@@ -3219,6 +3322,8 @@ function createSessionRecord(meta = {}) {
       renderDirty: false, summaryIdentityText: '', summaryConsiderText: '', effectGroupCount: 0
     },
     contextDeck: { snapshot: normalizeContextSnapshot({}), lastPrimaryId: '', signature: '', renderDirty: false, refreshTimer: null },
+    luaPanes: new Map(),
+    luaScripts: [],
     vitals: { hp: null, maxHp: null, mana: null, maxMana: null, move: null, maxMove: null },
     unreadOutput: 0,
     maxCharacters: state.maxCharacters
@@ -3243,6 +3348,8 @@ function ensureSessionRecord(meta = {}) {
   if (!record.dockedPrompt || typeof record.dockedPrompt !== 'object') {
     record.dockedPrompt = { rawText: '', plainText: '', runs: [], boundaryType: 'ga', updatedAt: 0 };
   }
+  if (!Array.isArray(record.luaScripts)) record.luaScripts = [];
+  if (!(record.luaPanes instanceof Map)) record.luaPanes = new Map();
   if (meta.pipelineDebug && typeof meta.pipelineDebug === 'object') {
     record.pipelineDebug.enabled = meta.pipelineDebug.enabled === true;
     record.pipelineDebug.maxEntries = Number(meta.pipelineDebug.maxEntries) || DEFAULT_PIPELINE_DEBUG.maxEntries;
@@ -3871,6 +3978,8 @@ function restoreSessionState(record) {
   hostInput.value = record.host || 'tdome.nukefire.org';
   portInput.value = String(record.port || 4000);
   commandInput.value = record.commandDraft || '';
+  lastLuaCommandDraftSync = commandInput.value;
+  syncLuaCommandDraft();
   renderSessionOutput(record);
   renderDockedPrompt(record);
   renderSessionVitals(record);
@@ -3893,6 +4002,7 @@ function restoreSessionState(record) {
   syncMobInspectorCombatLifecycle();
   renderGroupVitals();
   renderNukeFireState();
+  activateCustomPaneWorkspace(record);
   renderMapper();
   applyProtocolDisplay();
   renderPipelineDebug();
@@ -4193,6 +4303,10 @@ function legacySettingsSnapshot() {
     communicationCueTell: localStorage.getItem('nukefire.communicationCueTell'),
     communicationCueAuction: localStorage.getItem('nukefire.communicationCueAuction'),
     communicationCueGossip: localStorage.getItem('nukefire.communicationCueGossip'),
+    communicationCueGroup: localStorage.getItem('nukefire.communicationCueGroup'),
+    communicationCueGrats: localStorage.getItem('nukefire.communicationCueGrats'),
+    communicationCueShout: localStorage.getItem('nukefire.communicationCueShout'),
+    communicationCueHoller: localStorage.getItem('nukefire.communicationCueHoller'),
     communicationCueSkynet: localStorage.getItem('nukefire.communicationCueSkynet'),
     communicationCueSsf: localStorage.getItem('nukefire.communicationCueSsf'),
     communicationCuesBackground: localStorage.getItem('nukefire.communicationCuesBackground'),
@@ -4210,27 +4324,31 @@ function structuredCloneSafe(value) {
 
 function normalizePanelVisibility(input = {}, fallback = DEFAULT_PANEL_VISIBILITY) {
   const normalized = {};
-  for (const panel of SIDEBAR_PANELS) {
+  for (const panel of workspacePanelDefinitions()) {
+    const inherited = typeof fallback?.[panel.id] === 'boolean'
+      ? fallback[panel.id]
+      : workspacePanelDefaultVisibility(panel);
     normalized[panel.id] = typeof input?.[panel.id] === 'boolean'
       ? input[panel.id]
-      : fallback[panel.id];
+      : inherited;
   }
   return normalized;
 }
 
 function normalizePanelLayout(input = {}, fallback = DEFAULT_PANEL_LAYOUT) {
+  const definitions = workspacePanelDefinitions();
   const provisional = {};
-  const defaultIndex = new Map(SIDEBAR_PANELS.map((panel, index) => [panel.id, index]));
+  const defaultIndex = new Map(definitions.map((panel, index) => [panel.id, index]));
 
-  for (const panel of SIDEBAR_PANELS) {
-    const builtIn = DEFAULT_PANEL_LAYOUT[panel.id];
+  definitions.forEach((panel, index) => {
+    const builtIn = workspacePanelDefaultLayout(panel, index);
     const inherited = fallback?.[panel.id] || builtIn;
     const candidate = input?.[panel.id] || {};
     const region = DOCK_REGIONS.includes(candidate.region)
       ? candidate.region
-      : (DOCK_REGIONS.includes(inherited.region) ? inherited.region : builtIn.region);
+      : (DOCK_REGIONS.includes(inherited?.region) ? inherited.region : builtIn.region);
     const numericOrder = Number(candidate.order);
-    const inheritedOrder = Number(inherited.order);
+    const inheritedOrder = Number(inherited?.order);
 
     provisional[panel.id] = {
       region,
@@ -4238,11 +4356,11 @@ function normalizePanelLayout(input = {}, fallback = DEFAULT_PANEL_LAYOUT) {
         ? Math.max(0, Math.min(100, Math.trunc(numericOrder)))
         : (Number.isFinite(inheritedOrder) ? Math.trunc(inheritedOrder) : builtIn.order)
     };
-  }
+  });
 
   const normalized = {};
   for (const region of DOCK_REGIONS) {
-    const panels = SIDEBAR_PANELS
+    const panels = definitions
       .filter((panel) => provisional[panel.id].region === region)
       .sort((left, right) => {
         const orderDifference = provisional[left.id].order - provisional[right.id].order;
@@ -4275,8 +4393,10 @@ function normalizeTabGroups(
   const normalized = {};
   const groupRegions = new Map();
 
-  for (const panel of SIDEBAR_PANELS) {
-    const region = layout?.[panel.id]?.region || DEFAULT_PANEL_LAYOUT[panel.id].region;
+  const definitions = workspacePanelDefinitions();
+  for (let index = 0; index < definitions.length; index += 1) {
+    const panel = definitions[index];
+    const region = layout?.[panel.id]?.region || workspacePanelDefaultLayout(panel, index).region;
     const inherited = normalizeTabGroupId(fallback?.[panel.id], panel.id);
     let groupId = normalizeTabGroupId(input?.[panel.id], inherited);
 
@@ -4326,6 +4446,61 @@ function normalizeActiveTabs(
     }
   }
   return normalized;
+}
+
+function persistentPanelVisibilitySnapshot(source = state.workspace.activePanels) {
+  return Object.fromEntries(SIDEBAR_PANELS.map((panel) => [
+    panel.id,
+    typeof source?.[panel.id] === 'boolean'
+      ? source[panel.id]
+      : workspacePanelDefaultVisibility(panel)
+  ]));
+}
+
+function persistentPanelLayoutSnapshot(source = state.workspace.activeLayout) {
+  const snapshot = {};
+  for (const region of DOCK_REGIONS) {
+    const panels = SIDEBAR_PANELS
+      .map((panel, index) => ({
+        panel,
+        index,
+        entry: source?.[panel.id] || workspacePanelDefaultLayout(panel, index)
+      }))
+      .filter((item) => item.entry?.region === region)
+      .sort((left, right) => (Number(left.entry.order) - Number(right.entry.order)) || (left.index - right.index));
+    panels.forEach((item, order) => {
+      snapshot[item.panel.id] = { region, order };
+    });
+  }
+  return snapshot;
+}
+
+function persistentTabGroupsSnapshot(source = state.workspace.activeTabGroups) {
+  const staticIds = new Set(SIDEBAR_PANELS.map((panel) => panel.id));
+  const snapshot = {};
+  for (const panel of SIDEBAR_PANELS) {
+    const candidate = String(source?.[panel.id] || panel.id);
+    snapshot[panel.id] = staticIds.has(candidate) ? candidate : panel.id;
+  }
+  return snapshot;
+}
+
+function persistentActiveTabsSnapshot(
+  source = state.workspace.activeTabs,
+  tabGroups = persistentTabGroupsSnapshot()
+) {
+  const snapshot = {};
+  const groups = new Map();
+  for (const panel of SIDEBAR_PANELS) {
+    const groupId = tabGroups[panel.id] || panel.id;
+    if (!groups.has(groupId)) groups.set(groupId, []);
+    groups.get(groupId).push(panel.id);
+  }
+  for (const [groupId, panelIds] of groups) {
+    const candidate = String(source?.[groupId] || '');
+    snapshot[groupId] = panelIds.includes(candidate) ? candidate : panelIds[0];
+  }
+  return snapshot;
 }
 
 function normalizeDockSizes(input = {}, fallback = DEFAULT_DOCK_SIZES) {
@@ -4704,7 +4879,7 @@ function isPanelPoppedOut(panelId) {
 function panelHasLiveSurface(panelId) {
   if (isPanelPoppedOut(panelId)) return true;
   if (document.hidden || state.workspace.activePanels?.[panelId] === false) return false;
-  const definition = SIDEBAR_PANELS.find((panel) => panel.id === panelId);
+  const definition = workspacePanelDefinition(panelId);
   const section = definition ? $(definition.selector) : null;
   return Boolean(section && !section.hidden && section.dataset.tabActive !== 'false');
 }
@@ -4843,7 +5018,7 @@ function dynamicDockMaximum(region) {
 }
 
 function panelsInRegion(layout, region) {
-  return SIDEBAR_PANELS
+  return workspacePanelDefinitions()
     .filter((panel) => layout[panel.id]?.region === region)
     .sort((left, right) => layout[left.id].order - layout[right.id].order);
 }
@@ -4883,7 +5058,7 @@ function renderPanelGroups() {
       }
     : null;
   const panelSections = new Map();
-  for (const panel of SIDEBAR_PANELS) {
+  for (const panel of workspacePanelDefinitions()) {
     const section = $(panel.selector);
     if (!section) continue;
     panelSections.set(panel.id, section);
@@ -4998,15 +5173,15 @@ function persistTabState() {
     state.workspace.characters[key] = {
       ...current,
       name: state.workspace.currentCharacterName || current.name || key,
-      panels: normalizePanelVisibility(current.panels, state.workspace.activePanels),
-      layout: normalizePanelLayout(current.layout, state.workspace.activeLayout),
+      panels: persistentPanelVisibilitySnapshot(),
+      layout: persistentPanelLayoutSnapshot(),
       dockSizes: normalizeDockSizes(current.dockSizes, state.workspace.activeDockSizes),
-      tabGroups: { ...state.workspace.activeTabGroups },
-      activeTabs: { ...state.workspace.activeTabs }
+      tabGroups: persistentTabGroupsSnapshot(),
+      activeTabs: persistentActiveTabsSnapshot()
     };
   } else {
-    state.workspace.defaultTabGroups = { ...state.workspace.activeTabGroups };
-    state.workspace.defaultActiveTabs = { ...state.workspace.activeTabs };
+    state.workspace.defaultTabGroups = persistentTabGroupsSnapshot();
+    state.workspace.defaultActiveTabs = persistentActiveTabsSnapshot();
   }
   schedulePersistentSettingsSave();
 }
@@ -5029,7 +5204,7 @@ function activatePanelTab(groupId, panelId, options = {}) {
   );
   renderPanelGroups();
   updateDockVisibility();
-  if (options.persist) persistTabState();
+  if (options.persist && !group.panels.some((panel) => isCustomPaneWorkspacePanel(panel.id))) persistTabState();
   if (panelId === 'communications') {
     setCommunicationChannel(state.workspace.activeCommunications.activeChannel, { persist: false });
   }
@@ -5038,7 +5213,7 @@ function activatePanelTab(groupId, panelId, options = {}) {
     scheduleFrame(() => document.getElementById(tabButtonId(groupId, panelId))?.focus({ preventScroll: true }));
   }
   if (options.announceChange) {
-    const panel = SIDEBAR_PANELS.find((candidate) => candidate.id === panelId);
+    const panel = workspacePanelDefinition(panelId);
     announce(`${panel?.label || 'Panel'} tab selected.`, { force: true });
   }
 }
@@ -5167,11 +5342,11 @@ function applyDockSizes(sizes, options = {}) {
       state.workspace.characters[key] = {
         ...current,
         name: state.workspace.currentCharacterName || current.name || key,
-        panels: normalizePanelVisibility(current.panels, state.workspace.activePanels),
-        layout: normalizePanelLayout(current.layout, state.workspace.activeLayout),
+        panels: persistentPanelVisibilitySnapshot(),
+        layout: persistentPanelLayoutSnapshot(),
         dockSizes: { ...normalized },
-        tabGroups: normalizeTabGroups(current.tabGroups, state.workspace.activeLayout, state.workspace.activeTabGroups),
-        activeTabs: normalizeActiveTabs(current.activeTabs, state.workspace.activeTabGroups, state.workspace.activeLayout, state.workspace.activeTabs)
+        tabGroups: persistentTabGroupsSnapshot(),
+        activeTabs: persistentActiveTabsSnapshot()
       };
     } else {
       state.workspace.defaultDockSizes = { ...normalized };
@@ -5347,7 +5522,7 @@ function initializePanelMenuLayer() {
 }
 
 function closeAllPanelMenus(options = {}) {
-  for (const panel of SIDEBAR_PANELS) {
+  for (const panel of workspacePanelDefinitions()) {
     closePanelMenu(panel.id, {
       returnFocus: options.returnFocus && panel.id === state.workspace.openMenuPanelId
     });
@@ -5445,16 +5620,16 @@ function applyPanelLayout(layout, options = {}) {
       state.workspace.characters[key] = {
         ...current,
         name: state.workspace.currentCharacterName || current.name || key,
-        panels: normalizePanelVisibility(current.panels, state.workspace.activePanels),
-        layout: structuredCloneSafe(normalized),
+        panels: persistentPanelVisibilitySnapshot(),
+        layout: persistentPanelLayoutSnapshot(normalized),
         dockSizes: normalizeDockSizes(current.dockSizes, state.workspace.activeDockSizes),
-        tabGroups: { ...state.workspace.activeTabGroups },
-        activeTabs: { ...state.workspace.activeTabs }
+        tabGroups: persistentTabGroupsSnapshot(),
+        activeTabs: persistentActiveTabsSnapshot()
       };
     } else {
-      state.workspace.defaultLayout = structuredCloneSafe(normalized);
-      state.workspace.defaultTabGroups = { ...state.workspace.activeTabGroups };
-      state.workspace.defaultActiveTabs = { ...state.workspace.activeTabs };
+      state.workspace.defaultLayout = persistentPanelLayoutSnapshot(normalized);
+      state.workspace.defaultTabGroups = persistentTabGroupsSnapshot();
+      state.workspace.defaultActiveTabs = persistentActiveTabsSnapshot();
     }
     schedulePersistentSettingsSave();
   }
@@ -5470,7 +5645,7 @@ function applyPanelVisibility(panels, options = {}) {
   const normalized = normalizePanelVisibility(panels, state.workspace.defaultPanels);
   state.workspace.activePanels = normalized;
 
-  for (const panel of SIDEBAR_PANELS) {
+  for (const panel of workspacePanelDefinitions()) {
     const visible = normalized[panel.id];
     const section = $(panel.selector);
     const toggle = $(`[data-panel-toggle="${panel.id}"]`);
@@ -5487,14 +5662,14 @@ function applyPanelVisibility(panels, options = {}) {
       state.workspace.characters[key] = {
         ...current,
         name: state.workspace.currentCharacterName || current.name || key,
-        panels: { ...normalized },
-        layout: normalizePanelLayout(current.layout, state.workspace.activeLayout),
+        panels: persistentPanelVisibilitySnapshot(normalized),
+        layout: persistentPanelLayoutSnapshot(),
         dockSizes: normalizeDockSizes(current.dockSizes, state.workspace.activeDockSizes),
-        tabGroups: normalizeTabGroups(current.tabGroups, state.workspace.activeLayout, state.workspace.activeTabGroups),
-        activeTabs: normalizeActiveTabs(current.activeTabs, state.workspace.activeTabGroups, state.workspace.activeLayout, state.workspace.activeTabs)
+        tabGroups: persistentTabGroupsSnapshot(),
+        activeTabs: persistentActiveTabsSnapshot()
       };
     } else {
-      state.workspace.defaultPanels = { ...normalized };
+      state.workspace.defaultPanels = persistentPanelVisibilitySnapshot(normalized);
     }
     schedulePersistentSettingsSave();
   }
@@ -5516,7 +5691,7 @@ function reorderRegionPanels(layout, region, orderedPanelIds) {
 }
 
 function movePanel(panelId, destination) {
-  if (!SIDEBAR_PANELS.some((panel) => panel.id === panelId)) return;
+  if (!workspacePanelDefinition(panelId)) return;
   let next = structuredCloneSafe(state.workspace.activeLayout);
   const nextTabGroups = { ...state.workspace.activeTabGroups };
   const nextActiveTabs = { ...state.workspace.activeTabs };
@@ -5574,13 +5749,13 @@ function movePanel(panelId, destination) {
     state.workspace.defaultActiveTabs
   );
 
-  const panel = SIDEBAR_PANELS.find((item) => item.id === panelId);
+  const panel = workspacePanelDefinition(panelId);
   const destinationLabel = DOCK_REGIONS.includes(destination)
     ? `${dockLabel(destination)} dock`
     : (destination === 'earlier' ? 'earlier' : 'later');
 
   applyPanelLayout(next, {
-    persist: true,
+    persist: !isCustomPaneWorkspacePanel(panelId),
     announceChange: true,
     announcement: `${panel?.label || 'Panel'} moved ${destinationLabel}.`
   });
@@ -5590,7 +5765,7 @@ function movePanel(panelId, destination) {
 
 
 function panelDragDefinition(panelId) {
-  return SIDEBAR_PANELS.find((panel) => panel.id === panelId) || null;
+  return workspacePanelDefinition(panelId);
 }
 
 function clearPanelDropIndicators() {
@@ -5809,7 +5984,7 @@ function performPanelDrop(panelId, intent) {
     : '';
   const oldRegion = state.workspace.activeLayout[panelId]?.region;
   const result = panelDragLayoutApi.applyPanelDropLayout?.({
-    panelIds: SIDEBAR_PANELS.map((candidate) => candidate.id),
+    panelIds: workspacePanelDefinitions().map((candidate) => candidate.id),
     dockRegions: DOCK_REGIONS,
     layout: state.workspace.activeLayout,
     tabGroups: state.workspace.activeTabGroups,
@@ -5845,7 +6020,7 @@ function performPanelDrop(panelId, intent) {
   }
 
   applyPanelLayout(layout, {
-    persist: true,
+    persist: !isCustomPaneWorkspacePanel(panelId) && !isCustomPaneWorkspacePanel(intent.targetPanelId),
     announceChange: true,
     announcement
   });
@@ -5952,9 +6127,9 @@ function tabPanelWithAdjacent(panelId, direction) {
     state.workspace.defaultActiveTabs
   );
   applyPanelLayout(nextLayout, {
-    persist: true,
+    persist: !isCustomPaneWorkspacePanel(panelId) && !targetGroup.panels.some((panel) => isCustomPaneWorkspacePanel(panel.id)),
     announceChange: true,
-    announcement: `${SIDEBAR_PANELS.find((panel) => panel.id === panelId)?.label || 'Panel'} joined a tab group.`
+    announcement: `${workspacePanelDefinition(panelId)?.label || 'Panel'} joined a tab group.`
   });
 }
 
@@ -5963,11 +6138,11 @@ function separatePanelTab(panelId) {
   const tabGroups = { ...state.workspace.activeTabGroups };
   const activeTabs = { ...state.workspace.activeTabs };
   const oldGroupId = tabGroups[panelId] || panelId;
-  const members = SIDEBAR_PANELS.filter((panel) => tabGroups[panel.id] === oldGroupId);
+  const members = workspacePanelDefinitions().filter((panel) => tabGroups[panel.id] === oldGroupId);
   if (members.length <= 1) return;
 
   const result = panelDragLayoutApi.detachPanelForDrop?.({
-    panelIds: SIDEBAR_PANELS.map((panel) => panel.id),
+    panelIds: workspacePanelDefinitions().map((panel) => panel.id),
     panelId,
     tabGroups,
     activeTabs
@@ -5986,9 +6161,9 @@ function separatePanelTab(panelId) {
     state.workspace.defaultActiveTabs
   );
   applyPanelLayout(layout, {
-    persist: true,
+    persist: !isCustomPaneWorkspacePanel(panelId) && !members.some((panel) => isCustomPaneWorkspacePanel(panel.id)),
     announceChange: true,
-    announcement: `${SIDEBAR_PANELS.find((panel) => panel.id === panelId)?.label || 'Panel'} separated from its tab group.`
+    announcement: `${workspacePanelDefinition(panelId)?.label || 'Panel'} separated from its tab group.`
   });
 }
 
@@ -6394,12 +6569,12 @@ function syncPanelPopoutWindows(options = {}) {
 }
 
 function captureActiveWorkspaceAsSharedDefaults() {
-  state.workspace.defaultPanels = { ...state.workspace.activePanels };
-  state.workspace.defaultLayout = structuredCloneSafe(state.workspace.activeLayout);
+  state.workspace.defaultPanels = persistentPanelVisibilitySnapshot();
+  state.workspace.defaultLayout = persistentPanelLayoutSnapshot();
   state.workspace.defaultDockSizes = { ...state.workspace.activeDockSizes };
   state.workspace.defaultPanelHeights = activePanelHeights();
-  state.workspace.defaultTabGroups = { ...state.workspace.activeTabGroups };
-  state.workspace.defaultActiveTabs = { ...state.workspace.activeTabs };
+  state.workspace.defaultTabGroups = persistentTabGroupsSnapshot();
+  state.workspace.defaultActiveTabs = persistentActiveTabsSnapshot();
   state.workspace.defaultCommunications = { ...state.workspace.activeCommunications };
   state.workspace.defaultPopouts = structuredCloneSafe(
     normalizePanelPopouts(state.workspace.activePopouts, state.workspace.defaultPopouts)
@@ -7262,6 +7437,10 @@ function mirrorPersistentSettings(settings) {
   localStorage.setItem('nukefire.communicationCueTell', String(accessibility.communicationCues?.tell === true));
   localStorage.setItem('nukefire.communicationCueAuction', String(accessibility.communicationCues?.auction === true));
   localStorage.setItem('nukefire.communicationCueGossip', String(accessibility.communicationCues?.gossip === true));
+  localStorage.setItem('nukefire.communicationCueGroup', String(accessibility.communicationCues?.group === true));
+  localStorage.setItem('nukefire.communicationCueGrats', String(accessibility.communicationCues?.grats === true));
+  localStorage.setItem('nukefire.communicationCueShout', String(accessibility.communicationCues?.shout === true));
+  localStorage.setItem('nukefire.communicationCueHoller', String(accessibility.communicationCues?.holler === true));
   localStorage.setItem('nukefire.communicationCueSkynet', String(accessibility.communicationCues?.skynet === true));
   localStorage.setItem('nukefire.communicationCueSsf', String(accessibility.communicationCues?.ssf === true));
   localStorage.setItem('nukefire.communicationCuesBackground', String(accessibility.communicationCues?.background === true));
@@ -10281,6 +10460,59 @@ function formatReaderRoomHistory(body = {}) {
   return exits.length ? `${name}. Exits ${exits.join(', ')}.` : name;
 }
 
+function roomInfoExitDirections(body = {}) {
+  const directions = new Set();
+  const collect = (value) => {
+    if (Array.isArray(value)) {
+      for (const entry of value) {
+        if (typeof entry === 'string') directions.add(entry.trim().toLocaleLowerCase());
+        else if (entry && typeof entry === 'object') {
+          const direction = entry.direction ?? entry.dir ?? entry.name;
+          if (direction) directions.add(String(direction).trim().toLocaleLowerCase());
+        }
+      }
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry === false || entry === null || entry === undefined) continue;
+      directions.add(String(key).trim().toLocaleLowerCase());
+      if (entry && typeof entry === 'object') {
+        const direction = entry.direction ?? entry.dir ?? entry.name;
+        if (direction) directions.add(String(direction).trim().toLocaleLowerCase());
+      }
+    }
+  };
+  collect(body?.exits);
+  collect(body?.exit_details);
+  return directions;
+}
+
+function roomInfoHasStairs(body = {}) {
+  const directions = roomInfoExitDirections(body);
+  return ['up', 'u', 'down', 'd'].some((direction) => directions.has(direction));
+}
+
+function roomInfoStairsCueKey(body = {}) {
+  const id = body?.num ?? body?.vnum ?? body?.id ?? '';
+  if (id !== '' && id !== null && id !== undefined) return `room:${String(id)}`;
+  const name = String(body?.name || body?.room_name || '').trim().toLocaleLowerCase();
+  const zone = String(body?.zone ?? '').trim();
+  return name ? `room:${zone}:${name}` : '';
+}
+
+function playRoomStairsCue(record, body = {}) {
+  if (!record || typeof record !== 'object') return false;
+  if (!roomInfoHasStairs(body)) {
+    record.lastStairsCueRoomKey = '';
+    return false;
+  }
+  const key = roomInfoStairsCueKey(body);
+  if (key && key === record.lastStairsCueRoomKey) return false;
+  record.lastStairsCueRoomKey = key || `anonymous:${Date.now()}`;
+  return playClientSoundpackEvent('room.stairs', 'stairs');
+}
+
 function formatReaderCombatHistory(body = {}) {
   const out = body?.out || {};
   const incoming = body?.in || {};
@@ -10853,7 +11085,7 @@ function playClientSoundpackEvent(event, cueId) {
   return Boolean(audioCues?.play?.(cueId));
 }
 
-const COMMUNICATION_CUE_CHANNELS = Object.freeze(['tell', 'auction', 'gossip', 'skynet', 'ssf']);
+const COMMUNICATION_CUE_CHANNELS = Object.freeze(['tell', 'auction', 'gossip', 'group', 'grats', 'shout', 'holler', 'skynet', 'ssf']);
 const COMMUNICATION_CUE_DEDUPE_WINDOW_MS = 1200;
 const recentCommunicationCueAt = new Map();
 
@@ -10867,8 +11099,9 @@ function communicationCueStatusText() {
   const master = state.accessibility.audioCuesEnabled
     ? (state.accessibility.audioCuesMuted ? 'Audio Cues master on and muted' : 'Audio Cues master on')
     : 'Audio Cues master off';
-  return `Communication sounds: Tell ${cues.tell ? 'on' : 'off'}, Auction ${cues.auction ? 'on' : 'off'}, Gossip ${cues.gossip ? 'on' : 'off'}, Skynet ${cues.skynet ? 'on' : 'off'}, SSF ${cues.ssf ? 'on' : 'off'}; ` +
-    `background ${cues.background ? 'on' : 'off'}; ${master}.`;
+  return `Communication sounds: Tell ${cues.tell ? 'on' : 'off'}, Auction ${cues.auction ? 'on' : 'off'}, Gossip ${cues.gossip ? 'on' : 'off'}, ` +
+    `Group ${cues.group ? 'on' : 'off'}, Grats ${cues.grats ? 'on' : 'off'}, Shout ${cues.shout ? 'on' : 'off'}, Holler ${cues.holler ? 'on' : 'off'}, ` +
+    `Skynet ${cues.skynet ? 'on' : 'off'}, SSF ${cues.ssf ? 'on' : 'off'}; background ${cues.background ? 'on' : 'off'}; ${master}.`;
 }
 
 function updateCommunicationCueControls() {
@@ -10877,6 +11110,10 @@ function updateCommunicationCueControls() {
     tell: $('#communication-cue-tell'),
     auction: $('#communication-cue-auction'),
     gossip: $('#communication-cue-gossip'),
+    group: $('#communication-cue-group'),
+    grats: $('#communication-cue-grats'),
+    shout: $('#communication-cue-shout'),
+    holler: $('#communication-cue-holler'),
     skynet: $('#communication-cue-skynet'),
     ssf: $('#communication-cue-ssf'),
     background: $('#communication-cues-background')
@@ -10891,6 +11128,10 @@ function persistCommunicationCueSettings() {
   localStorage.setItem('nukefire.communicationCueTell', String(cues.tell === true));
   localStorage.setItem('nukefire.communicationCueAuction', String(cues.auction === true));
   localStorage.setItem('nukefire.communicationCueGossip', String(cues.gossip === true));
+  localStorage.setItem('nukefire.communicationCueGroup', String(cues.group === true));
+  localStorage.setItem('nukefire.communicationCueGrats', String(cues.grats === true));
+  localStorage.setItem('nukefire.communicationCueShout', String(cues.shout === true));
+  localStorage.setItem('nukefire.communicationCueHoller', String(cues.holler === true));
   localStorage.setItem('nukefire.communicationCueSkynet', String(cues.skynet === true));
   localStorage.setItem('nukefire.communicationCueSsf', String(cues.ssf === true));
   localStorage.setItem('nukefire.communicationCuesBackground', String(cues.background === true));
@@ -10903,6 +11144,10 @@ function applyCommunicationCueSettings(input = {}, options = {}) {
     tell: source.tell === true,
     auction: source.auction === true,
     gossip: source.gossip === true,
+    group: source.group === true,
+    grats: source.grats === true,
+    shout: source.shout === true,
+    holler: source.holler === true,
     skynet: source.skynet === true,
     ssf: source.ssf === true,
     background: source.background === true
@@ -10934,7 +11179,7 @@ function setCommunicationCuesBackground(enabled, options = {}) {
 }
 
 function resetCommunicationCues(options = {}) {
-  applyCommunicationCueSettings({ tell: false, auction: false, gossip: false, skynet: false, ssf: false, background: false }, options);
+  applyCommunicationCueSettings({ tell: false, auction: false, gossip: false, group: false, grats: false, shout: false, holler: false, skynet: false, ssf: false, background: false }, options);
   if (options.announceChange !== false) announce('Communication sounds reset to off.', { force: true });
   return true;
 }
@@ -11893,7 +12138,7 @@ function applyMushSettingsPreset() {
   setSelfVoiceInterruptOnCommand(true, { announceChange: false });
   applyCommunicationCueSettings({
     ...(state.accessibility.communicationCues || {}),
-    tell: true, auction: true, gossip: true, skynet: true, ssf: true
+    tell: true, auction: true, gossip: true, group: true, grats: true, shout: true, holler: true, skynet: true, ssf: true
   }, { persist: true, announceChange: false });
   const conflicts = [
     ...(result.lines?.skipped || []),
@@ -15629,56 +15874,6 @@ async function handleLocalLinkCommand(commandValue) {
   return true;
 }
 
-
-function unwrapLuaLabScript(value) {
-  const source = String(value || '').trim();
-  if (!source.startsWith('{')) return source;
-
-  let depth = 0;
-  let quote = '';
-  let escaped = false;
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (character === '\\') {
-      escaped = true;
-      continue;
-    }
-    if (quote) {
-      if (character === quote) quote = '';
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-      continue;
-    }
-    if (character === '{') depth += 1;
-    else if (character === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        if (source.slice(index + 1).trim()) return source;
-        return source.slice(1, index);
-      }
-      if (depth < 0) return source;
-    }
-  }
-  return source;
-}
-
-function parseLocalLuaLabCommand(commandValue) {
-  const command = String(commandValue || '');
-  const prefix = normalizeClientCommandPrefix(state.sessions.commandPrefix);
-  if (!command.startsWith(prefix) || command.startsWith(prefix.repeat(2))) return null;
-  const parser = typeof clientCommandApi.firstDirective === 'function'
-    ? clientCommandApi.firstDirective(command, prefix)
-    : null;
-  if (!parser || parser.directive !== 'lua') return null;
-  return { script: unwrapLuaLabScript(parser.body) };
-}
-
 function formatLuaLabValue(value) {
   if (value === null || value === undefined) return 'nil';
   if (typeof value === 'string') return value;
@@ -15686,52 +15881,49 @@ function formatLuaLabValue(value) {
   return '[value]';
 }
 
-function commandEchoEnabledForSession(sessionIdValue = state.sessions.activeId) {
-  const sessionId = String(sessionIdValue || state.sessions.activeId || '');
-  const record = state.sessions.records[sessionId];
-  const config = record?.tintin?.config || (sessionId === state.sessions.activeId ? state.sessions.config : null);
-  return config?.commandEcho === true;
-}
+function handleLuaResult(record, payload = {}, active = false) {
+  if (!record) return;
+  if (payload?.snapshot) applySessionsSnapshot(payload.snapshot, { followActive: false });
 
-async function handleLocalLuaLabCommand(commandValue) {
-  const parsed = parseLocalLuaLabCommand(commandValue);
-  if (!parsed) return false;
-  const prefix = normalizeClientCommandPrefix(state.sessions.commandPrefix);
-  if (!parsed.script.trim()) {
-    appendSystemMessage(`Lua usage: ${prefix}lua {echo("hello")}`);
-    return true;
-  }
-  if (typeof window.nukefire?.executeLuaLab !== 'function') {
-    appendSystemMessage('Lua is unavailable in this build.');
-    return true;
-  }
+  const write = (message, kind = 'info') => {
+    if (active) appendSystemMessage(message, kind);
+    else appendSystemToInactiveSession(record, message, kind);
+  };
+  const commandEcho = record?.tintin?.config?.commandEcho === true
+    || (active && state.sessions.config?.commandEcho === true);
 
-  const commandEcho = commandEchoEnabledForSession(state.sessions.activeId);
-  if (commandEcho) appendSystemMessage('[Lua] running...');
-  let result;
-  try {
-    result = await window.nukefire.executeLuaLab(state.sessions.activeId, parsed.script);
-  } catch (error) {
-    appendSystemMessage(`[Lua host error] ${String(error?.message || error || 'Unknown error').slice(0, 4096)}`);
-    return true;
+  for (const execution of payload?.executions || []) {
+    for (const message of execution?.messages || []) write(`[Lua execute] ${message}`);
+    if (active && execution?.activateSessionId && execution.activateSessionId !== state.sessions.activeId) {
+      void activateSession(execution.activateSessionId, { notifyMain: false });
+    }
   }
-
-  if (result?.snapshot) applySessionsSnapshot(result.snapshot, { followActive: false });
-  for (const args of result?.echoes || []) {
-    appendSystemMessage(`[Lua] ${(args || []).map(formatLuaLabValue).join(' ')}`);
+  for (const args of payload?.echoes || []) {
+    write(`[Lua] ${(args || []).map(formatLuaLabValue).join(' ')}`);
   }
-  if (result?.ok) {
-    if (commandEcho && (result.values || []).length) {
-      appendSystemMessage(`[Lua return] ${result.values.map(formatLuaLabValue).join(', ')}`);
+  for (const automation of payload?.automations || []) {
+    const reason = String(automation?.reason || '').trim();
+    if (!reason) continue;
+    write(`[Lua automation] ${reason.replaceAll('-', ' ')}`, 'error');
+  }
+  if (payload?.ok) {
+    if (commandEcho && (payload.values || []).length) {
+      write(`[Lua return] ${payload.values.map(formatLuaLabValue).join(', ')}`);
     } else if (commandEcho) {
-      appendSystemMessage('[Lua] OK');
+      write('[Lua] OK');
     }
   } else {
-    const kind = String(result?.error?.type || 'error');
-    const message = String(result?.error?.message || 'Lua execution failed.').slice(0, 4096);
-    appendSystemMessage(`[Lua ${kind}] ${message}`);
+    const error = payload?.error || {};
+    const kind = String(error.type || 'error');
+    const source = String(error.source || '').replace(/^NukeFire\/[^/]+\//u, '');
+    const line = Math.max(0, Math.trunc(Number(error.line) || 0));
+    const scriptName = String(payload?.scriptName || '');
+    const locationBase = scriptName || source || kind;
+    const location = line > 0 ? `${locationBase}:${line}` : locationBase;
+    let message = String(error.message || 'Lua execution failed.').slice(0, 4096);
+    if (error.source && line > 0 && message.startsWith(`${error.source}:${line}:`)) message = message.slice(`${error.source}:${line}:`.length).trimStart();
+    write(`Lua Error — ${location}: ${message}`, 'error');
   }
-  return true;
 }
 
 function parseLocalBufferCommand(commandValue) {
@@ -15751,7 +15943,6 @@ function handleLocalBufferCommand(commandValue) {
 }
 
 async function handleLocalRendererCommand(commandValue) {
-  if (await handleLocalLuaLabCommand(commandValue)) return true;
   if (await handleLocalLinkCommand(commandValue)) return true;
   return handleLocalBufferCommand(commandValue);
 }
@@ -15852,6 +16043,7 @@ async function sendCommand(rawCommand, options = {}) {
       record.draft = '';
       record.commandDraft = showSentCommand ? command : '';
     }
+    syncLuaCommandDraft();
   }
   updateCommandAvailability(statusBox?.dataset.connectionState || (state.connected ? 'connected' : 'disconnected'));
 
@@ -15865,7 +16057,7 @@ async function sendCommand(rawCommand, options = {}) {
   if (window.nukefire.routeCommand && state.sessions.activeId) {
     const commands = commandLine.errorCode ? [] : (commandLine.commands || []);
     const containsLocalRendererCommand = commands.length > 1
-      && commands.some((commandPart) => parseLocalLuaLabCommand(commandPart) || parseLocalLinkCommand(commandPart) || parseLocalBufferCommand(commandPart));
+      && commands.some((commandPart) => parseLocalLinkCommand(commandPart) || parseLocalBufferCommand(commandPart));
     let persistentMutation = false;
     if (containsLocalRendererCommand) {
       for (const commandPart of commands) {
@@ -16128,6 +16320,7 @@ function historyUp() {
   state.historyIndex = candidate;
   commandInput.value = state.history[candidate];
   commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length);
+  syncLuaCommandDraft();
   updateCommandHistoryStatus();
 }
 
@@ -17151,6 +17344,7 @@ function applyGmcp(message) {
       )
     : '';
   applyGmcpState(snapshot, { packageName, body: message?.body });
+  if (packageName === 'Room.Info') playRoomStairsCue(activeSessionRecord(), message?.body);
   if (packageName === 'NukeFire.Combat' && mobInspectorCurrentOpponent()?.name) {
     if (Number(message?.body?.out?.kills) > 0) {
       state.mobInspector.combatRefreshKey = '';
@@ -18883,6 +19077,754 @@ async function handleShowTinTinScriptsFolder() {
   ]);
 }
 
+
+
+function luaScriptNameValid(value) {
+  const name = String(value || '').trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*){0,15}$/u.test(name) && name.length <= 160;
+}
+
+function encodeLuaScriptToken(value) {
+  const bytes = new TextEncoder().encode(String(value ?? ''));
+  let binary = '';
+  const chunkSize = 0x4000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function activeLuaScriptCatalog(record = activeSessionRecord()) {
+  return Array.isArray(record?.luaScripts) ? record.luaScripts : [];
+}
+
+function setLuaScriptEditorStatus(message, kind = '') {
+  const status = $('#lua-script-editor-status');
+  if (!status) return;
+  status.textContent = String(message || '');
+  status.dataset.kind = kind;
+}
+
+function luaScriptRunStatusText(entry = {}) {
+  if (entry.runStatus === 'error') return `ERROR${Number(entry.errorLine) > 0 ? ` line ${Number(entry.errorLine)}` : ''}`;
+  if (entry.runStatus === 'ok') return 'OK';
+  return '';
+}
+
+function renderLuaScriptEditorList(record = activeSessionRecord()) {
+  const list = $('#lua-script-editor-list');
+  if (!list) return;
+  const selected = String(state.luaScriptEditor.selected || '');
+  list.replaceChildren();
+  for (const entry of activeLuaScriptCatalog(record)) {
+    const option = document.createElement('option');
+    option.value = String(entry.name || '');
+    const status = luaScriptRunStatusText(entry);
+    option.textContent = `${entry.name}${entry.autoRun ? '  • autorun' : ''}${status ? `  • ${status}` : ''}`;
+    if (option.value === selected) option.selected = true;
+    list.append(option);
+  }
+  if (!list.options.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No saved scripts';
+    option.disabled = true;
+    list.append(option);
+  }
+}
+
+function closeLuaScriptEditor(options = {}) {
+  if (!state.luaScriptEditor.open) return true;
+  if (state.luaScriptEditor.dirty && options.force !== true) {
+    if (!window.confirm('Discard unsaved Lua script changes?')) return false;
+  }
+  state.luaScriptEditor.open = false;
+  state.luaScriptEditor.dirty = false;
+  const overlay = $('#lua-script-editor-overlay');
+  if (overlay) overlay.hidden = true;
+  document.body.classList.remove('lua-script-editor-open');
+  const target = state.luaScriptEditor.returnFocus;
+  state.luaScriptEditor.returnFocus = null;
+  if (target instanceof HTMLElement && target.isConnected) target.focus();
+  else commandInput?.focus();
+  return true;
+}
+
+async function luaScriptCoordinatorUiCommand(operation, ...tokens) {
+  const sessionId = String(state.luaScriptEditor.sessionId || state.sessions.activeId || '');
+  if (!sessionId || typeof window.nukefire.routeCommand !== 'function') return null;
+  const prefix = normalizeClientCommandPrefix(state.sessions.commandPrefix);
+  const command = `${prefix}luascript ${operation}${tokens.length ? ` ${tokens.join(' ')}` : ''}`;
+  const result = await window.nukefire.routeCommand(sessionId, command);
+  for (const message of result?.messages || []) appendSystemMessage(message);
+  if (result?.snapshot) applySessionsSnapshot(result.snapshot, { followActive: false });
+  return result;
+}
+
+async function requestLuaScriptEditor(name = '') {
+  const sessionId = String(state.sessions.activeId || '');
+  if (!sessionId) return false;
+  const prefix = normalizeClientCommandPrefix(state.sessions.commandPrefix);
+  const suffix = luaScriptNameValid(name) ? ` ${name}` : '';
+  const result = await window.nukefire.routeCommand(sessionId, `${prefix}luascript edit${suffix}`);
+  for (const message of result?.messages || []) appendSystemMessage(message);
+  return true;
+}
+
+async function requestLuaScriptOpen(name) {
+  if (!luaScriptNameValid(name)) return;
+  if (state.luaScriptEditor.dirty && !window.confirm('Discard unsaved Lua script changes?')) {
+    renderLuaScriptEditorList();
+    return;
+  }
+  await luaScriptCoordinatorUiCommand('__open', encodeLuaScriptToken(name));
+}
+
+async function saveLuaScriptEditor(options = {}) {
+  const name = String($('#lua-script-editor-name')?.value || '').trim();
+  const source = String($('#lua-script-editor-source')?.value || '');
+  const autoRun = $('#lua-script-editor-autorun')?.checked === true;
+  if (!luaScriptNameValid(name)) {
+    setLuaScriptEditorStatus('Script name must use Lua module-style names such as main, combat, or panes.vitals.', 'error');
+    return false;
+  }
+  if (!source.trim()) {
+    setLuaScriptEditorStatus('Enter Lua source before saving.', 'error');
+    return false;
+  }
+  if (new TextEncoder().encode(source).length > 64 * 1024) {
+    setLuaScriptEditorStatus('Lua script exceeds the 64 KiB managed-script limit.', 'error');
+    return false;
+  }
+  const result = await luaScriptCoordinatorUiCommand(
+    '__save', encodeLuaScriptToken(name), encodeLuaScriptToken(source), autoRun ? '1' : '0'
+  );
+  const failed = (result?.messages || []).some((message) => /not saved|invalid|exceeded|rejected/iu.test(String(message)));
+  if (failed) {
+    setLuaScriptEditorStatus(String(result.messages.at(-1) || 'Lua script was not saved.'), 'error');
+    return false;
+  }
+  state.luaScriptEditor.dirty = false;
+  state.luaScriptEditor.selected = name;
+  setLuaScriptEditorStatus(`Saved ${name}.${autoRun ? ' It will load automatically with this session.' : ''}`, 'success');
+  if (options.run === true) await luaScriptCoordinatorUiCommand('__run', encodeLuaScriptToken(name));
+  return true;
+}
+
+async function deleteLuaScriptEditor() {
+  const name = String(state.luaScriptEditor.selected || $('#lua-script-editor-name')?.value || '').trim();
+  if (!luaScriptNameValid(name)) return;
+  if (!window.confirm(`Delete saved Lua script ${name}?`)) return;
+  await luaScriptCoordinatorUiCommand('__delete', encodeLuaScriptToken(name));
+  state.luaScriptEditor.dirty = false;
+  setLuaScriptEditorStatus(`Deleted ${name}.`, 'success');
+}
+
+function newLuaScriptEditor() {
+  if (state.luaScriptEditor.dirty && !window.confirm('Discard unsaved Lua script changes?')) return;
+  state.luaScriptEditor.selected = '';
+  state.luaScriptEditor.source = '';
+  state.luaScriptEditor.autoRun = true;
+  state.luaScriptEditor.dirty = false;
+  $('#lua-script-editor-name').value = activeLuaScriptCatalog().some((entry) => entry.name === 'main') ? 'new_script' : 'main';
+  $('#lua-script-editor-source').value = '';
+  $('#lua-script-editor-autorun').checked = true;
+  renderLuaScriptEditorList();
+  setLuaScriptEditorStatus('New script. Save it to NukeFire-managed Lua state.', '');
+  $('#lua-script-editor-source')?.focus();
+}
+
+function installLuaScriptEditorSurface() {
+  if ($('#lua-script-editor-overlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'lua-script-editor-overlay';
+  overlay.hidden = true;
+  overlay.className = 'lua-script-editor-overlay';
+
+  const dialog = document.createElement('section');
+  dialog.id = 'lua-script-editor-dialog';
+  dialog.className = 'lua-script-editor-dialog';
+  dialog.setAttribute('role', 'dialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.setAttribute('aria-labelledby', 'lua-script-editor-title');
+
+  const title = document.createElement('h2');
+  title.id = 'lua-script-editor-title';
+  title.textContent = 'Lua Scripts';
+  const intro = document.createElement('p');
+  intro.textContent = 'Saved scripts live in NukeFire-managed state. They can use require(), GMCP callbacks, storage, and native custom panes without filesystem access.';
+
+  const body = document.createElement('div');
+  body.className = 'lua-script-editor-body';
+  const sidebar = document.createElement('div');
+  const listLabel = document.createElement('label');
+  listLabel.textContent = 'Saved scripts';
+  listLabel.htmlFor = 'lua-script-editor-list';
+  const list = document.createElement('select');
+  list.id = 'lua-script-editor-list';
+  list.size = 12;
+  list.addEventListener('change', () => { void requestLuaScriptOpen(list.value); });
+  const newButton = document.createElement('button');
+  newButton.type = 'button';
+  newButton.textContent = 'New';
+  newButton.addEventListener('click', newLuaScriptEditor);
+  sidebar.append(listLabel, list, newButton);
+
+  const editor = document.createElement('div');
+  editor.className = 'lua-script-editor-main';
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = 'Script name';
+  nameLabel.htmlFor = 'lua-script-editor-name';
+  const name = document.createElement('input');
+  name.id = 'lua-script-editor-name';
+  name.autocomplete = 'off';
+  name.spellcheck = false;
+  const autoLabel = document.createElement('label');
+  autoLabel.className = 'lua-script-editor-check';
+  const auto = document.createElement('input');
+  auto.type = 'checkbox';
+  auto.id = 'lua-script-editor-autorun';
+  autoLabel.append(auto, document.createTextNode(' Load automatically when this client session starts'));
+  const sourceLabel = document.createElement('label');
+  sourceLabel.textContent = 'Lua source';
+  sourceLabel.htmlFor = 'lua-script-editor-source';
+  const source = document.createElement('textarea');
+  source.id = 'lua-script-editor-source';
+  source.rows = 24;
+  source.spellcheck = false;
+  source.wrap = 'off';
+  source.addEventListener('input', () => { state.luaScriptEditor.dirty = true; });
+  name.addEventListener('input', () => { state.luaScriptEditor.dirty = true; });
+  auto.addEventListener('change', () => { state.luaScriptEditor.dirty = true; });
+  const status = document.createElement('p');
+  status.id = 'lua-script-editor-status';
+  status.setAttribute('role', 'status');
+  editor.append(nameLabel, name, autoLabel, sourceLabel, source, status);
+  body.append(sidebar, editor);
+
+  const actions = document.createElement('div');
+  actions.className = 'lua-script-editor-actions';
+  const save = document.createElement('button'); save.type = 'button'; save.textContent = 'Save';
+  save.addEventListener('click', () => { void saveLuaScriptEditor(); });
+  const saveRun = document.createElement('button'); saveRun.type = 'button'; saveRun.textContent = 'Save & Run';
+  saveRun.addEventListener('click', () => { void saveLuaScriptEditor({ run: true }); });
+  const run = document.createElement('button'); run.type = 'button'; run.textContent = 'Run Saved';
+  run.addEventListener('click', () => {
+    const scriptName = String(state.luaScriptEditor.selected || '').trim();
+    if (luaScriptNameValid(scriptName)) void luaScriptCoordinatorUiCommand('__run', encodeLuaScriptToken(scriptName));
+  });
+  const reload = document.createElement('button'); reload.type = 'button'; reload.textContent = 'Reload Autorun';
+  reload.title = 'Starts a fresh Lua session and runs every saved script with autorun enabled.';
+  reload.addEventListener('click', () => { void luaScriptCoordinatorUiCommand('__reload'); });
+  const del = document.createElement('button'); del.type = 'button'; del.textContent = 'Delete';
+  del.addEventListener('click', () => { void deleteLuaScriptEditor(); });
+  const close = document.createElement('button'); close.type = 'button'; close.textContent = 'Close';
+  close.addEventListener('click', () => { closeLuaScriptEditor(); });
+  actions.append(save, saveRun, run, reload, del, close);
+
+  dialog.append(title, intro, body, actions);
+  overlay.append(dialog);
+  overlay.addEventListener('mousedown', (event) => { if (event.target === overlay) closeLuaScriptEditor(); });
+  overlay.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); closeLuaScriptEditor(); } });
+  document.body.append(overlay);
+
+  const style = document.createElement('style');
+  style.id = 'lua-script-editor-style';
+  style.textContent = `
+    .lua-script-editor-overlay { position: fixed; inset: 0; z-index: 10050; background: rgba(0,0,0,.72); padding: 4vh 4vw; overflow: auto; }
+    .lua-script-editor-dialog { max-width: 1100px; margin: 0 auto; background: var(--panel-bg, #11161a); border: 1px solid currentColor; border-radius: .6rem; padding: 1rem; box-shadow: 0 1rem 3rem rgba(0,0,0,.55); }
+    .lua-script-editor-body { display: grid; grid-template-columns: minmax(12rem, 18rem) 1fr; gap: 1rem; }
+    .lua-script-editor-body select, .lua-script-editor-body textarea, .lua-script-editor-body input[type="text"], #lua-script-editor-name { width: 100%; box-sizing: border-box; }
+    #lua-script-editor-list { min-height: 20rem; }
+    #lua-script-editor-source { min-height: 28rem; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; tab-size: 2; }
+    .lua-script-editor-main { display: grid; gap: .45rem; }
+    .lua-script-editor-check { display: flex; gap: .45rem; align-items: center; }
+    .lua-script-editor-actions { display: flex; flex-wrap: wrap; gap: .55rem; margin-top: 1rem; }
+    #lua-script-editor-status[data-kind="error"] { font-weight: 700; }
+    @media (max-width: 760px) { .lua-script-editor-body { grid-template-columns: 1fr; } #lua-script-editor-list { min-height: 8rem; } }
+  `;
+  document.head.append(style);
+}
+
+function openLuaScriptEditor(record, payload = {}) {
+  if (!record) return;
+  installLuaScriptEditorSurface();
+  record.luaScripts = Array.isArray(payload.scripts) ? payload.scripts.map((entry) => ({ ...entry })) : activeLuaScriptCatalog(record);
+  if (!state.luaScriptEditor.open) state.luaScriptEditor.returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : commandInput;
+  state.luaScriptEditor.open = true;
+  state.luaScriptEditor.sessionId = String(record.id || state.sessions.activeId || '');
+  state.luaScriptEditor.selected = String(payload.selected || '');
+  state.luaScriptEditor.source = String(payload.source || '');
+  state.luaScriptEditor.autoRun = payload.autoRun === true;
+  state.luaScriptEditor.dirty = false;
+  $('#lua-script-editor-name').value = state.luaScriptEditor.selected || (payload.isNew ? 'main' : '');
+  $('#lua-script-editor-source').value = state.luaScriptEditor.source;
+  $('#lua-script-editor-autorun').checked = state.luaScriptEditor.autoRun;
+  $('#lua-script-editor-overlay').hidden = false;
+  document.body.classList.add('lua-script-editor-open');
+  renderLuaScriptEditorList(record);
+  const selectedEntry = activeLuaScriptCatalog(record).find((entry) => entry.name === state.luaScriptEditor.selected);
+  const selectedStatus = luaScriptRunStatusText(selectedEntry);
+  setLuaScriptEditorStatus(state.luaScriptEditor.selected
+    ? `Editing ${state.luaScriptEditor.selected}. ${state.luaScriptEditor.autoRun ? 'Autorun is enabled.' : 'Autorun is off.'}${selectedStatus ? ` Last run: ${selectedStatus}.${selectedEntry?.errorMessage ? ` ${selectedEntry.errorMessage}` : ''}` : ''}`
+    : 'Create a saved Lua script. main is a good starting name.', selectedEntry?.runStatus === 'error' ? 'error' : '');
+  queueMicrotask(() => $('#lua-script-editor-source')?.focus());
+  announce('Lua Scripts editor opened.', { force: true });
+}
+
+function applyLuaScriptCatalog(record, payload = {}, active = false) {
+  if (!record) return;
+  record.luaScripts = Array.isArray(payload.scripts) ? payload.scripts.map((entry) => ({ ...entry })) : [];
+  if (active && state.luaScriptEditor.open && state.luaScriptEditor.sessionId === record.id) {
+    renderLuaScriptEditorList(record);
+    const selectedEntry = record.luaScripts.find((entry) => entry.name === state.luaScriptEditor.selected);
+    const selectedStatus = luaScriptRunStatusText(selectedEntry);
+    if (selectedEntry && !state.luaScriptEditor.dirty && selectedStatus) {
+      setLuaScriptEditorStatus(`Editing ${selectedEntry.name}. ${selectedEntry.autoRun ? 'Autorun is enabled.' : 'Autorun is off.'} Last run: ${selectedStatus}.${selectedEntry.errorMessage ? ` ${selectedEntry.errorMessage}` : ''}`, selectedEntry.runStatus === 'error' ? 'error' : '');
+    }
+  }
+}
+
+function sessionLuaPanes(record) {
+  if (!record) return new Map();
+  if (!(record.luaPanes instanceof Map)) record.luaPanes = new Map();
+  return record.luaPanes;
+}
+
+function luaPaneHasVisible(record) {
+  return [...sessionLuaPanes(record).values()].some((pane) => pane?.visible === true);
+}
+
+function customPaneWorkspaceDefinition(pane) {
+  const paneId = String(pane?.id || '').trim();
+  if (!paneId) return null;
+  const panelId = customPaneWorkspacePanelId(paneId);
+  return {
+    id: panelId,
+    paneId,
+    label: String(pane?.title || paneId || 'Custom Pane'),
+    selector: `#${customPaneWorkspaceSectionId(paneId)}`,
+    defaultVisible: pane?.visible === true,
+    defaultLayout: { region: 'right', order: 100 + activeCustomPaneWorkspacePanels.size },
+    customPane: true
+  };
+}
+
+function customPaneMenuItem(panelId, action, label) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.setAttribute('role', 'menuitem');
+  button.dataset.panelAction = action;
+  button.dataset.panelId = panelId;
+  button.textContent = label;
+  return button;
+}
+
+function bindCustomPaneWorkspaceControls(section, menu, panelId) {
+  const menuButton = section?.querySelector(`[data-panel-menu-button="${panelId}"]`);
+  if (menuButton && menuButton.dataset.customPaneBound !== 'true') {
+    menuButton.dataset.customPaneBound = 'true';
+    menuButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openPanelMenu(panelId);
+    });
+  }
+
+  for (const item of menu?.querySelectorAll('[data-panel-action]') || []) {
+    if (item.dataset.customPaneBound === 'true') continue;
+    item.dataset.customPaneBound = 'true';
+    item.addEventListener('click', () => {
+      const action = item.dataset.panelAction;
+      closePanelMenu(panelId);
+
+      if (action === 'hide') {
+        applyPanelVisibility({
+          ...state.workspace.activePanels,
+          [panelId]: false
+        }, {
+          persist: false,
+          announceChange: true
+        });
+        commandInput.focus({ preventScroll: true });
+        return;
+      }
+      if (action === 'tab-previous' || action === 'tab-next') {
+        tabPanelWithAdjacent(panelId, action === 'tab-previous' ? 'previous' : 'next');
+        return;
+      }
+      if (action === 'separate-tab') {
+        separatePanelTab(panelId);
+        return;
+      }
+      const destination = {
+        'move-left': 'left',
+        'move-right': 'right',
+        'move-outer-right': 'outer-right',
+        'move-bottom': 'bottom',
+        'move-earlier': 'earlier',
+        'move-later': 'later'
+      }[action];
+      if (destination) movePanel(panelId, destination);
+    });
+  }
+
+  if (menu && menu.dataset.customPaneBound !== 'true') {
+    menu.dataset.customPaneBound = 'true';
+    menu.addEventListener('keydown', (event) => {
+      const items = [...menu.querySelectorAll('[role="menuitem"]:not([disabled])')];
+      const index = items.indexOf(document.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePanelMenu(panelId, { returnFocus: true });
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        items[(index + 1 + items.length) % items.length]?.focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        items[(index - 1 + items.length) % items.length]?.focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        items[0]?.focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        items.at(-1)?.focus();
+      } else if (event.key === 'Tab') {
+        closePanelMenu(panelId);
+      }
+    });
+  }
+
+  const titlebar = section?.querySelector('.panel-titlebar');
+  if (titlebar) {
+    titlebar.draggable = true;
+    titlebar.dataset.panelDragHandle = panelId;
+    titlebar.title = `Drag ${workspacePanelDefinition(panelId)?.label || 'Custom Pane'} to move, reorder, or combine it as a tab.`;
+  }
+}
+
+function ensureCustomPaneWorkspacePanel(pane, options = {}) {
+  const definition = customPaneWorkspaceDefinition(pane);
+  if (!definition) return null;
+  const panelId = definition.id;
+  const existing = activeCustomPaneWorkspacePanels.get(panelId);
+  const currentDefinition = existing
+    ? { ...existing, label: definition.label, defaultVisible: definition.defaultVisible }
+    : definition;
+  activeCustomPaneWorkspacePanels.set(panelId, currentDefinition);
+
+  let section = $(currentDefinition.selector);
+  if (!section) {
+    const template = $('#panel-live-state') || $('#panel-vitals');
+    section = document.createElement('section');
+    section.id = customPaneWorkspaceSectionId(pane.id);
+    section.className = template?.className || 'panel';
+    section.classList.add('custom-pane-panel');
+    section.dataset.workspacePanel = panelId;
+
+    const titlebar = document.createElement('div');
+    titlebar.className = 'panel-titlebar';
+    const heading = document.createElement('h2');
+    heading.id = `${section.id}-heading`;
+    heading.textContent = currentDefinition.label;
+    const menuButton = document.createElement('button');
+    menuButton.type = 'button';
+    menuButton.className = 'panel-menu-button';
+    menuButton.dataset.panelMenuButton = panelId;
+    menuButton.setAttribute('aria-haspopup', 'menu');
+    menuButton.setAttribute('aria-expanded', 'false');
+    menuButton.setAttribute('aria-controls', `panel-menu-${panelId}`);
+    menuButton.setAttribute('aria-label', `Open ${currentDefinition.label} panel menu`);
+    menuButton.title = `${currentDefinition.label} panel options`;
+    menuButton.textContent = '⋯';
+    titlebar.append(heading, menuButton);
+
+    const body = document.createElement('div');
+    body.className = 'custom-pane-body';
+    body.setAttribute('aria-labelledby', heading.id);
+    section.append(titlebar, body);
+    workspaceRoot?.append(section);
+
+    const menu = document.createElement('div');
+    menu.id = `panel-menu-${panelId}`;
+    menu.className = 'panel-menu';
+    menu.setAttribute('role', 'menu');
+    menu.dataset.panelMenu = panelId;
+    menu.setAttribute('aria-label', `${currentDefinition.label} panel menu`);
+    menu.hidden = true;
+    menu.append(
+      customPaneMenuItem(panelId, 'move-left', 'Move Left'),
+      customPaneMenuItem(panelId, 'move-right', 'Move Right'),
+      customPaneMenuItem(panelId, 'move-outer-right', 'Move Far Right'),
+      customPaneMenuItem(panelId, 'move-bottom', 'Move Below'),
+      document.createElement('hr'),
+      customPaneMenuItem(panelId, 'tab-previous', 'Tab with Previous Panel'),
+      customPaneMenuItem(panelId, 'tab-next', 'Tab with Next Panel'),
+      customPaneMenuItem(panelId, 'separate-tab', 'Separate Tab'),
+      document.createElement('hr'),
+      customPaneMenuItem(panelId, 'move-earlier', 'Move Earlier'),
+      customPaneMenuItem(panelId, 'move-later', 'Move Later'),
+      document.createElement('hr'),
+      customPaneMenuItem(panelId, 'hide', 'Hide Panel')
+    );
+    panelMenuLayer?.append(menu);
+    bindCustomPaneWorkspaceControls(section, menu, panelId);
+  } else {
+    const heading = section.querySelector('h2[id]');
+    if (heading) heading.textContent = currentDefinition.label;
+    const menuButton = section.querySelector(`[data-panel-menu-button="${panelId}"]`);
+    if (menuButton) {
+      menuButton.setAttribute('aria-label', `Open ${currentDefinition.label} panel menu`);
+      menuButton.title = `${currentDefinition.label} panel options`;
+    }
+    const menu = $(`[data-panel-menu="${panelId}"]`);
+    if (menu) menu.setAttribute('aria-label', `${currentDefinition.label} panel menu`);
+    bindCustomPaneWorkspaceControls(section, menu, panelId);
+  }
+
+  if (!existing && options.seedWorkspace !== false) {
+    const rightOrders = Object.values(state.workspace.activeLayout || {})
+      .filter((entry) => entry?.region === 'right')
+      .map((entry) => Number(entry.order))
+      .filter(Number.isFinite);
+    const nextOrder = rightOrders.length ? Math.max(...rightOrders) + 1 : 0;
+    state.workspace.activePanels = {
+      ...state.workspace.activePanels,
+      [panelId]: pane.visible === true
+    };
+    state.workspace.activeLayout = {
+      ...state.workspace.activeLayout,
+      [panelId]: { region: 'right', order: nextOrder }
+    };
+    state.workspace.activeTabGroups = {
+      ...state.workspace.activeTabGroups,
+      [panelId]: panelId
+    };
+    state.workspace.activeTabs = {
+      ...state.workspace.activeTabs,
+      [panelId]: panelId
+    };
+  }
+  return currentDefinition;
+}
+
+function renderCustomPaneWorkspacePanel(pane) {
+  const definition = ensureCustomPaneWorkspacePanel(pane);
+  if (!definition) return;
+  const section = $(definition.selector);
+  const body = section?.querySelector('.custom-pane-body');
+  if (!section || !body) return;
+
+  const structureSignature = JSON.stringify(
+    (Array.isArray(pane.rows) ? pane.rows : []).map((row) => [row.id, row.type, row.label])
+  );
+  if (body.dataset.structureSignature !== structureSignature) {
+    const fragment = document.createDocumentFragment();
+    for (const row of Array.isArray(pane.rows) ? pane.rows : []) {
+      const line = document.createElement('div');
+      line.className = 'custom-pane-row';
+      line.dataset.customPaneRow = String(row.id || '');
+      const label = document.createElement('strong');
+      label.textContent = String(row.label || row.id || 'Value');
+      line.append(label);
+      if (row.type === 'bar') {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'custom-pane-bar';
+        const progress = document.createElement('progress');
+        progress.dataset.customPaneProgress = String(row.id || '');
+        const valueText = document.createElement('span');
+        valueText.className = 'custom-pane-bar-value';
+        valueText.dataset.customPaneBarValue = String(row.id || '');
+        wrapper.append(progress, valueText);
+        line.append(wrapper);
+      } else {
+        const output = document.createElement('output');
+        output.dataset.customPaneValue = String(row.id || '');
+        line.append(output);
+      }
+      fragment.append(line);
+    }
+    body.replaceChildren(fragment);
+    body.dataset.structureSignature = structureSignature;
+  }
+
+  for (const row of Array.isArray(pane.rows) ? pane.rows : []) {
+    const value = pane.values?.[row.id];
+    if (row.type === 'bar') {
+      const progress = body.querySelector(`[data-custom-pane-progress="${row.id}"]`);
+      const valueText = body.querySelector(`[data-custom-pane-bar-value="${row.id}"]`);
+      const max = Math.max(1, Number(value?.max) || 1);
+      const current = Math.max(0, Number(value?.value) || 0);
+      if (progress) {
+        progress.max = max;
+        progress.value = Math.min(current, max);
+        progress.setAttribute('aria-label', `${row.label || row.id}: ${current} of ${max}`);
+      }
+      if (valueText) valueText.textContent = `${current} / ${max}`;
+    } else {
+      const output = body.querySelector(`[data-custom-pane-value="${row.id}"]`);
+      if (output) output.textContent = String(value ?? '');
+    }
+  }
+}
+
+function removeCustomPaneWorkspacePanel(paneIdValue, options = {}) {
+  const panelId = customPaneWorkspacePanelId(paneIdValue);
+  const definition = activeCustomPaneWorkspacePanels.get(panelId);
+  if (!definition) return false;
+  closePanelMenu(panelId);
+  $(definition.selector)?.remove();
+  $(`[data-panel-menu="${panelId}"]`)?.remove();
+  activeCustomPaneWorkspacePanels.delete(panelId);
+
+  const nextPanels = { ...state.workspace.activePanels };
+  const nextLayout = { ...state.workspace.activeLayout };
+  const nextGroups = { ...state.workspace.activeTabGroups };
+  delete nextPanels[panelId];
+  delete nextLayout[panelId];
+  delete nextGroups[panelId];
+  state.workspace.activePanels = normalizePanelVisibility(nextPanels, state.workspace.defaultPanels);
+  state.workspace.activeLayout = normalizePanelLayout(nextLayout, state.workspace.defaultLayout);
+  state.workspace.activeTabGroups = normalizeTabGroups(
+    nextGroups,
+    state.workspace.activeLayout,
+    state.workspace.defaultTabGroups
+  );
+  state.workspace.activeTabs = normalizeActiveTabs(
+    state.workspace.activeTabs,
+    state.workspace.activeTabGroups,
+    state.workspace.activeLayout,
+    state.workspace.defaultActiveTabs
+  );
+  if (options.render !== false) {
+    renderPanelGroups();
+    updateDockVisibility();
+  }
+  return true;
+}
+
+function clearActiveCustomPaneWorkspacePanels(options = {}) {
+  const paneIds = [...activeCustomPaneWorkspacePanels.values()].map((definition) => definition.paneId);
+  for (const paneId of paneIds) removeCustomPaneWorkspacePanel(paneId, { render: false });
+  if (options.render !== false) {
+    renderPanelGroups();
+    updateDockVisibility();
+  }
+}
+
+function activateCustomPaneWorkspace(record = activeSessionRecord()) {
+  clearActiveCustomPaneWorkspacePanels({ render: false });
+  const panes = [...sessionLuaPanes(record).values()];
+  for (const pane of panes) {
+    ensureCustomPaneWorkspacePanel(pane, { seedWorkspace: true });
+    renderCustomPaneWorkspacePanel(pane);
+  }
+  state.workspace.activePanels = normalizePanelVisibility(
+    state.workspace.activePanels,
+    state.workspace.defaultPanels
+  );
+  state.workspace.activeLayout = normalizePanelLayout(
+    state.workspace.activeLayout,
+    state.workspace.defaultLayout
+  );
+  state.workspace.activeTabGroups = normalizeTabGroups(
+    state.workspace.activeTabGroups,
+    state.workspace.activeLayout,
+    state.workspace.defaultTabGroups
+  );
+  state.workspace.activeTabs = normalizeActiveTabs(
+    state.workspace.activeTabs,
+    state.workspace.activeTabGroups,
+    state.workspace.activeLayout,
+    state.workspace.defaultActiveTabs
+  );
+  renderPanelGroups();
+  updateDockVisibility();
+  renderLuaPanes(record);
+}
+
+function renderLuaPanes(record = activeSessionRecord()) {
+  installLuaPanesPanelSurface();
+  const list = $('#lua-panes-list');
+  if (!list) return;
+  const panes = [...sessionLuaPanes(record).values()];
+  const fragment = document.createDocumentFragment();
+  const intro = document.createElement('p');
+  intro.textContent = panes.length
+    ? 'Player-created panes now appear as individual workspace panels. Use each panel menu or drag its title to move or tab it.'
+    : 'No player-created panes are active.';
+  fragment.append(intro);
+  for (const pane of panes) {
+    const item = document.createElement('p');
+    item.textContent = `${pane.title || pane.id}: ${pane.visible === true ? 'shown' : 'hidden by script'}.`;
+    fragment.append(item);
+  }
+  list.replaceChildren(fragment);
+}
+
+function syncLuaPanesWorkspaceVisibility() {
+  // P2 keeps the legacy Custom Panes overview off by default. Individual
+  // player-created panes are registered directly with the workspace instead.
+}
+
+function applyLuaPaneState(record, payload, active) {
+  if (!record || !payload || typeof payload !== 'object') return;
+  const panes = sessionLuaPanes(record);
+  const paneId = String(payload.paneId || payload.pane?.id || '');
+  const previous = paneId ? panes.get(paneId) : null;
+
+  if (payload.action === 'destroy') {
+    panes.delete(paneId);
+    if (active) {
+      removeCustomPaneWorkspacePanel(paneId);
+      renderLuaPanes(record);
+    }
+    return;
+  }
+
+  if (payload.action === 'upsert' && payload.pane && typeof payload.pane === 'object') {
+    const pane = payload.pane;
+    panes.set(String(pane.id || ''), pane);
+    if (!active) return;
+
+    const panelId = customPaneWorkspacePanelId(pane.id);
+    const existed = activeCustomPaneWorkspacePanels.has(panelId);
+    ensureCustomPaneWorkspacePanel(pane);
+    renderCustomPaneWorkspacePanel(pane);
+
+    const scriptVisibilityChanged = previous && previous.visible !== pane.visible;
+    const titleChanged = previous && previous.title !== pane.title;
+    if (!existed || scriptVisibilityChanged) {
+      applyPanelVisibility({
+        ...state.workspace.activePanels,
+        [panelId]: pane.visible === true
+      }, {
+        persist: false,
+        announceChange: false
+      });
+    }
+    if (!existed || titleChanged) {
+      state.workspace.activeLayout = normalizePanelLayout(
+        state.workspace.activeLayout,
+        state.workspace.defaultLayout
+      );
+      state.workspace.activeTabGroups = normalizeTabGroups(
+        state.workspace.activeTabGroups,
+        state.workspace.activeLayout,
+        state.workspace.defaultTabGroups
+      );
+      state.workspace.activeTabs = normalizeActiveTabs(
+        state.workspace.activeTabs,
+        state.workspace.activeTabGroups,
+        state.workspace.activeLayout,
+        state.workspace.defaultActiveTabs
+      );
+      renderPanelGroups();
+      updateDockVisibility();
+    }
+    if (!previous || scriptVisibilityChanged || titleChanged) renderLuaPanes(record);
+  }
+}
+
 function handleSessionEvent(event = {}) {
   const sessionId = String(event.sessionId || '');
   const record = ensureSessionRecord({ id: sessionId });
@@ -18897,6 +19839,8 @@ function handleSessionEvent(event = {}) {
       case 'local-text': appendLocalText(payload); break;
       case 'communication-text': captureCommunicationText(payload); break;
       case 'speedwalk-step': noteOutgoingCommand(sessionId, payload?.command); break;
+      case 'lua-command-sent': noteOutgoingCommand(sessionId, payload?.command); break;
+      case 'lua-command-line': applyLuaCommandLine(record, payload, true); break;
       case 'status':
         if (payload?.state !== 'connected') {
           flushActiveHighlightText();
@@ -18918,6 +19862,10 @@ function handleSessionEvent(event = {}) {
       case 'new-environ': applyNewEnvironment(payload); break;
       case 'action-result': applyActionResult(payload, true, record); break;
       case 'pipeline-debug': handlePipelineDebugEvent(record, payload); break;
+      case 'lua-result': handleLuaResult(record, payload, true); break;
+      case 'lua-pane-state': applyLuaPaneState(record, payload, true); break;
+      case 'lua-script-catalog': applyLuaScriptCatalog(record, payload, true); break;
+      case 'lua-script-editor': openLuaScriptEditor(record, payload); break;
       case 'script-audit-request': void handleTinTinAuditRequest(record, payload); break;
       case 'script-read-request': void handleTinTinReadRequest(record, payload); break;
       case 'session-profile-load-request': void handleTinTinReadRequest(record, payload, { privateProfileLoad: true }); break;
@@ -18954,6 +19902,8 @@ function handleSessionEvent(event = {}) {
       case 'local-text': appendTextToInactiveSession(record, payload, { localDisplay: true }); break;
       case 'communication-text': captureCommunicationTextForSession(record, payload); break;
       case 'speedwalk-step': noteOutgoingCommand(sessionId, payload?.command); break;
+      case 'lua-command-sent': noteOutgoingCommand(sessionId, payload?.command); break;
+      case 'lua-command-line': applyLuaCommandLine(record, payload, false); break;
       case 'status': {
         const previousState = record.status?.state || 'disconnected';
         if (payload?.state !== 'connected') {
@@ -19040,6 +19990,9 @@ function handleSessionEvent(event = {}) {
       case 'new-environ': record.protocol.newEnvironment = payload && typeof payload === 'object' ? { ...payload } : { enabled: false }; break;
       case 'action-result': applyActionResult(payload, false, record); break;
       case 'pipeline-debug': handlePipelineDebugEvent(record, payload); break;
+      case 'lua-result': handleLuaResult(record, payload, false); break;
+      case 'lua-pane-state': applyLuaPaneState(record, payload, false); break;
+      case 'lua-script-catalog': applyLuaScriptCatalog(record, payload, false); break;
       case 'script-audit-request': void handleTinTinAuditRequest(record, payload); break;
       case 'script-read-request': void handleTinTinReadRequest(record, payload); break;
       case 'session-profile-load-request': void handleTinTinReadRequest(record, payload, { privateProfileLoad: true }); break;
@@ -19798,7 +20751,30 @@ disconnectOverlay?.addEventListener('click', (event) => {
   if (event.target === disconnectOverlay) closeDisconnectDialog();
 });
 disconnectDialog?.addEventListener('keydown', handleDisconnectDialogKeydown);
+let lastLuaCommandDraftSync = '';
+function syncLuaCommandDraft() {
+  const record = activeSessionRecord();
+  if (!record || state.remoteEcho || typeof window.nukefire.updateSession !== 'function') return;
+  const text = String(commandInput.value || '').replace(/[\r\n\u0000]/gu, '').slice(0, 8192);
+  record.commandDraft = text;
+  if (text === lastLuaCommandDraftSync) return;
+  lastLuaCommandDraftSync = text;
+  void window.nukefire.updateSession(record.id, { luaCommandDraft: text }).catch(() => {});
+}
+
+function applyLuaCommandLine(record, payload = {}, active = false) {
+  if (!record) return;
+  const text = String(payload?.text || '').replace(/[\r\n\u0000]/gu, '').slice(0, 8192);
+  record.commandDraft = text;
+  if (!active || state.remoteEcho) return;
+  commandInput.value = text;
+  commandInput.setSelectionRange(text.length, text.length);
+  lastLuaCommandDraftSync = text;
+  updateCommandAvailability(statusBox?.dataset.connectionState || (state.connected ? 'connected' : 'disconnected'));
+}
+
 commandInput.addEventListener('input', () => {
+  syncLuaCommandDraft();
   resetTinTinCompletion();
   resetTinTinHistorySearch();
   if (state.historyIndex !== null || state.historyPrefix || state.draft) resetHistoryNavigation();
@@ -20240,6 +21216,10 @@ $('#soundpack-editor-preview')?.addEventListener('click', () => {
 $('#communication-cue-tell')?.addEventListener('change', (event) => setCommunicationCueChannel('tell', event.target.checked));
 $('#communication-cue-auction')?.addEventListener('change', (event) => setCommunicationCueChannel('auction', event.target.checked));
 $('#communication-cue-gossip')?.addEventListener('change', (event) => setCommunicationCueChannel('gossip', event.target.checked));
+$('#communication-cue-group')?.addEventListener('change', (event) => setCommunicationCueChannel('group', event.target.checked));
+$('#communication-cue-grats')?.addEventListener('change', (event) => setCommunicationCueChannel('grats', event.target.checked));
+$('#communication-cue-shout')?.addEventListener('change', (event) => setCommunicationCueChannel('shout', event.target.checked));
+$('#communication-cue-holler')?.addEventListener('change', (event) => setCommunicationCueChannel('holler', event.target.checked));
 $('#communication-cue-skynet')?.addEventListener('change', (event) => setCommunicationCueChannel('skynet', event.target.checked));
 $('#communication-cue-ssf')?.addEventListener('change', (event) => setCommunicationCueChannel('ssf', event.target.checked));
 $('#communication-cues-background')?.addEventListener('change', (event) => setCommunicationCuesBackground(event.target.checked));
@@ -21078,6 +22058,10 @@ applyCommunicationCueSettings({
   tell: localStorage.getItem('nukefire.communicationCueTell') === 'true',
   auction: localStorage.getItem('nukefire.communicationCueAuction') === 'true',
   gossip: localStorage.getItem('nukefire.communicationCueGossip') === 'true',
+  group: localStorage.getItem('nukefire.communicationCueGroup') === 'true',
+  grats: localStorage.getItem('nukefire.communicationCueGrats') === 'true',
+  shout: localStorage.getItem('nukefire.communicationCueShout') === 'true',
+  holler: localStorage.getItem('nukefire.communicationCueHoller') === 'true',
   skynet: localStorage.getItem('nukefire.communicationCueSkynet') === 'true',
   ssf: localStorage.getItem('nukefire.communicationCueSsf') === 'true',
   background: localStorage.getItem('nukefire.communicationCuesBackground') === 'true'

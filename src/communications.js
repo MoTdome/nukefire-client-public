@@ -8,6 +8,8 @@
   const CHANNELS = Object.freeze([
     Object.freeze({ id: 'all', label: 'All', availability: 'always' }),
     Object.freeze({ id: 'gossip', label: 'Gossip', availability: 'always' }),
+    Object.freeze({ id: 'shout', label: 'Shout', availability: 'always' }),
+    Object.freeze({ id: 'holler', label: 'Holler', availability: 'always' }),
     Object.freeze({ id: 'newbie', label: 'Newbie', availability: 'always' }),
     Object.freeze({ id: 'group', label: 'Group', availability: 'always' }),
     Object.freeze({ id: 'tell', label: 'Tell', availability: 'always' }),
@@ -26,6 +28,10 @@
     ['gossip', 'gossip'],
     ['gossips', 'gossip'],
     ['chat', 'gossip'],
+    ['shout', 'shout'],
+    ['shouts', 'shout'],
+    ['holler', 'holler'],
+    ['hollers', 'holler'],
     ['newbie', 'newbie'],
     ['newbies', 'newbie'],
     ['newcomer', 'newbie'],
@@ -65,7 +71,7 @@
   // ordinary combat lines should not pay every channel regex.  When callers
   // already have ANSI-free source text, one cheap hint scan rejects the vast
   // majority of non-communication output before any raw ANSI normalization.
-  const COMMUNICATION_HINT_RE = /tell|telepath|group|party|newbie|newcomer|grat|congrat|auction|market|ssf|bonejack|\bbj\b|gossip|chat|skynet|system/iu;
+  const COMMUNICATION_HINT_RE = /tell|telepath|group|party|newbie|newcomer|grat|congrat|auction|market|ssf|bonejack|\bbj\b|gossip|chat|shout|holler|skynet|system/iu;
 
   function normalizeChannel(value, fallback = '') {
     const clean = String(value || '')
@@ -175,6 +181,14 @@
         /^\s*(?:\[\s*(?:group|party)\s*\](?:\s|$)|(?:group|party)\s*[:>\-])/iu,
         /\btells? (?:the )?(?:group|party)\b/iu,
         /\bgroup[- ]?say(?:s)?\b/iu
+      ]],
+      ['shout', [
+        /^\s*(?:\[\s*shouts?\s*\](?:\s|$)|shouts?\s*[:>\-])/iu,
+        /^\s*(?:you|[^\s,]+)\s+shouts?,\s*['"]/iu
+      ]],
+      ['holler', [
+        /^\s*(?:\[\s*hollers?\s*\](?:\s|$)|hollers?\s*[:>\-])/iu,
+        /^\s*(?:you|[^\s,]+)\s+hollers?,\s*['"]/iu
       ]],
       ['newbie', [
         /^\s*(?:\[\s*(?:newbie|newcomer)\s*\](?:\s|$)|(?:newbie|newcomer)(?:\s+channel)?\s*[:>\-])/iu,

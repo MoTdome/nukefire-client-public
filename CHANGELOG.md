@@ -1,3 +1,43 @@
+## Beta.74 Lua Mudlet Convenience C1
+
+- Adds Mudlet-familiar `sendAll()` and `speedwalk()` while routing through NukeFire's existing guarded direct-send and native Speedwalk machinery.
+- Adds command-line helpers `getCmdLine()`, `printCmdLine()`, `setCmdLine()`, `appendCmdLine()`, and `clearCmdLine()` using the existing per-session command draft rather than DOM access.
+- Adds bounded `getCurrentLine()`, `getLineNumber()`, `getLastLineNumber()`, `getLineCount()`, and `getLines()` over NukeFire-owned visible output history; `getLines(-10, -1)` is supported as a bounded relative convenience.
+- Adds lightweight `decho()` and `hecho()` compatibility alongside `echo()`/`cecho()` without importing Mudlet's full buffer-formatting engine.
+- Preserves the Lua sandbox: no filesystem, shell, arbitrary network, DOM/xterm access, gag, or render-veto surface.
+
+- Beta.74 Lua diagnostics hardening: adds bounded per-session error history, `#lua status`, `#lua errors [count]`, `#lua errors clear`, and `#lua reload`; saved scripts report script/line locations, the native editor shows OK/ERROR last-run state, and repeated identical callback failures are coalesced without expanding filesystem/DOM/gag authority.
+
+- Beta.74 Custom Panes workspace pass: player-created panes now register as individual NukeFire workspace panels instead of value cards inside one shared host. Each pane can be dragged between docks, reordered, joined/separated as a tab, and hidden locally while preserving the bounded declarative Lua/data boundary. Dynamic pane placement is runtime-only in this pass; popout windows and persisted custom-pane geometry remain deferred.
+
+- Beta.74 Lua saved scripts pass: adds a native multi-line Lua Scripts editor, per-session protected script persistence backed by managed modules, optional Auto-run before the first explicit Connect, manual Save & Run, and a fresh-VM Reload Autorun path that clears transient Lua callbacks/panes before rebuilding them. No filesystem/DOM/gag surface is added.
+
+
+- Beta.74 Lua managed packages pass: added NukeFire-owned bounded `storage`, managed module source + safe `require()`, read-only `settings.get`, and thin `gmcp.on` / `world.on` / `mud.send` / callback-only `mud.trigger` compatibility. Lua still has no arbitrary filesystem/network/package access, and the Mallard gag path is intentionally not adopted.
+## Beta.74 Player Feedback + Modern TinTin Compatibility (candidate)
+
+- Reader navigation prioritizes Main Output, Gossip, SSF, and Tells; Communications gains Shout/Holler classification and Reader-oriented sounds for Group, Grats, Shout, and Holler.
+- Adds an authoritative Room.Info stairs cue, stabilizes right-pane geometry when dynamic panels/scrollbars appear, and fixes stale resize divider artifacts.
+- Adds TinTin foreground/background truecolor highlight forms and keeps common xterm/Wintin macro sequences mapped to NukeFire physical keybindings.
+- Aligns current TinTin table semantics: `*table[]` keys, `$table[]` values, `&table[]` size; NukeFire-generated legacy `.tin` files automatically migrate the older `$table[]` key-list spelling.
+- Updates FORMAT `%D/%M/%X/%x`, regex REPLACE captures, pattern-aware KILL, CAT scalar/table behavior, and the bounded modern LIST family including nested list-tables, INDEXATE, ORDER, SORT, and TABULATE.
+- Adds safe LINE QUIET, VERBATIM, and recursive JSON translations while retaining the NukeFire sandbox and one authoritative variable/command pipeline.
+- Moves `#lua` into the authoritative SessionManager automation core so typed commands, Aliases, Actions, Events, Delays, and other client automation can invoke the same per-session Lua Worker without a renderer-only side path.
+- Preserves Mudlet-familiar direct `send()` semantics and adds bounded `execute()` / `expandAlias()` re-entry through NukeFire's TinTin/client command pipeline, with request-scoped Worker events and nested-Lua recursion limits.
+- Expands the Lua variable snapshot from 256 to the full 2,048-record VariableEngine capacity, serializes work per Lua session instead of globally across all sessions, and explicitly closes a Lua VM when its NukeFire session is removed.
+- Documents the Worker-asynchronous `#lua` sequencing contract: later commands in the same TinTin batch may continue before Lua finishes, while Lua `execute()` / `expandAlias()` provide the explicit ordered continuation path.
+- Adds shared Lua structured data: `getTable()` / `setTable()` reconstruct and atomically replace the same TinTin VariableEngine trees instead of creating a Lua-only variable store.
+- Exposes a bounded Mudlet-familiar `gmcp` table rebuilt from the canonical per-session GmcpStore before each Lua execution, plus `sendGMCP()` routed through the existing SessionManager/connection GMCP path.
+- Adds the canonical `nf` Lua namespace as aliases over the same approved send/execute/variable/table/GMCP surface; retained GMCP state stays bounded and transient combat/sound/loot packets remain event-only for the later callback pass.
+- Adds Mudlet-familiar temporary Lua automation (`tempAlias`, substring/regex/exact triggers, `tempTimer`, anonymous Event handlers, `raiseEvent`, and enable/disable/kill controls) as transient records inside NukeFire's existing Alias/Action/Event/timer engines rather than a parallel Lua automation stack.
+- Provides familiar callback context (`line`, `command`, numeric/named `matches`) plus GMCP-specific and generic GMCP Events, bounded callback rates/patterns, Mudlet-compatible `expireAfter` skip semantics, one-shot cleanup, and repeating-timer backpressure.
+- Keeps temporary Lua definitions out of TinTin persistence and retires callbacks with their owning NukeFire session; malformed/risky regular expressions are rejected before registration and host registration failures are surfaced as Lua automation diagnostics.
+- Adds a real-world NukeFire Mudlet-package compatibility bridge based on the public `rparet/nukefire-mudlet` scripts: a bounded read-only `msdp` projection from canonical GMCP plus `msdp.FIELD` Lua Events for the package's requested vitals, stats, opponent, room, area, exits, and affects data.
+- Adds compatibility `sendMSDP` setup no-ops, named Event handlers, cross-session `raiseGlobalEvent`, profile/time/focus helpers, owning-session `reconnect`, lightweight `cecho`, `table.contains`, `table.union`, and `spairs` without adding a second network protocol or Lua-side host access.
+- Publishes Mudlet-style connection/protocol lifecycle Events (`sysConnectionEvent`, `sysDisconnectionEvent`, and synthetic MSDP capability through `sysProtocolEnabled`) while keeping Geyser/EMCO, remote package installation, arbitrary filesystem persistence, `io`, and Mudlet map-database APIs outside the sandbox and mapped to NukeFire-native facilities instead.
+- Prototypes Lua-native Custom Panes through `nf.pane.create()`: bounded declarative text/value/bar rows feed NukeFire-owned rendering and accessibility, with no player HTML/CSS/JavaScript/DOM surface and no Lua render-veto or gag path.
+- DCC-specific communication review/sounds remain deliberately deferred until the server signal is traced rather than guessed from display text.
+- No shell/network expansion and no release/version/Git action.
 ## 0.3.1-beta.73 — Combat Responsiveness and Sustained Performance
 
 - Stabilizes rapid multi-kill target presentation across Opponent Vitals, Group

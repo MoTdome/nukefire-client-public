@@ -14,6 +14,8 @@ class LuaRuntime {
     this.onDiagnostic = typeof options.onDiagnostic === 'function' ? options.onDiagnostic : () => {};
     this.onSend = typeof options.onSend === 'function' ? options.onSend : () => {};
     this.onVariableSet = typeof options.onVariableSet === 'function' ? options.onVariableSet : () => {};
+    this.onTableSet = typeof options.onTableSet === 'function' ? options.onTableSet : () => {};
+    this.onSendGmcp = typeof options.onSendGmcp === 'function' ? options.onSendGmcp : () => {};
     this.worker = null;
     this.nextRequestId = 1;
     this.pending = new Map();
@@ -39,10 +41,17 @@ class LuaRuntime {
 
   handleMessage(message = {}) {
     if (message.type === 'event') {
+      const pending = this.pending.get(Number(message.requestId));
+      if (pending?.onEvent) {
+        try { pending.onEvent(message); }
+        catch (error) { this.onDiagnostic({ sessionId: message.sessionId, diagnostic: { type: 'host-event', message: error?.message || String(error) } }); }
+      }
       if (message.event === 'echo') this.onEcho(message);
       else if (message.event === 'diagnostic') this.onDiagnostic(message);
       else if (message.event === 'send') this.onSend(message);
       else if (message.event === 'set-variable') this.onVariableSet(message);
+      else if (message.event === 'set-table') this.onTableSet(message);
+      else if (message.event === 'send-gmcp') this.onSendGmcp(message);
       return;
     }
     if (message.type !== 'response') return;
@@ -97,7 +106,12 @@ class LuaRuntime {
         if (!this.pending.has(requestId)) return;
         this.hardStop(`Lua worker exceeded hard watchdog (${hardTimeoutMs}ms)`).catch(() => {});
       }, hardTimeoutMs);
-      this.pending.set(requestId, { resolve, reject, timer });
+      this.pending.set(requestId, {
+        resolve,
+        reject,
+        timer,
+        onEvent: typeof options.onEvent === 'function' ? options.onEvent : null
+      });
       this.worker.postMessage({ requestId, op, ...payload });
     });
   }
@@ -106,9 +120,9 @@ class LuaRuntime {
     return this.request('create', { sessionId, options });
   }
 
-  execute(sessionId, script, options = {}, hostContext = {}) {
+  execute(sessionId, script, options = {}, hostContext = {}, onEvent = null) {
     const hardTimeoutMs = Number(options.hardTimeoutMs) || this.hardTimeoutMs;
-    return this.request('execute', { sessionId, script, options, hostContext }, { hardTimeoutMs })
+    return this.request('execute', { sessionId, script, options, hostContext }, { hardTimeoutMs, onEvent })
       .catch((error) => {
         if (error?.code === 'NUKEFIRE_LUA_HARD_TIMEOUT' || this.hardStopped) {
           return {
@@ -123,6 +137,21 @@ class LuaRuntime {
         }
         throw error;
       });
+  }
+
+  invokeCallback(sessionId, callbackId, context = {}, options = {}, hostContext = {}, onEvent = null) {
+    const hardTimeoutMs = Number(options.hardTimeoutMs) || this.hardTimeoutMs;
+    return this.request('callback', { sessionId, callbackId, context, options, hostContext }, { hardTimeoutMs, onEvent })
+      .catch((error) => {
+        if (error?.code === 'NUKEFIRE_LUA_HARD_TIMEOUT' || this.hardStopped) {
+          return { ok: false, error: { type: 'hard-timeout', name: 'NukeFireLuaHardTimeout', message: error?.message || 'Lua worker hard-stopped', stack: '' } };
+        }
+        throw error;
+      });
+  }
+
+  dropCallback(sessionId, callbackId) {
+    return this.request('drop-callback', { sessionId, callbackId });
   }
 
   describeSession(sessionId) {

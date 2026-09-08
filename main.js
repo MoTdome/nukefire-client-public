@@ -12,6 +12,10 @@ const { SoundpackStore } = require('./src/soundpack-store');
 const clientPresets = require('./src/client-preset');
 const { LogStore } = require('./src/log-store');
 const { LuaLabService } = require('./src/lua-lab-service');
+const { LuaPaneRegistry } = require('./src/lua-pane-model');
+const { LuaManagedStore, normalizeModuleName } = require('./src/lua-managed-store');
+const { LuaDiagnosticsRegistry } = require('./src/lua-diagnostics');
+const { buildLuaGmcpSnapshot, buildMudletMsdpSnapshot, splitGmcpCommand } = require('./src/lua-data-bridge');
 const { mainWindowBoundsForWorkArea } = require('./src/window-layout');
 const {
   normalizeMainWindowState,
@@ -35,6 +39,10 @@ let scriptStore = null;
 let soundpackStore = null;
 let logStore = null;
 let luaLabService = null;
+const luaPaneRegistry = new LuaPaneRegistry();
+let luaManagedStore = null;
+const luaDiagnostics = new LuaDiagnosticsRegistry({ maxErrors: 64, repeatWindowMs: 2000 });
+const luaAutorunLoads = new Map();
 const panelWindows = new Map();
 const panelWindowStates = new Map();
 let isQuitting = false;
@@ -69,6 +77,283 @@ function publishSessionEvent(event) {
 function publishSessionList(snapshot) {
   sessionEventBatcher?.flush();
   sendToRenderer('session:list', snapshot);
+}
+
+function luaScriptCatalog(sessionIdValue) {
+  const sessionId = String(sessionIdValue || '');
+  const catalog = luaManagedStore?.scriptCatalog(sessionId) || [];
+  return catalog.map((entry) => {
+    const status = luaDiagnostics.scriptStatus(sessionId, entry.name);
+    return {
+      ...entry,
+      runStatus: status.status,
+      errorLine: status.line,
+      errorMessage: status.message,
+      lastRunAt: status.at
+    };
+  });
+}
+
+function noteLuaDiagnosticResult(sessionIdValue, result = {}, context = {}) {
+  const sessionId = String(sessionIdValue || '');
+  if (!sessionId) return null;
+  const entry = luaDiagnostics.noteResult(sessionId, result, context);
+  const scriptName = String(context.scriptName || entry?.scriptName || '');
+  if (scriptName && sessionManager?.findSession(sessionId)) publishLuaScriptCatalog(sessionId);
+  return entry;
+}
+
+function luaDiagnosticLocation(entry = {}) {
+  const scriptName = String(entry.scriptName || '');
+  const source = String(entry.source || '').replace(/^NukeFire\/[^/]+\//u, '');
+  const base = scriptName || source || String(entry.origin || 'Lua');
+  return entry.line > 0 ? `${base}:${entry.line}` : base;
+}
+
+function luaDiagnosticMessages(sessionIdValue, limitValue = 10) {
+  const sessionId = String(sessionIdValue || '');
+  const entries = luaDiagnostics.list(sessionId, limitValue);
+  if (!entries.length) return ['No Lua errors are retained for this session.'];
+  const summary = luaDiagnostics.summary(sessionId);
+  const messages = [`Lua errors — showing ${entries.length} of ${summary.errorsRetained} retained:`];
+  entries.forEach((entry, index) => {
+    const repeat = Number(entry.count || 1) > 1 ? ` — repeated ${entry.count}x` : '';
+    messages.push(`  ${index + 1}. ${luaDiagnosticLocation(entry)} — ${entry.message}${repeat}`);
+    const stackLines = String(entry.stack || '').split(/\r?\n/u).map((line) => line.trim()).filter(Boolean).slice(0, 3);
+    for (const line of stackLines) messages.push(`     ${line.slice(0, 512)}`);
+  });
+  return messages;
+}
+
+function publishLuaScriptCatalog(sessionIdValue) {
+  const sessionId = String(sessionIdValue || '');
+  if (!sessionId || !sessionManager?.findSession(sessionId)) return false;
+  sessionManager.emit(sessionId, 'lua-script-catalog', { scripts: luaScriptCatalog(sessionId) });
+  return true;
+}
+
+function publishLuaScriptEditor(sessionIdValue, nameValue = '', options = {}) {
+  const sessionId = String(sessionIdValue || '');
+  if (!sessionId || !sessionManager?.findSession(sessionId)) return false;
+  const catalog = luaScriptCatalog(sessionId);
+  const requestedName = normalizeModuleName(nameValue) || '';
+  const name = requestedName || (options.isNew === true ? '' : String(catalog[0]?.name || ''));
+  const script = name ? luaManagedStore?.getScript(sessionId, name) : null;
+  sessionManager.emit(sessionId, 'lua-script-editor', {
+    scripts: catalog,
+    selected: script ? script.name : name,
+    source: script?.source || '',
+    autoRun: script?.autoRun === true,
+    isNew: options.isNew === true || !script
+  });
+  return true;
+}
+
+function luaScriptCoordinatorResult(messages = []) {
+  return { handled: true, deliveries: [], messages: Array.isArray(messages) ? messages : [String(messages || '')] };
+}
+
+function decodeLuaScriptBase64(value, maxBytes = 96 * 1024) {
+  const token = String(value || '');
+  if (!token || token.length > Math.ceil(maxBytes * 4 / 3) + 16 || !/^[A-Za-z0-9+/]*={0,2}$/u.test(token)) return null;
+  let buffer;
+  try { buffer = Buffer.from(token, 'base64'); } catch { return null; }
+  if (!buffer.length || buffer.length > maxBytes) return null;
+  return buffer.toString('utf8');
+}
+
+async function runManagedLuaScript(sessionIdValue, nameValue, sourceValue = null, source = 'saved-script') {
+  const sessionId = String(sessionIdValue || '');
+  const name = normalizeModuleName(nameValue);
+  const script = sourceValue === null ? luaManagedStore?.getScript(sessionId, name) : { name, source: String(sourceValue || '') };
+  if (!sessionId || !name || !script?.source) return { ok: false, error: { type: 'usage', message: `Saved Lua script ${name || '(invalid)'} was not found.` } };
+  let result;
+  try {
+    result = await ensureLuaLabService().execute(sessionId, script.source, { source, scriptName: name });
+  } catch (error) {
+    result = { ok: false, error: { type: 'host', message: String(error?.message || error || 'Lua script host error').slice(0, 4096) }, echoes: [] };
+  }
+  noteLuaDiagnosticResult(sessionId, result, { scriptName: name, source, origin: source });
+  sessionManager?.emit(sessionId, 'lua-result', { ...result, scriptName: name, savedScript: true });
+  return result;
+}
+
+function ensureLuaAutorunForSession(sessionIdValue, reason = 'session') {
+  const sessionId = String(sessionIdValue || '');
+  if (!sessionId || !sessionManager?.findSession(sessionId)) return Promise.resolve([]);
+  if (luaAutorunLoads.has(sessionId)) return luaAutorunLoads.get(sessionId);
+  const task = (async () => {
+    const scripts = luaManagedStore?.autoRunScripts(sessionId) || [];
+    const results = [];
+    for (const script of scripts) {
+      results.push(await runManagedLuaScript(sessionId, script.name, script.source, `autorun:${reason}`));
+    }
+    publishLuaScriptCatalog(sessionId);
+    return results;
+  })();
+  luaAutorunLoads.set(sessionId, task);
+  task.catch(() => {}).finally(() => {
+    if (luaAutorunLoads.get(sessionId) === task) luaAutorunLoads.set(sessionId, Promise.resolve([]));
+  });
+  return task;
+}
+
+async function reloadLuaAutorunForSession(sessionIdValue) {
+  const sessionId = String(sessionIdValue || '');
+  if (!sessionId || !sessionManager?.findSession(sessionId)) return [];
+  for (const pane of luaPaneRegistry.snapshot(sessionId)) {
+    sessionManager.emit(sessionId, 'lua-pane-state', { action: 'destroy', paneId: pane.id });
+  }
+  luaPaneRegistry.clearSession(sessionId);
+  if (luaLabService) await luaLabService.closeSession(sessionId).catch(() => false);
+  luaAutorunLoads.delete(sessionId);
+  return ensureLuaAutorunForSession(sessionId, 'reload');
+}
+
+async function handleLuaDiagnosticsCoordinatorCommand(sessionIdValue, commandValue) {
+  const sessionId = String(sessionIdValue || '');
+  const prefix = String(sessionManager?.commandPrefix || '#');
+  const command = String(commandValue ?? '').trim();
+  if (!sessionId || !command.startsWith(prefix) || command.startsWith(prefix + prefix)) return null;
+  const body = command.slice(prefix.length).trim();
+  const matched = body.match(/^lua(?:\s+(.*))?$/isu);
+  if (!matched) return null;
+  const rest = String(matched[1] || '').trim();
+  const tokens = rest ? rest.split(/\s+/u) : [];
+  const operation = String(tokens[0] || '').toLowerCase();
+  if (!['status', 'errors', 'reload'].includes(operation)) return null;
+
+  if (operation === 'reload') {
+    const catalog = luaScriptCatalog(sessionId).filter((entry) => entry.autoRun);
+    await reloadLuaAutorunForSession(sessionId);
+    return luaScriptCoordinatorResult([`Reloaded ${catalog.length} autorun Lua script${catalog.length === 1 ? '' : 's'} in a fresh Lua session.`]);
+  }
+
+  if (operation === 'errors') {
+    if (String(tokens[1] || '').toLowerCase() === 'clear') {
+      const cleared = luaDiagnostics.clear(sessionId);
+      publishLuaScriptCatalog(sessionId);
+      return luaScriptCoordinatorResult([`Cleared ${cleared} retained Lua error${cleared === 1 ? '' : 's'} for this session.`]);
+    }
+    const requested = Number(tokens[1]);
+    const limit = Number.isFinite(requested) ? Math.max(1, Math.min(50, Math.trunc(requested))) : 10;
+    return luaScriptCoordinatorResult(luaDiagnosticMessages(sessionId, limit));
+  }
+
+  const runtime = await ensureLuaLabService().describeSession(sessionId);
+  const diagnostics = luaDiagnostics.summary(sessionId);
+  const scripts = luaScriptCatalog(sessionId);
+  const panes = luaPaneRegistry.snapshot(sessionId);
+  const last = diagnostics.lastError;
+  return luaScriptCoordinatorResult([
+    'Lua status:',
+    `  Worker/session: ${runtime.running ? 'running' : 'not initialized'}`,
+    `  Lua version: ${runtime.luaVersion || 'not started'}`,
+    `  Saved scripts: ${scripts.length} (${scripts.filter((entry) => entry.autoRun).length} autorun)`,
+    `  Custom panes: ${panes.length}`,
+    `  Successful runs/callbacks: ${diagnostics.successes}`,
+    `  Failed runs/callbacks: ${diagnostics.failures}`,
+    `  Retained errors: ${diagnostics.errorsRetained}`,
+    last ? `  Last error: ${luaDiagnosticLocation(last)} — ${last.message}` : '  Last error: none'
+  ]);
+}
+
+async function handleLuaScriptCoordinatorCommand(sessionIdValue, commandValue) {
+  const sessionId = String(sessionIdValue || '');
+  const prefix = String(sessionManager?.commandPrefix || '#');
+  const command = String(commandValue ?? '').trim();
+  if (!sessionId || !command.startsWith(prefix) || command.startsWith(prefix + prefix)) return null;
+  const body = command.slice(prefix.length).trim();
+  const matched = body.match(/^luascript(?:\s+(.*))?$/isu);
+  if (!matched) return null;
+  const rest = String(matched[1] || '').trim();
+  const tokens = rest ? rest.split(/\s+/u) : [];
+  const operation = String(tokens.shift() || 'edit').toLowerCase();
+
+  if (operation === 'edit' || operation === 'open') {
+    const name = normalizeModuleName(tokens[0]) || '';
+    publishLuaScriptEditor(sessionId, name);
+    return luaScriptCoordinatorResult([]);
+  }
+  if (operation === 'new') {
+    const name = normalizeModuleName(tokens[0]) || 'main';
+    publishLuaScriptEditor(sessionId, name, { isNew: true });
+    return luaScriptCoordinatorResult([]);
+  }
+  if (operation === 'list') {
+    const catalog = luaScriptCatalog(sessionId);
+    return luaScriptCoordinatorResult(catalog.length
+      ? ['Saved Lua scripts:', ...catalog.map((entry) => `  ${entry.name} — ${entry.bytes} bytes${entry.autoRun ? ' — autorun' : ''}`)]
+      : [`No saved Lua scripts for this session. Use ${prefix}luascript new main.`]);
+  }
+  if (operation === 'run') {
+    const name = normalizeModuleName(tokens[0]);
+    if (!name || !luaManagedStore?.getScript(sessionId, name)) return luaScriptCoordinatorResult([`Usage: ${prefix}luascript run <name>`]);
+    const result = await runManagedLuaScript(sessionId, name);
+    return luaScriptCoordinatorResult([result.ok ? `Lua script ${name} ran.` : `Lua script ${name} failed; see the Lua error above.`]);
+  }
+  if (operation === 'reload') {
+    const catalog = luaScriptCatalog(sessionId).filter((entry) => entry.autoRun);
+    await reloadLuaAutorunForSession(sessionId);
+    return luaScriptCoordinatorResult([`Reloaded ${catalog.length} autorun Lua script${catalog.length === 1 ? '' : 's'} in a fresh Lua session.`]);
+  }
+  if (operation === 'autorun') {
+    const name = normalizeModuleName(tokens[0]);
+    const flag = String(tokens[1] || '').toLowerCase();
+    if (!name || !['on', 'off'].includes(flag)) return luaScriptCoordinatorResult([`Usage: ${prefix}luascript autorun <name> <on|off>`]);
+    const stored = luaManagedStore?.setScriptAutoRun(sessionId, name, flag === 'on');
+    if (!stored?.stored) return luaScriptCoordinatorResult([`Lua script ${name} was not found.`]);
+    publishLuaScriptCatalog(sessionId);
+    return luaScriptCoordinatorResult([`Lua script ${name} autorun ${flag.toUpperCase()}.`]);
+  }
+  if (operation === 'delete') {
+    const name = normalizeModuleName(tokens[0]);
+    if (!name) return luaScriptCoordinatorResult([`Usage: ${prefix}luascript delete <name>`]);
+    const deleted = luaManagedStore?.deleteScript(sessionId, name);
+    publishLuaScriptCatalog(sessionId);
+    return luaScriptCoordinatorResult([deleted?.deleted ? `Deleted saved Lua script ${name}.` : `Lua script ${name} was not found.`]);
+  }
+
+  if (operation === '__open') {
+    const name = normalizeModuleName(decodeLuaScriptBase64(tokens[0], 512) || '');
+    if (!name) return luaScriptCoordinatorResult(['Lua script editor request was invalid.']);
+    publishLuaScriptEditor(sessionId, name);
+    return luaScriptCoordinatorResult([]);
+  }
+  if (operation === '__save') {
+    const name = normalizeModuleName(decodeLuaScriptBase64(tokens[0], 512) || '');
+    const source = decodeLuaScriptBase64(tokens[1], 64 * 1024);
+    const autoRun = tokens[2] === '1';
+    if (!name || source === null) return luaScriptCoordinatorResult(['Lua script save request was invalid or exceeded the 64 KiB limit.']);
+    const stored = luaManagedStore?.setScript(sessionId, name, source, { autoRun });
+    if (!stored?.stored) return luaScriptCoordinatorResult([`Lua script ${name} was not saved: ${String(stored?.reason || 'storage rejected it').replaceAll('-', ' ')}.`]);
+    publishLuaScriptCatalog(sessionId);
+    publishLuaScriptEditor(sessionId, name);
+    return luaScriptCoordinatorResult([`Saved Lua script ${name}${autoRun ? ' with autorun enabled' : ''}.`]);
+  }
+  if (operation === '__delete') {
+    const name = normalizeModuleName(decodeLuaScriptBase64(tokens[0], 512) || '');
+    if (!name) return luaScriptCoordinatorResult(['Lua script delete request was invalid.']);
+    const deleted = luaManagedStore?.deleteScript(sessionId, name);
+    publishLuaScriptCatalog(sessionId);
+    publishLuaScriptEditor(sessionId, '', { isNew: true });
+    return luaScriptCoordinatorResult([deleted?.deleted ? `Deleted saved Lua script ${name}.` : `Lua script ${name} was not found.`]);
+  }
+  if (operation === '__run') {
+    const name = normalizeModuleName(decodeLuaScriptBase64(tokens[0], 512) || '');
+    if (!name) return luaScriptCoordinatorResult(['Lua script run request was invalid.']);
+    const result = await runManagedLuaScript(sessionId, name);
+    return luaScriptCoordinatorResult([result.ok ? `Lua script ${name} ran.` : `Lua script ${name} failed; see the Lua error above.`]);
+  }
+  if (operation === '__reload') {
+    const catalog = luaScriptCatalog(sessionId).filter((entry) => entry.autoRun);
+    await reloadLuaAutorunForSession(sessionId);
+    return luaScriptCoordinatorResult([`Reloaded ${catalog.length} autorun Lua script${catalog.length === 1 ? '' : 's'} in a fresh Lua session.`]);
+  }
+
+  return luaScriptCoordinatorResult([
+    `Usage: ${prefix}luascript [edit [name]|new [name]|list|run <name>|autorun <name> <on|off>|reload|delete <name>].`
+  ]);
 }
 
 function appHasFocusedWindow() {
@@ -405,6 +690,10 @@ function buildApplicationMenu() {
             }
           ]
         },
+        {
+          label: 'Lua Scripts…',
+          click: () => publishLuaScriptEditor(sessionManager?.activeSessionId || '', '')
+        },
         { type: 'separator' },
         process.platform === 'darwin' ? { role: 'close' } : { role: 'quit' }
       ]
@@ -584,7 +873,39 @@ function createWindow() {
       onLogOverwrite: (request) => logStore ? logStore.overwrite(request?.filename) : Promise.resolve({ ok: false, error: 'Log storage is not ready.' }),
       onTinTinTextRead: (request) => scriptStore ? scriptStore.read(request?.requested) : Promise.resolve({ ok: false, error: 'TinTin text storage is not ready.' }),
       onTinTinTextWrite: (request) => scriptStore ? scriptStore.write(request?.requested, request?.content) : Promise.resolve({ ok: false, error: 'TinTin text storage is not ready.' }),
-      onSessionsChanged: (snapshot) => publishSessionList(snapshot)
+      onSessionsChanged: (snapshot) => publishSessionList(snapshot),
+      onLuaExecute: async (request = {}) => {
+        const sessionId = String(request.sessionId || '');
+        const source = String(request.source || 'command');
+        const result = await ensureLuaLabService().execute(
+          sessionId,
+          String(request.script ?? ''),
+          { luaDepth: Number(request.depth) || 0, source }
+        );
+        noteLuaDiagnosticResult(sessionId, result, { source, origin: source });
+        return result;
+      },
+      onLuaCallback: async (request = {}) => {
+        const sessionId = String(request.sessionId || '');
+        const callbackId = Number(request.callbackId) || 0;
+        const source = String(request.source || 'callback');
+        const result = await ensureLuaLabService().invokeCallback(
+          sessionId,
+          callbackId,
+          request.context || {},
+          { source }
+        );
+        noteLuaDiagnosticResult(sessionId, result, { source, origin: source, callbackId });
+        return result;
+      },
+      onLuaCallbackForgotten: (sessionId, callbackId) => luaLabService?.forgetCallback(String(sessionId || ''), Number(callbackId) || 0) || false,
+      onSessionRemoved: (sessionId) => {
+        const id = String(sessionId || '');
+        luaAutorunLoads.delete(id);
+        luaPaneRegistry.clearSession(id);
+        luaDiagnostics.clearSession(id);
+        return luaLabService?.closeSession(id) || false;
+      }
     }
   });
   sessionManager.createSession({
@@ -642,6 +963,10 @@ app.whenReady().then(async () => {
   settingsStore = new SettingsStore({
     baseDirectory: app.getPath('userData')
   });
+  luaManagedStore = new LuaManagedStore({
+    baseDirectory: app.getPath('userData')
+  });
+  await luaManagedStore.load();
   mapStore = new MapStore({
     baseDirectory: app.getPath('userData')
   });
@@ -683,6 +1008,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (luaManagedStore) void luaManagedStore.flush().catch((error) => console.warn('Unable to flush managed Lua state during shutdown.', error));
 });
 
 app.on('window-all-closed', () => {
@@ -915,14 +1241,26 @@ ipcMain.handle('sessions:create', async (_event, options = {}) => {
 
 ipcMain.handle('sessions:update', async (_event, sessionId, changes = {}) => {
   if (!sessionManager) throw new Error('Sessions are not ready.');
-  const session = sessionManager.updateSession(String(sessionId || ''), changes);
+  const id = String(sessionId || '');
+  const source = changes && typeof changes === 'object' ? { ...changes } : {};
+  const hasLuaCommandDraft = Object.hasOwn(source, 'luaCommandDraft');
+  if (hasLuaCommandDraft) {
+    sessionManager.setLuaCommandDraft(id, source.luaCommandDraft, { emit: false });
+    delete source.luaCommandDraft;
+  }
+  const publicKeys = Object.keys(source);
+  const session = publicKeys.length > 0
+    ? sessionManager.updateSession(id, source)
+    : sessionManager.publicSession(sessionManager.findSession(id));
   if (!session) throw new Error('Unknown session.');
-  return { ok: true, session, snapshot: sessionManager.snapshot() };
+  return { ok: true, session, snapshot: hasLuaCommandDraft && publicKeys.length === 0 ? null : sessionManager.snapshot() };
 });
 
 ipcMain.handle('sessions:remove', async (_event, sessionId) => {
   if (!sessionManager) throw new Error('Sessions are not ready.');
-  const removed = sessionManager.removeSession(String(sessionId || ''));
+  const id = String(sessionId || '');
+  const removed = sessionManager.removeSession(id);
+  if (removed) luaAutorunLoads.delete(id);
   return { ok: removed, snapshot: sessionManager.snapshot() };
 });
 
@@ -935,7 +1273,9 @@ ipcMain.handle('sessions:set-active', async (_event, sessionId) => {
 
 ipcMain.handle('sessions:restore', async (_event, snapshot = {}) => {
   if (!sessionManager) throw new Error('Sessions are not ready.');
-  return { ok: true, snapshot: sessionManager.restore(snapshot) };
+  const restored = sessionManager.restore(snapshot);
+  for (const session of restored.sessions || []) void ensureLuaAutorunForSession(session.id, 'restore');
+  return { ok: true, snapshot: restored };
 });
 
 ipcMain.handle('sessions:replace-definitions', async (_event, sessionId, definitions) => {
@@ -951,7 +1291,9 @@ ipcMain.handle('sessions:replace-definitions', async (_event, sessionId, definit
 
 ipcMain.handle('sessions:connect', async (_event, sessionId, options = {}) => {
   if (!sessionManager) throw new Error('Sessions are not ready.');
-  const session = await sessionManager.connectSession(String(sessionId || ''), options);
+  const id = String(sessionId || '');
+  await ensureLuaAutorunForSession(id, 'connect');
+  const session = await sessionManager.connectSession(id, options);
   return { ok: true, session, snapshot: sessionManager.snapshot() };
 });
 
@@ -966,6 +1308,9 @@ function ensureLuaLabService() {
     getHostContext: (sessionId) => {
       const session = sessionManager?.findSession(sessionId);
       if (!session) throw new Error('Unknown Lua session.');
+      const gmcpState = sessionManager.getGmcpState(session.id);
+      const gmcp = buildLuaGmcpSnapshot(gmcpState);
+      const msdp = buildMudletMsdpSnapshot(gmcpState);
       return {
         session: {
           id: session.id,
@@ -974,14 +1319,26 @@ function ensureLuaLabService() {
           role: session.role,
           host: session.host,
           port: session.port,
-          connected: session.status?.state === 'connected'
+          connected: session.status?.state === 'connected',
+          appFocused: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isFocused()),
+          epochMilliseconds: Date.now()
         },
-        variables: session.tintin?.variableEngine?.list() || []
+        variables: session.tintin?.variableEngine?.list() || [],
+        gmcpJson: gmcp.json,
+        gmcpMetaJson: gmcp.metaJson,
+        msdpJson: msdp.json,
+        commandLine: String(session.luaCommandDraft || ''),
+        outputHistory: sessionManager.luaOutputSnapshot(session),
+        ...(luaManagedStore?.context(session.id) || { storageRecords: [], settingRecords: [], moduleRecords: [] })
       };
     },
-    sendCommand: (sessionId, command) => {
+    sendCommand: (sessionId, command, executionContext = {}) => {
       if (!sessionManager) return { queued: false, reason: 'sessions-unavailable' };
-      return sessionManager.queueCommand(sessionId, command, { source: 'lua' });
+      const delivery = sessionManager.queueCommand(sessionId, command, { source: 'lua' });
+      if (delivery.queued && executionContext.showCommand !== false) {
+        sessionManager.emit(delivery.sessionId, 'lua-command-sent', { command: delivery.command, source: 'send' });
+      }
+      return delivery;
     },
     setVariable: (sessionId, name, value) => {
       const session = sessionManager?.findSession(sessionId);
@@ -989,14 +1346,83 @@ function ensureLuaLabService() {
       const stored = sessionManager.withTinTinSession(session, () => sessionManager.assignVariable(name, value));
       if (stored) sessionManager.emitSessionList();
       return stored;
-    }
+    },
+    setTable: (sessionId, name, records) => {
+      if (!sessionManager) return null;
+      const stored = sessionManager.replaceLuaTable(sessionId, name, records);
+      if (stored) sessionManager.emitSessionList();
+      return stored;
+    },
+    sendGmcp: (sessionId, command) => {
+      if (!sessionManager) return { sent: false, reason: 'sessions-unavailable' };
+      const parsed = splitGmcpCommand(command);
+      if (!parsed) return { sent: false, reason: 'invalid-command' };
+      const sent = sessionManager.sendGmcp(sessionId, parsed.packageName, parsed.body);
+      return { sent: sent === true, packageName: parsed.packageName, body: parsed.body };
+    },
+    executeCommand: (sessionId, command, context = {}) => {
+      if (!sessionManager) return { handled: true, deliveries: [], messages: ['Sessions are unavailable.'] };
+      const result = sessionManager.dispatchLuaInput(sessionId, command, {
+        luaDepth: Math.max(0, Number(context.luaDepth) || 0)
+      });
+      for (const delivery of result.deliveries || []) {
+        if (delivery?.queued) sessionManager.emit(delivery.sessionId || sessionId, 'lua-command-sent', { command: delivery.command, source: 'execute' });
+      }
+      return {
+        handled: result.handled,
+        deliveries: result.deliveries || [],
+        messages: result.messages || [],
+        activateSessionId: result.activateSessionId || ''
+      };
+    },
+    registerAutomation: (sessionId, automation, context = {}) => sessionManager
+      ? sessionManager.registerLuaAutomation(sessionId, automation, context)
+      : { registered: false, reason: 'sessions-unavailable' },
+    controlAutomation: (sessionId, automation) => sessionManager
+      ? sessionManager.controlLuaAutomation(sessionId, automation)
+      : { changed: false, reason: 'sessions-unavailable' },
+    raiseEvent: (sessionId, eventName, argsJson) => sessionManager
+      ? sessionManager.raiseLuaEvent(sessionId, eventName, argsJson)
+      : { fired: 0, reason: 'sessions-unavailable' },
+    raiseGlobalEvent: (sessionId, eventName, argsJson) => sessionManager
+      ? sessionManager.raiseLuaGlobalEvent(sessionId, eventName, argsJson)
+      : { fired: 0, reason: 'sessions-unavailable' },
+    reconnect: (sessionId) => sessionManager
+      ? sessionManager.requestLuaReconnect(sessionId)
+      : { requested: false, reason: 'sessions-unavailable' },
+    paneCommand: (sessionId, command) => {
+      if (!sessionManager) return { ok: false, reason: 'sessions-unavailable' };
+      const result = luaPaneRegistry.apply(sessionId, command);
+      if (result.ok && result.event) sessionManager.emit(sessionId, 'lua-pane-state', result.event);
+      return result;
+    },
+    speedwalk: (sessionId, route, options = {}) => sessionManager
+      ? sessionManager.queueLuaSpeedwalk(sessionId, route, options)
+      : { queued: false, steps: 0, reason: 'sessions-unavailable' },
+    setCommandLine: (sessionId, text) => sessionManager
+      ? sessionManager.setLuaCommandDraft(sessionId, text, { emit: true })
+      : { changed: false, text: '', reason: 'sessions-unavailable' },
+    setStorage: (sessionId, key, json) => luaManagedStore
+      ? luaManagedStore.setStorage(sessionId, key, json)
+      : { stored: false, reason: 'storage-unavailable' },
+    deleteStorage: (sessionId, key) => luaManagedStore
+      ? luaManagedStore.deleteStorage(sessionId, key)
+      : { deleted: false, reason: 'storage-unavailable' },
+    setModule: (sessionId, name, source) => luaManagedStore
+      ? luaManagedStore.setModule(sessionId, name, source)
+      : { stored: false, reason: 'storage-unavailable' },
+    deleteModule: (sessionId, name) => luaManagedStore
+      ? luaManagedStore.deleteModule(sessionId, name)
+      : { deleted: false, reason: 'storage-unavailable' }
   });
   return luaLabService;
 }
 
 ipcMain.handle('lua-lab:execute', async (_event, sessionId, script) => {
   try {
-    const result = await ensureLuaLabService().execute(String(sessionId || ''), String(script ?? ''));
+    const id = String(sessionId || '');
+    const result = await ensureLuaLabService().execute(id, String(script ?? ''), { source: 'interactive' });
+    noteLuaDiagnosticResult(id, result, { source: 'interactive', origin: 'interactive' });
     return { ...result, snapshot: sessionManager?.snapshot() || null };
   } catch (error) {
     return {
@@ -1009,7 +1435,13 @@ ipcMain.handle('lua-lab:execute', async (_event, sessionId, script) => {
 
 ipcMain.handle('sessions:route-command', async (_event, sessionId, command) => {
   if (!sessionManager) throw new Error('Sessions are not ready.');
-  return { ok: true, ...sessionManager.dispatchInputForRenderer(String(sessionId || ''), String(command ?? '')) };
+  const id = String(sessionId || '');
+  const text = String(command ?? '');
+  const luaDiagnosticsResult = await handleLuaDiagnosticsCoordinatorCommand(id, text);
+  if (luaDiagnosticsResult) return { ok: true, ...luaDiagnosticsResult };
+  const luaScriptResult = await handleLuaScriptCoordinatorCommand(id, text);
+  if (luaScriptResult) return { ok: true, ...luaScriptResult };
+  return { ok: true, ...sessionManager.dispatchInputForRenderer(id, text) };
 });
 
 ipcMain.handle('sessions:send-gmcp', async (_event, sessionId, packageName, body) => {

@@ -373,6 +373,7 @@ main.workspace-grid.has-bottom-dock {
 
 .dock-region {
   overflow: auto;
+  scrollbar-gutter: stable;
   padding: 10px;
   background:
     repeating-linear-gradient(112deg, transparent 0 51px, rgb(255 255 255 / 1.5%) 52px, transparent 53px 91px),

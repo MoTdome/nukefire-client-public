@@ -52,7 +52,7 @@ function parseFormatDirective(sourceValue, startIndex) {
   }
 
   const type = source[index] || '';
-  if (!/[sdfgtcamhlnpruACDGLMRYTU]/u.test(type)) return null;
+  if (!/[sdfgtcamhlnpruwxACDGHLMRSTUX]/u.test(type)) return null;
   const width = widthText ? Number(widthText) : null;
   return {
     raw: source.slice(startIndex, index + 1),
@@ -211,44 +211,61 @@ function formatGrouped(argument, directive) {
   return { text: applyWidth(groupNumericText(`${sign}${numeric}`), directive, true), error: '' };
 }
 
-function pad2(value) {
-  return String(value).padStart(2, '0');
+
+function formatHexToDecimal(argument, directive) {
+  const raw = String(argument ?? '').trim().replace(/^0x/iu, '');
+  if (!raw || !/^[0-9a-f]+$/iu.test(raw) || raw.length > 16) return { text: '', error: '%D requires up to 16 hexadecimal digits.' };
+  try { return { text: applyWidth(BigInt(`0x${raw}`).toString(10), directive, true), error: '' }; }
+  catch (_error) { return { text: '', error: '%D could not convert the hexadecimal value.' }; }
 }
 
-function sourceDate(argument, options = {}, label = '%D') {
+function formatDecimalToHex(argument, directive) {
   const raw = String(argument ?? '').trim();
-  let date;
-  if (raw) {
-    const seconds = Number(raw);
-    if (!Number.isFinite(seconds)) return { date: null, error: `${label} requires epoch seconds or an empty argument.` };
-    date = new Date(seconds * 1000);
-  } else {
-    const nowValue = typeof options.nowMilliseconds === 'function'
-      ? Number(options.nowMilliseconds())
-      : options.now instanceof Date
-        ? options.now.getTime()
-        : Number(options.now ?? Date.now());
-    date = new Date(nowValue);
-  }
-  return Number.isNaN(date.getTime())
-    ? { date: null, error: `${label} could not read the requested date.` }
-    : { date, error: '' };
+  if (!/^[+-]?\d+$/u.test(raw)) return { text: '', error: '%X requires an integer decimal argument.' };
+  try {
+    const value = BigInt(raw);
+    if (value < 0n) return { text: '', error: '%X requires a non-negative integer.' };
+    return { text: applyWidth(value.toString(16).toUpperCase(), directive), error: '' };
+  } catch (_error) { return { text: '', error: '%X could not convert the decimal value.' }; }
 }
 
-function formatDatePart(type, argument, directive, options = {}) {
-  const parsed = sourceDate(argument, options, `%${type}`);
+function formatHexCharacter(argument, directive) {
+  const raw = String(argument ?? '').trim().replace(/^0x/iu, '');
+  if (!raw || !/^[0-9a-f]{1,6}$/iu.test(raw)) return { text: '', error: '%x requires a hexadecimal Unicode code point.' };
+  const codePoint = Number.parseInt(raw, 16);
+  if (!Number.isSafeInteger(codePoint) || codePoint < 0 || codePoint > 0x10FFFF) return { text: '', error: '%x requires a valid Unicode code point.' };
+  return { text: applyWidth(String.fromCodePoint(codePoint), directive), error: '' };
+}
+
+function formatMetric(argument, directive) {
+  const parsed = parseFiniteNumber(argument, '%M');
   if (parsed.error) return { text: '', error: parsed.error };
-  const utc = options.utc === true;
-  const date = parsed.date;
-  const value = type === 'D'
-    ? date[utc ? 'getUTCDate' : 'getDate']()
-    : type === 'M'
-      ? date[utc ? 'getUTCMonth' : 'getMonth']() + 1
-      : date[utc ? 'getUTCFullYear' : 'getFullYear']();
-  const text = type === 'Y' ? String(value) : pad2(value);
+  const prefixes = [
+    [1e24, 'Y'], [1e21, 'Z'], [1e18, 'E'], [1e15, 'P'], [1e12, 'T'], [1e9, 'G'], [1e6, 'M'], [1e3, 'k'],
+    [1, ''], [1e-3, 'm'], [1e-6, 'u'], [1e-9, 'n'], [1e-12, 'p'], [1e-15, 'f'], [1e-18, 'a'], [1e-21, 'z'], [1e-24, 'y']
+  ];
+  const absolute = Math.abs(parsed.value);
+  const selected = prefixes.find(([scale]) => absolute >= scale) || prefixes.at(-1);
+  const scaled = selected[0] ? parsed.value / selected[0] : parsed.value;
+  const precision = directive.precision === null ? 3 : directive.precision;
+  let text = Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(Math.min(precision, 12)).replace(/\.?0+$/u, '');
+  text += selected[1];
   return { text: applyWidth(text, directive, true), error: '' };
 }
 
+function wrapWords(argument, widthValue) {
+  const width = Math.max(1, Math.min(MAX_ECHO_FIELD_WIDTH, Math.trunc(Number(widthValue) || 80)));
+  const words = String(argument ?? '').trim().split(/\s+/u).filter(Boolean);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    if (!line) line = word;
+    else if (line.length + 1 + word.length <= width) line += ` ${word}`;
+    else { lines.push(line); line = word; }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 function formatHeader(argument, directive, options = {}) {
   const columns = Math.max(2, Math.min(MAX_ECHO_FIELD_WIDTH, Math.trunc(Number(options.columns) || 80)));
   const text = String(argument ?? '').slice(0, Math.max(0, columns - 2));
@@ -260,6 +277,8 @@ function formatHeader(argument, directive, options = {}) {
 function visibleTinTinLength(argument) {
   return visibleLength(renderTinTinColorTags(String(argument ?? '')).text);
 }
+
+function pad2(value) { return String(value).padStart(2, '0'); }
 
 function formatDate(argument, options = {}) {
   const nowValue = typeof options.now === 'function' ? options.now() : options.now;
@@ -392,7 +411,7 @@ function formatTinTinEcho(formatValue, argumentsValue = [], options = {}) {
       } else {
         let argument = '';
         if (argumentIndex < args.length) argument = args[argumentIndex++];
-        else if (!['D', 'M', 'Y'].includes(directive.type)) {
+        else {
           return { text: '', error: `${commandLabel} format ${directive.raw} needs argument ${argumentIndex + 1}.`, usedArguments: argumentIndex };
         }
         if (directive.type === 's') {
@@ -433,7 +452,14 @@ function formatTinTinEcho(formatValue, argumentsValue = [], options = {}) {
         else if (directive.type === 'r') formatted = { text: applyWidth([...argument].reverse().join(''), directive), error: '' };
         else if (directive.type === 'A') formatted = { text: applyWidth(String(argument.length ? argument.charCodeAt(0) : 0), directive, true), error: '' };
         else if (directive.type === 'L') formatted = { text: applyWidth(String(visibleTinTinLength(argument)), directive, true), error: '' };
-        else if (directive.type === 'D' || directive.type === 'M' || directive.type === 'Y') formatted = formatDatePart(directive.type, argument, directive, options);
+        else if (directive.type === 'D') formatted = formatHexToDecimal(argument, directive);
+        else if (directive.type === 'M') formatted = formatMetric(argument, directive);
+        else if (directive.type === 'X') formatted = formatDecimalToHex(argument, directive);
+        else if (directive.type === 'x') formatted = formatHexCharacter(argument, directive);
+        else if (directive.type === 'w') {
+          const wrapped = wrapWords(argument, directive.width || options.columns || 80);
+          formatted = { text: wrapped.join(';'), error: '' };
+        }
         else formatted = { text: '', error: `Unsupported ${commandLabel.toLowerCase()} format: ${directive.raw}.` };
       }
       if (formatted.error) return { text: '', error: formatted.error, usedArguments: argumentIndex };

@@ -42,8 +42,13 @@ const SOUNDPACK_EVENTS = Object.freeze({
   'communication.tell': 'tell',
   'communication.auction': 'auction',
   'communication.gossip': 'gossip',
+  'communication.group': 'group',
+  'communication.grats': 'grats',
+  'communication.shout': 'shout',
+  'communication.holler': 'holler',
   'communication.skynet': 'skynet',
   'communication.ssf': 'ssf',
+  'room.stairs': 'stairs',
   'door.open': 'door-open',
   'door.close': 'door-close',
   'door.lock': 'door-lock',
@@ -90,6 +95,7 @@ function soundpackEventMetadata(eventNameValue) {
   const event = String(eventNameValue || '').trim().toLowerCase();
   if (SOUNDPACK_EVENT_OVERRIDES[event]) return { ...SOUNDPACK_EVENT_OVERRIDES[event] };
   if (event.startsWith('communication.')) return { source: 'communications', status: 'active', note: 'Generated from the Communications stream.' };
+  if (event === 'room.stairs') return { source: 'derived', status: 'active', note: 'Derived from authoritative Room.Info exits.' };
   if (event.startsWith('client.')) return { source: 'client', status: 'active', note: 'Generated from client connection state.' };
   if (event.startsWith('combat.') || event.startsWith('vitals.') || event.startsWith('group.') || event.startsWith('loot.')) {
     return { source: 'derived', status: 'active', note: 'Derived from authoritative GMCP game state.' };

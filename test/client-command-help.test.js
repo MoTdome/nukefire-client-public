@@ -27,6 +27,7 @@ test('client help lists every supported command family with the active prefix', 
   assert.match(output, /~macro\/~mac/u);
   assert.match(output, /~unmacro\/~unmac/u);
   assert.match(output, /~delay/u);
+  assert.match(output, /~return/u);
   assert.match(output, /~profile/u);
   assert.match(output, /~reload/u);
   assert.match(output, /~session\/~sessions/u);
@@ -41,6 +42,18 @@ test('client help resolves aliases and rewrites examples for the selected prefix
   assert.match(output, /\^variable \{name\} \{value\}/u);
   assert.match(output, /\^unvariable \{name\}/u);
   assert.match(output, /Related names: \^variables, \^unvariable/u);
+});
+
+test('client help documents modern star variable keys and TinTin foreground/background truecolor', () => {
+  const variableOutput = clientCommandHelp('variable', '#').join('\n');
+  assert.match(variableOutput, /\*table\[\]/u);
+  assert.match(variableOutput, /\*table\[\+1\]\/\[-1\]/u);
+  assert.match(variableOutput, /\$table\[\] returns direct child values/u);
+  assert.match(variableOutput, /legacy files are migrated/u);
+
+  const highlightOutput = clientCommandHelp('highlight', '#').join('\n');
+  assert.match(highlightOutput, /<Frgb>\/<Brgb>/u);
+  assert.match(highlightOutput, /<F0F0><B500>/u);
 });
 
 test('client help documents bounded math and stored formatting', () => {
@@ -126,7 +139,8 @@ test('client help documents pipeline-safe TinTin macro keys and deferred typing 
   assert.match(output, /\^macro \{key\} \{command; command; \.\.\.\}/u);
   assert.match(output, /\^unmacro \{key\}/u);
   assert.match(output, /F1, Ctrl\+F1, Command\+K, Numpad8/u);
-  assert.match(output, /F1-F5, Ctrl-Z, and the numeric keypad import as physical NukeFire keys/u);
+  assert.match(output, /F1-F12, navigation keys, Ctrl-Z, and the numeric keypad import as physical NukeFire keys/u);
+  assert.match(output, /Ctrl-V is a terminal sequence-discovery aid/u);
   assert.match(output, /Plain typing sequences .* intentionally deferred/u);
 });
 

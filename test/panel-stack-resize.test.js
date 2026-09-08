@@ -95,3 +95,14 @@ test('resize engine relies on structural observers instead of refreshing after e
   assert.doesNotMatch(source, /document\.addEventListener\('click', \(\) => refresh\(\), true\)/u);
   assert.doesNotMatch(source, /document\.addEventListener\('change', \(\) => refresh\(\), true\)/u);
 });
+
+
+test('pane handles hide stale fixed separators and refresh on dynamic panel visibility changes', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'panel-stack-resize.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
+  assert.match(source, /function hideAllHandles\(\)/u);
+  assert.match(source, /handle\.style\.visibility = 'hidden'/u);
+  assert.match(source, /attributeFilter: \['hidden', 'data-tab-active'\]/u);
+  assert.match(source, /new ResizeObserver/u);
+  assert.match(styles, /\.dock-region\s*\{[\s\S]*scrollbar-gutter:\s*stable;/u);
+});

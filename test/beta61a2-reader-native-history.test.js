@@ -65,14 +65,18 @@ test('new traffic does not yank a parked category cursor to the live edge', () =
   assert.equal(history.latest().text, 'damage three');
 });
 
-test('category navigation skips empty categories and wraps among categories with history', () => {
+test('category navigation keeps high-volume Reader channels adjacent before lower-volume history', () => {
   const history = new ReaderHistory();
   history.append('rooms', 'The Reactor');
   history.append('comm:gossip', 'Someone gossips hello', { label: 'Gossip' });
-  assert.equal(history.selectNext(1).id, 'rooms');
+  history.append('comm:ssf', 'SSF hello', { label: 'SSF' });
+  history.append('comm:tell', 'Tell hello', { label: 'Tell' });
   assert.equal(history.selectNext(1).id, 'comm:gossip');
+  assert.equal(history.selectNext(1).id, 'comm:ssf');
+  assert.equal(history.selectNext(1).id, 'comm:tell');
+  assert.equal(history.selectNext(1).id, 'rooms');
   assert.equal(history.selectNext(1).id, 'main');
-  assert.equal(history.selectNext(-1).id, 'comm:gossip');
+  assert.equal(history.selectNext(-1).id, 'rooms');
 });
 
 test('core category speech policies preserve room replace and damage interrupt intent', () => {

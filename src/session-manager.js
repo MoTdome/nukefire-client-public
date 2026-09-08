@@ -44,6 +44,7 @@ const {
   CLIENT_COMMAND_PREFIXES
 } = require('./client-command-parser');
 const { clientCommandHelp } = require('./client-command-help');
+const { buildMudletMsdpSnapshot, diffMudletMsdp } = require('./lua-data-bridge');
 const {
   formatTinTinEcho,
   protectEchoFormatSpecifiers,
@@ -82,6 +83,10 @@ const DEFAULT_MAX_PENDING_DELAYS = 100;
 const DEFAULT_MAX_DELAY_COMMANDS = 10;
 const DEFAULT_MAX_LOOP_ITERATIONS = 100;
 const DEFAULT_MAX_LOOP_COMMANDS = 10;
+const LUA_COMMAND_LINE_MAX = 8192;
+const LUA_OUTPUT_HISTORY_MAX = 256;
+const LUA_OUTPUT_LINE_MAX = 8192;
+const LUA_OUTPUT_SNAPSHOT_BYTES = 64 * 1024;
 const DEFAULT_MAX_WHILE_ITERATIONS = 256;
 const DEFAULT_MAX_WHILE_COMMANDS = 32;
 const DEFAULT_MAX_WHILE_DEPTH = 4;
@@ -114,7 +119,10 @@ const DEFAULT_TINTIN_PATH_CODES = Object.freeze({
 const DEFAULT_MAX_FUNCTION_COMMANDS = 64;
 const DEFAULT_MAX_CONDITIONAL_COMMANDS = 64;
 const DEFAULT_MAX_CONDITIONAL_DEPTH = 16;
-const DEFERRED_ACTION_VARIABLE_DIRECTIVES = new Set(['echo', 'format', 'math', 'show', 'showme']);
+const DEFAULT_MAX_LUA_EXECUTION_DEPTH = 4;
+const DEFAULT_MAX_LUA_AUTOMATIONS = 256;
+const DEFAULT_MAX_LUA_CALLBACKS_PER_SECOND = 128;
+const DEFERRED_ACTION_VARIABLE_DIRECTIVES = new Set(['echo', 'format', 'math', 'show', 'showme', 'lua']);
 const ACTION_MANAGEMENT_DIRECTIVES = new Set([
   'alias', 'aliases', 'unalias',
   'action', 'actions', 'unaction', 'gag', 'gags', 'ungag',
@@ -129,9 +137,11 @@ const ACTION_MANAGEMENT_DIRECTIVES = new Set([
 
 const TINTIN_LIST_SUBCOMMANDS = Object.freeze([
   ['add', 'add'], ['clear', 'clear'], ['clr', 'clear'], ['create', 'create'],
-  ['delete', 'delete'], ['find', 'find'], ['fnd', 'find'], ['get', 'get'],
-  ['insert', 'insert'], ['length', 'size'], ['set', 'set'], ['size', 'size'],
-  ['sort', 'sort'], ['srt', 'sort'], ['tokenize', 'tokenize']
+  ['collapse', 'collapse'], ['copy', 'copy'], ['delete', 'delete'], ['explode', 'explode'],
+  ['filter', 'filter'], ['find', 'find'], ['fnd', 'find'], ['get', 'get'], ['indexate', 'indexate'],
+  ['insert', 'insert'], ['length', 'size'], ['numerate', 'numerate'], ['order', 'order'],
+  ['refine', 'refine'], ['reverse', 'reverse'], ['set', 'set'], ['shuffle', 'shuffle'],
+  ['simplify', 'simplify'], ['size', 'size'], ['sort', 'sort'], ['srt', 'sort'], ['swap', 'swap'], ['tabulate', 'tabulate'], ['tokenize', 'tokenize']
 ]);
 const TINTIN_HISTORY_SUBCOMMANDS = Object.freeze([
   ['delete', 'delete'], ['insert', 'insert'], ['list', 'list'], ['read', 'read'], ['write', 'write']
@@ -144,8 +154,8 @@ const TINTIN_CLASS_SUBCOMMANDS = Object.freeze([
   ['open', 'open'], ['close', 'close'], ['read', 'read'], ['write', 'write'], ['kill', 'kill']
 ]);
 const TINTIN_LINE_SUBCOMMANDS = Object.freeze([
-  ['gag', 'gag'], ['ignore', 'ignore'], ['log', 'log'], ['logverbatim', 'logverbatim'],
-  ['strip', 'strip'], ['substitute', 'substitute'], ['verbose', 'verbose']
+  ['gag', 'gag'], ['ignore', 'ignore'], ['json', 'json'], ['local', 'local'], ['log', 'log'], ['logverbatim', 'logverbatim'],
+  ['quiet', 'quiet'], ['strip', 'strip'], ['substitute', 'substitute'], ['verbatim', 'verbatim'], ['verbose', 'verbose']
 ]);
 const TINTIN_LINE_SUBSTITUTIONS = Object.freeze([
   ['variables', 'variables'], ['functions', 'functions'], ['colors', 'colors'],
@@ -463,6 +473,43 @@ function unwrapTinTinSingleBracedArgument(value) {
   return parsed.remainder ? source : parsed.value;
 }
 
+function unwrapLuaScriptArgument(value) {
+  const source = String(value ?? '').trim();
+  if (!source.startsWith('{')) return source;
+  let depth = 0;
+  let quote = '';
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (character === quote) quote = '';
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '{') depth += 1;
+    else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        if (source.slice(index + 1).trim()) return source;
+        return source.slice(1, index);
+      }
+      if (depth < 0) return source;
+    }
+  }
+  return source;
+}
+
 function parseTinTinBraceChunks(value) {
   const source = String(value ?? '').trim();
   if (!source || source[0] !== '{') return null;
@@ -694,6 +741,9 @@ class SessionManager {
     this.maxPendingDelays = Math.max(1, Number(options.maxPendingDelays) || DEFAULT_MAX_PENDING_DELAYS);
     this.maxLoopIterations = Math.max(1, Number(options.maxLoopIterations) || DEFAULT_MAX_LOOP_ITERATIONS);
     this.maxWhileIterations = Math.max(1, Number(options.maxWhileIterations) || DEFAULT_MAX_WHILE_ITERATIONS);
+    this.maxLuaExecutionDepth = Math.max(1, Number(options.maxLuaExecutionDepth) || DEFAULT_MAX_LUA_EXECUTION_DEPTH);
+    this.maxLuaAutomations = Math.max(1, Number(options.maxLuaAutomations) || DEFAULT_MAX_LUA_AUTOMATIONS);
+    this.maxLuaCallbacksPerSecond = Math.max(8, Number(options.maxLuaCallbacksPerSecond) || DEFAULT_MAX_LUA_CALLBACKS_PER_SECOND);
     this.maxCommandLineCommands = Math.max(
       1,
       Number(options.maxCommandLineCommands) || DEFAULT_MAX_COMMAND_LINE_COMMANDS
@@ -1166,9 +1216,10 @@ class SessionManager {
 
   fireTinTinEvent(session, eventNameValue, argumentsValue = [], options = {}) {
     if (!session || Number(options.eventDepth || 0) >= 8) return { fired: false, deliveries: [], messages: [] };
+    const luaFired = options.skipLua === true ? 0 : this.fireLuaEventHandlers(session, String(eventNameValue || ''), argumentsValue);
     const matched = this.withTinTinSession(session, () => this.eventEngine.match(eventNameValue));
     const record = matched?.record;
-    if (!record?.enabled) return { fired: false, deliveries: [], messages: [] };
+    if (!record?.enabled) return { fired: luaFired > 0, deliveries: [], messages: [] };
     const args = Array.isArray(argumentsValue) ? argumentsValue.map((value) => String(value ?? '')) : [];
     const captures = { ...(matched?.captures || {}) };
     // TinTin's native Event variables are zero-based (%0, %1, ...), but a
@@ -1529,10 +1580,126 @@ class SessionManager {
     }
   }
 
+  syncLuaMudletMsdp(session, packageNameValue = '') {
+    if (!session) return 0;
+    const packageName = String(packageNameValue || '');
+    if (packageName && !['Char.Vitals', 'Char.Status', 'Char.MaxStats', 'Room.Info', 'NukeFire.Affects'].includes(packageName)) return 0;
+    const snapshot = buildMudletMsdpSnapshot(this.getGmcpState(session.id)).snapshot;
+    const previous = session.luaMudletMsdp && typeof session.luaMudletMsdp === 'object' ? session.luaMudletMsdp : {};
+    session.luaMudletMsdp = snapshot;
+    let fired = 0;
+    for (const change of diffMudletMsdp(previous, snapshot)) {
+      if (this.fireLuaEventHandlers(session, `msdp.${change.field}`, [change.value])) fired += 1;
+    }
+    return fired;
+  }
+
+  appendLuaVisibleOutput(session, textValue) {
+    if (!session) return;
+    const text = String(textValue ?? '').replace(/\r\n?/gu, '\n');
+    if (!text) return;
+    let combined = `${String(session.luaVisibleOutputCarry || '')}${text}`;
+    const parts = combined.split('\n');
+    const trailing = parts.pop() ?? '';
+    session.luaVisibleOutputHistory ||= [];
+    for (const rawLine of parts) {
+      const line = stripTerminalSequences(String(rawLine || '')).slice(0, LUA_OUTPUT_LINE_MAX);
+      const number = Math.max(1, Number(session.luaVisibleLineNumber) || 1);
+      session.luaVisibleOutputHistory.push({ number, text: line });
+      session.luaVisibleLineNumber = number + 1;
+    }
+    if (session.luaVisibleOutputHistory.length > LUA_OUTPUT_HISTORY_MAX) {
+      session.luaVisibleOutputHistory.splice(0, session.luaVisibleOutputHistory.length - LUA_OUTPUT_HISTORY_MAX);
+    }
+    session.luaVisibleOutputCarry = stripTerminalSequences(trailing).slice(-LUA_OUTPUT_LINE_MAX);
+  }
+
+  luaOutputSnapshot(reference) {
+    const session = typeof reference === 'object' && reference ? reference : this.findSession(reference);
+    if (!session) return { currentLine: '', currentLineNumber: 1, firstLineNumber: 1, lines: [] };
+    const retained = Array.isArray(session.luaVisibleOutputHistory) ? session.luaVisibleOutputHistory.slice(-LUA_OUTPUT_HISTORY_MAX) : [];
+    const lines = [];
+    let bytes = 0;
+    for (let index = retained.length - 1; index >= 0; index -= 1) {
+      const record = retained[index] || {};
+      const text = String(record.text || '').slice(0, LUA_OUTPUT_LINE_MAX);
+      const cost = Buffer.byteLength(text, 'utf8') + 16;
+      if (bytes + cost > LUA_OUTPUT_SNAPSHOT_BYTES) break;
+      lines.push({ number: Math.max(1, Math.trunc(Number(record.number) || 1)), text });
+      bytes += cost;
+    }
+    lines.reverse();
+    const currentLineNumber = Math.max(1, Math.trunc(Number(session.luaVisibleLineNumber) || 1));
+    const currentLine = String(session.luaVisibleOutputCarry || '').slice(0, LUA_OUTPUT_LINE_MAX);
+    return {
+      currentLine,
+      currentLineNumber,
+      firstLineNumber: lines.length ? lines[0].number : currentLineNumber,
+      lines
+    };
+  }
+
+  setLuaCommandDraft(reference, value, options = {}) {
+    const session = typeof reference === 'object' && reference ? reference : this.findSession(reference);
+    if (!session) return { changed: false, text: '', reason: 'unknown-session' };
+    const text = String(value ?? '').normalize('NFKC').replace(/[\r\n\u0000]/gu, '').slice(0, LUA_COMMAND_LINE_MAX);
+    const changed = session.luaCommandDraft !== text;
+    session.luaCommandDraft = text;
+    if (options.emit === true && changed) this.emit(session.id, 'lua-command-line', { text });
+    return { changed, text };
+  }
+
+  queueLuaSpeedwalk(reference, routeValue, options = {}) {
+    const session = this.findSession(reference);
+    if (!session) return { queued: false, steps: 0, reason: 'unknown-session' };
+    if (session.status?.state !== 'connected') return { queued: false, steps: 0, reason: 'disconnected' };
+    let route = String(routeValue ?? '').normalize('NFKC').trim();
+    if (!route || route.length > 4096 || /[\r\n\u0000]/u.test(route)) return { queued: false, steps: 0, reason: 'invalid-route' };
+    if (route.includes(';')) {
+      const tokens = route.split(';').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+      if (!tokens.length || tokens.some((entry) => !/^[neswud]$/u.test(entry))) return { queued: false, steps: 0, reason: 'unsupported-route' };
+      route = tokens.join('');
+    }
+    const parsed = parseSpeedwalk(route, { maxSteps: this.maxSpeedwalkSteps });
+    if (!parsed.matched || parsed.error || !parsed.steps.length) {
+      return { queued: false, steps: 0, reason: parsed.error || 'unsupported-route' };
+    }
+    let steps = [...parsed.steps];
+    if (options.backwards === true) {
+      const reverse = { n: 's', s: 'n', e: 'w', w: 'e', u: 'd', d: 'u' };
+      steps = steps.reverse().map((step) => reverse[step] || '');
+      if (steps.some((step) => !step)) return { queued: false, steps: 0, reason: 'unsupported-reverse' };
+    }
+    const delay = Number(options.delay) || 0;
+    if (delay <= 0) {
+      const deliveries = this.queueSpeedwalk(session.id, steps, { show: options.show !== false });
+      return { queued: deliveries.length === steps.length && deliveries.every((entry) => entry.queued), steps: steps.length, deliveries };
+    }
+    if (!Number.isFinite(delay) || delay < 0.01 || delay * steps.length > this.maxDelaySeconds) {
+      return { queued: false, steps: 0, reason: 'delay-out-of-range' };
+    }
+    if (session.delays.size + steps.length > this.maxPendingDelays) {
+      return { queued: false, steps: 0, reason: 'delay-limit' };
+    }
+    steps.forEach((command, index) => {
+      const seconds = delay * (index + 1);
+      let timer = null;
+      timer = this.delaySetTimer(() => {
+        session.delays.delete(timer);
+        if (this.sessions.get(session.id) !== session) return;
+        const delivery = this.queueCommand(session.id, command, { source: 'speedwalk' });
+        if (delivery.queued && options.show !== false) this.emit(session.id, 'speedwalk-step', { command });
+      }, Math.max(10, Math.round(seconds * 1000)));
+      session.delays.set(timer, { name: '', seconds, commands: [command], luaSpeedwalk: true });
+    });
+    return { queued: true, steps: steps.length, delayed: true };
+  }
+
   emitLocalDisplay(session, value) {
     const text = normalizeLocalDisplayText(value);
     if (!session || !text) return false;
     const line = `${text}\n`;
+    this.appendLuaVisibleOutput(session, line);
     this.emit(session.id, 'local-text', line);
     if (!Number(session.lineIgnoreDepth || 0)) this.processActionsForText(session, line);
     return true;
@@ -1541,7 +1708,9 @@ class SessionManager {
   emitLocalEcho(session, value) {
     if (!session) return false;
     const text = String(value ?? '');
-    this.emit(session.id, 'local-text', `${text}\n`);
+    const line = `${text}\n`;
+    this.appendLuaVisibleOutput(session, line);
+    this.emit(session.id, 'local-text', line);
     return true;
   }
 
@@ -1634,9 +1803,16 @@ class SessionManager {
       pendingTinTinLineLog: null,
       tintinOutputHistory: [],
       tintinCommandHistory: [],
+      luaCommandDraft: '',
+      luaVisibleOutputHistory: [],
+      luaVisibleOutputCarry: '',
+      luaVisibleLineNumber: 1,
+      tintinListIndexes: new Map(),
       tintin,
       delays: new Map(),
       tickers: new Map(),
+      luaAutomations: new Map(),
+      luaCallbackTimestamps: [],
       secondEventTimer: null,
       tintinClockState: null,
       tintinMapActive: false,
@@ -1667,7 +1843,10 @@ class SessionManager {
         }
         const filtered = this.filterGagsForText(session, text);
         if (filtered.communicationText) this.emit(id, 'communication-text', filtered.communicationText);
-        if (filtered.visibleText) this.emit(id, 'text', filtered.visibleText);
+        if (filtered.visibleText) {
+          this.appendLuaVisibleOutput(session, filtered.visibleText);
+          this.emit(id, 'text', filtered.visibleText);
+        }
         this.processActionsForText(session, text);
       },
       onStatus: (status) => {
@@ -1693,10 +1872,14 @@ class SessionManager {
         if (!wasConnected && session.status.state === 'connected') {
           this.syncSecondEventTimer(session);
           this.fireTinTinEvent(session, 'SESSION CONNECTED', [session.name, session.host, '', String(session.port)]);
+          this.fireLuaEventHandlers(session, 'sysConnectionEvent', []);
+          this.fireLuaEventHandlers(session, 'sysProtocolEnabled', ['GMCP']);
+          this.fireLuaEventHandlers(session, 'sysProtocolEnabled', ['MSDP']);
         } else if (wasConnected && session.status.state !== 'connected') {
           this.clearSecondEventTimer(session);
           this.leaveTinTinMap(session);
           this.fireTinTinEvent(session, 'SESSION DISCONNECTED', [session.name, session.host, '', String(session.port), String(session.status?.message || '')]);
+          this.fireLuaEventHandlers(session, 'sysDisconnectionEvent', []);
         }
         this.emitSessionList();
       },
@@ -1709,6 +1892,7 @@ class SessionManager {
       onGmcp: (message) => {
         this.syncTinTinProtocolVariables(session, message);
         this.syncTinTinMapEvents(session, message);
+        this.syncLuaMudletMsdp(session, message?.packageName);
         const characterName = message?.packageName === 'Char.Status'
           ? message?.body?.name
           : message?.state?.char?.status?.name;
@@ -1729,6 +1913,11 @@ class SessionManager {
           });
         }
         this.emit(id, 'gmcp', message);
+        const luaGmcpEvent = message?.packageName ? `gmcp.${String(message.packageName)}` : '';
+        if (luaGmcpEvent) {
+          this.fireLuaEventHandlers(session, luaGmcpEvent, []);
+          this.fireLuaEventHandlers(session, 'gmcp', [luaGmcpEvent]);
+        }
         // Compact GMCP events publish only the changed packet. Republish the
         // session list only when Char.Status actually changes the tab label.
         if (session.characterName !== previousCharacterName) this.emitSessionList();
@@ -1974,12 +2163,19 @@ class SessionManager {
     if (!session || this.sessions.size <= 1) return false;
     const wasActive = this.activeSessionId === session.id;
     session.queue.close();
+    this.clearLuaAutomations(session);
     this.clearSessionDelays(session);
     this.clearSessionTickers(session);
     this.clearSecondEventTimer(session);
     for (const watcher of this.sessions.values()) watcher.snoops?.delete(session.id);
     session.connection.disconnect('Session closed.');
     this.sessions.delete(session.id);
+    try {
+      const cleanup = this.handlers.onSessionRemoved?.(session.id);
+      if (cleanup && typeof cleanup.catch === 'function') cleanup.catch(() => {});
+    } catch {
+      // Session removal remains authoritative even if an optional subsystem cleanup fails.
+    }
     for (const [name, group] of this.groups) {
       group.members = group.members.filter((id) => id !== session.id);
       if (group.leader === session.id) group.leader = group.members[0] || '';
@@ -2082,7 +2278,7 @@ class SessionManager {
     };
   }
 
-  queueSpeedwalk(reference, steps) {
+  queueSpeedwalk(reference, steps, options = {}) {
     const session = this.findSession(reference);
     const commands = Array.isArray(steps) ? steps.map((step) => String(step || '')) : [];
     if (!session) {
@@ -2091,7 +2287,7 @@ class SessionManager {
     if (session.status?.state !== 'connected') {
       return commands.map((command) => ({ sessionId: session.id, command, source: 'speedwalk', queued: false, reason: 'disconnected' }));
     }
-    const queued = session.queue.enqueueBatch(commands, { source: 'speedwalk' });
+    const queued = session.queue.enqueueBatch(commands, { source: options.show === false ? 'lua-speedwalk-hidden' : 'speedwalk' });
     return commands.map((command) => ({
       sessionId: session.id,
       command,
@@ -3065,6 +3261,28 @@ class SessionManager {
     return this.fireTinTinEvent(session, `VARIABLE UPDATE ${target}`, [target, value], { eventDepth: Number(options.eventDepth || 0) });
   }
 
+  replaceLuaTable(reference, nameValue, recordsValue, options = {}) {
+    const session = this.findSession(reference);
+    if (!session) return null;
+    return this.withTinTinSession(session, () => {
+      const name = normalizeVariableName(nameValue);
+      if (!name) return null;
+      const records = Array.isArray(recordsValue) ? recordsValue : [];
+      const probe = new VariableEngine({
+        maxVariables: this.variableEngine.maxVariables,
+        maxExpansionDepth: this.variableEngine.maxExpansionDepth,
+        maxExpandedLength: this.variableEngine.maxExpandedLength,
+        variables: this.variableEngine.list()
+      });
+      const preview = probe.replaceTableTree(name, records, this.variableAssignmentClass(name));
+      if (!preview) return null;
+      if (options.suppressVariableUpdateEvent !== true) {
+        this.fireTinTinVariableUpdate(session, name, String(probe.get(name)?.value || ''), options);
+      }
+      return this.variableEngine.replaceTableTree(name, records, this.variableAssignmentClass(name));
+    });
+  }
+
   assignVariable(nameValue, valueValue, options = {}) {
     const name = normalizeVariableName(nameValue);
     if (!name) return null;
@@ -3788,6 +4006,15 @@ class SessionManager {
     }
 
     for (const rawLine of lines) {
+      const luaMatches = this.actionEngine.matchLuaTransients?.(rawLine) || [];
+      for (const luaMatch of luaMatches) {
+        this.invokeLuaAutomation(session, luaMatch.id, {
+          line: luaMatch.line || String(rawLine || ''),
+          matches: luaMatch.matches || [],
+          namedMatches: luaMatch.namedMatches || {},
+          args: []
+        }, { source: 'trigger' });
+      }
       const match = this.actionEngine.match(rawLine, { preserveLiteralPercent: true });
       this.tracePipeline(session, 'action', () => match.matched
         ? `Matched ${match.action?.pattern || '<pattern>'}: ${match.line || rawLine}`
@@ -4081,6 +4308,41 @@ class SessionManager {
       }
       source.lineGagRemaining = Math.max(0, Math.min(100, next));
       return { deliveries: [], messages: [`Line gag armed for ${source.lineGagRemaining} server line${source.lineGagRemaining === 1 ? '' : 's'}.`], activateSessionId: '' };
+    }
+
+    if (operation === 'json') {
+      if (tokens.length < 3) return { deliveries: [], messages: [this.usage('line json {variable} {command}')], activateSessionId: '' };
+      const nameExpanded = options.variablesExpanded ? { value: tokens[1], error: '' } : this.expandFunctionAndVariables(tokens[1], source, options);
+      if (nameExpanded.error) return { deliveries: [], messages: [nameExpanded.error], activateSessionId: '' };
+      const name = normalizeVariableName(nameExpanded.value);
+      if (!name) return { deliveries: [], messages: ['Line JSON variable name is invalid.'], activateSessionId: '' };
+      const record = this.variableEngine.get(name);
+      if (!record) return { deliveries: [], messages: [`Unknown variable: ${name}.`], activateSessionId: '' };
+      const toJsonValue = (variableName, depth = 0) => {
+        if (depth > 8) return String(this.variableEngine.get(variableName)?.value ?? '');
+        const entries = this.variableEngine.tableEntries(variableName);
+        if (!entries.length) return String(this.variableEngine.get(variableName)?.value ?? '');
+        const object = {};
+        for (const entry of entries.slice(0, DEFAULT_MAX_LIST_ITEMS)) {
+          const child = `${variableName}[${entry.key}]`;
+          object[entry.key] = this.variableEngine.tableEntries(child).length
+            ? toJsonValue(child, depth + 1)
+            : String(this.variableEngine.get(child)?.value ?? entry.record.value ?? '');
+        }
+        return object;
+      };
+      const command = tokens.slice(2).join(' ').trim();
+      const json = JSON.stringify(toJsonValue(name));
+      if (json.length > DEFAULT_MAX_LOCAL_DISPLAY_CHARACTERS) return { deliveries: [], messages: [`Line JSON output is limited to ${DEFAULT_MAX_LOCAL_DISPLAY_CHARACTERS} characters.`], activateSessionId: '' };
+      const result = this.dispatchCommand(source, substituteTinTinCommandCaptures(command, { 0: json }), { ...options, variablesExpanded: true });
+      return { deliveries: result.deliveries, messages: result.messages, activateSessionId: result.activateSessionId || '' };
+    }
+
+    if (operation === 'quiet' || operation === 'verbatim') {
+      const command = nestedFromRaw() || tokens.slice(1).join(' ').trim();
+      if (!command) return { deliveries: [], messages: [this.usage(`line ${operation} {command}`)], activateSessionId: '' };
+      const result = this.dispatchCommand(source, command, { ...options, variablesExpanded: operation === 'verbatim' ? true : options.variablesExpanded });
+      return { deliveries: result.deliveries, messages: operation === 'quiet' ? [] : result.messages, activateSessionId: result.activateSessionId || '' };
     }
 
     if (operation === 'ignore' || operation === 'verbose' || operation === 'local' || operation === 'strip') {
@@ -4438,80 +4700,87 @@ class SessionManager {
   }
 
   handleListCommand(tokens, source, options = {}) {
-    if (tokens.length < 2) return [this.usage('list {variable} {add|tokenize|order|reverse} {items...}')];
-    const baseExpanded = options.variablesExpanded
-      ? { value: tokens[0], error: '' }
-      : this.expandFunctionAndVariables(tokens[0], source, options);
+    if (tokens.length < 2) return [this.usage('list {variable} {option} {arguments...}')];
+    const baseExpanded = options.variablesExpanded ? { value: tokens[0], error: '' } : this.expandFunctionAndVariables(tokens[0], source, options);
     if (baseExpanded.error) return [baseExpanded.error];
     const base = normalizeVariableName(baseExpanded.value);
-    if (!base) {
-      return ['List variable must be a valid TinTin variable or nested table path.'];
-    }
+    if (!base) return ['List variable must be a valid TinTin variable or nested table path.'];
     const operation = resolveTinTinOrderedAbbreviation(tokens[1], TINTIN_LIST_SUBCOMMANDS, { ins: 'insert', order: 'order', reverse: 'reverse' });
-    const existing = this.variableEngine.tableEntries(base).map((entry) => ({
-      key: entry.key,
-      value: entry.record.value
-    }));
-    const ensureListMarker = () => {
-      if (this.variableEngine.get(base)) return true;
-      return Boolean(this.variableEngine.define(base, '', this.variableAssignmentClass(base)));
+    const entriesNow = () => this.variableEngine.tableEntries(base).map((entry) => ({ key: entry.key, value: entry.record.value }));
+    let existing = entriesNow();
+    const indexMap = source.tintinListIndexes ||= new Map();
+    const indexKey = () => String(indexMap.get(base) || '');
+    const comparable = (entry) => {
+      const key = indexKey();
+      if (!key) return String(entry?.value ?? '');
+      return String(this.variableEngine.get(`${base}[${entry.key}][${key}]`)?.value ?? '');
     };
-    const notifyListMutation = () => {
-      if (options.suppressVariableUpdateEvent === true) return;
-      const session = source || this.sessionForActiveTinTinContext();
-      if (session) this.fireTinTinVariableUpdate(session, base, undefined, options);
+    const expand = (raw) => options.variablesExpanded ? { value: raw, error: '' } : this.expandFunctionAndVariables(raw, source, options);
+    const notify = () => { if (options.suppressVariableUpdateEvent !== true) this.fireTinTinVariableUpdate(source, base, undefined, options); };
+    const collectNodeRecords = (directKey) => {
+      const root = `${base}[${directKey}]`;
+      return this.variableEngine.list().filter((r) => r.name === root || r.name.startsWith(`${root}[`));
     };
-
-    if (operation === 'insert' || operation === 'ins') {
-      if (tokens.length !== 4) return [this.usage('list {variable} insert {index} {item}')];
-      const indexExpanded = options.variablesExpanded
-        ? { value: tokens[2], error: '' }
-        : this.expandFunctionAndVariables(tokens[2], source, options);
-      if (indexExpanded.error) return [indexExpanded.error];
-      const itemExpanded = options.variablesExpanded
-        ? { value: tokens[3], error: '' }
-        : this.expandFunctionAndVariables(tokens[3], source, options);
-      if (itemExpanded.error) return [itemExpanded.error];
-      const index = Number(indexExpanded.value);
-      const currentValues = existing.map((entry) => entry.value);
-      if (!Number.isSafeInteger(index) || index === 0) {
-        return [`List ${base} INSERT index must be a non-zero integer.`];
+    const rewriteOrder = (orderedEntries) => {
+      const snapshot = orderedEntries.map((entry) => ({ entry, records: collectNodeRecords(entry.key) }));
+      this.variableEngine.delete(base);
+      if (!snapshot.length) {
+        return Boolean(this.variableEngine.define(base, '', this.variableAssignmentClass(base)));
       }
-      if (currentValues.length >= DEFAULT_MAX_LIST_ITEMS) {
-        return [`List ${base} may contain at most ${DEFAULT_MAX_LIST_ITEMS} items.`];
-      }
-      let position = 0;
-      if (currentValues.length === 0) {
-        if (![1, -1].includes(index)) return [`List ${base} INSERT index must be +1 or -1 for an empty list.`];
-      } else if (index > 0) {
-        if (index > currentValues.length) {
-          return [`List ${base} INSERT positive index must be between 1 and ${currentValues.length}.`];
+      for (let i = 0; i < snapshot.length; i += 1) {
+        const nextRoot = `${base}[${i + 1}]`;
+        const oldRoot = `${base}[${snapshot[i].entry.key}]`;
+        const records = snapshot[i].records;
+        if (!records.length) {
+          if (!defineListItem(nextRoot, snapshot[i].entry.value)) return false;
+          continue;
         }
-        position = index - 1;
-      } else {
-        if (Math.abs(index) > currentValues.length) {
-          return [`List ${base} INSERT negative index must be between -1 and -${currentValues.length}.`];
+        for (const record of records) {
+          const nextName = `${nextRoot}${record.name.slice(oldRoot.length)}`;
+          if (!this.variableEngine.define(nextName, record.value, record.className || this.variableAssignmentClass(base))) return false;
         }
-        // TinTin negative insertion appends after the addressed item:
-        // -1 appends after the current last item, -2 before that, and so on.
-        position = currentValues.length + index + 1;
       }
-      currentValues.splice(position, 0, String(itemExpanded.value ?? ''));
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const entries = currentValues.map((value, offset) => ({ key: String(offset + 1), value }));
-      const stored = this.variableEngine.defineTable(base, entries, this.variableAssignmentClass(base));
-      if (!stored) return [`List ${base} could not be stored because the variable limit was reached.`];
-      this.tracePipeline(source, 'list', () => `${base} INSERT ${index} => ${currentValues.length} items`);
-      notifyListMutation();
-      return [`List ${base}: inserted item at ${index} (${currentValues.length} total).`];
-    }
-
-    if (operation === 'clear') {
-      const removed = this.variableEngine.clearTable(base);
-      this.tracePipeline(source, 'list', () => `${base} CLEAR => ${removed} removed`);
-      notifyListMutation();
-      return [`List ${base} cleared (${removed} item${removed === 1 ? '' : 's'} removed).`];
-    }
+      return true;
+    };
+    const scalarListValues = (raw) => {
+      const text = String(raw ?? '');
+      if (!text.trim()) return [];
+      const parsed = splitTopLevelCommands(text, { maxCommands: DEFAULT_MAX_LIST_ITEMS, preserveEscapedSemicolon: true, commandPrefix: this.commandPrefix });
+      if (parsed.errorCode) return null;
+      if (text.includes(';')) return parsed.commands;
+      const braced = parseTinTinBraceChunks(text);
+      if (braced?.length) return braced;
+      const tokenized = tokenizeBraced(text, { preserveEscapedSemicolon: true });
+      return tokenized.length > 1 ? tokenized : [text];
+    };
+    const defineListItem = (name, value) => {
+      const text = String(value ?? '');
+      let entries = flattenTinTinTableEntries(name, text);
+      if (!entries?.length) {
+        const chunks = parseTinTinBraceChunks(text);
+        if (chunks?.length === 1 && String(chunks[0] || '').trim().startsWith('{')) {
+          entries = flattenTinTinTableEntries(name, chunks[0]);
+        }
+      }
+      if (entries?.length) {
+        for (const entry of entries) {
+          if (!this.variableEngine.define(entry.name, entry.value, this.variableAssignmentClass(base))) return false;
+        }
+        return true;
+      }
+      return Boolean(this.variableEngine.define(name, text, this.variableAssignmentClass(base)));
+    };
+    const defineSimpleList = (values) => {
+      if (values.length > DEFAULT_MAX_LIST_ITEMS) return false;
+      this.variableEngine.delete(base);
+      if (!values.length) {
+        return Boolean(this.variableEngine.define(base, '', this.variableAssignmentClass(base)));
+      }
+      for (let i = 0; i < values.length; i += 1) {
+        if (!defineListItem(`${base}[${i + 1}]`, values[i])) return false;
+      }
+      return true;
+    };
 
     if (operation === 'size') {
       if (tokens.length !== 3) return [this.usage('list {variable} size {result variable}')];
@@ -4520,266 +4789,243 @@ class SessionManager {
       if (!this.assignVariable(resultName, String(existing.length), options)) return [`List SIZE could not store ${resultName}.`];
       return [`List ${base} SIZE stored ${existing.length} in ${resultName}.`];
     }
-
+    if (operation === 'clear') { const removed = this.variableEngine.clearTable(base); indexMap.delete(base); notify(); return [`List ${base} cleared (${removed} item${removed === 1 ? '' : 's'} removed).`]; }
+    if (operation === 'indexate') {
+      if (tokens.length > 3) return [this.usage('list {variable} indexate [key]')];
+      const key = String(tokens[2] || '').trim();
+      if (key && existing.some((entry) => !this.variableEngine.get(`${base}[${entry.key}][${key}]`))) return [`List ${base} INDEXATE requires every item to contain key ${key}.`];
+      if (key) indexMap.set(base, key); else indexMap.delete(base);
+      return [`List ${base} indexation ${key ? `set to ${key}` : 'cleared'}.`];
+    }
     if (operation === 'get') {
       if (tokens.length !== 4) return [this.usage('list {variable} get {index} {result variable}')];
-      const indexExpanded = options.variablesExpanded
-        ? { value: tokens[2], error: '' }
-        : this.expandFunctionAndVariables(tokens[2], source, options);
-      if (indexExpanded.error) return [indexExpanded.error];
-      const resultName = normalizeSimpleVariableName(tokens[3]);
-      if (!resultName) return ['List GET result variable must be a simple TinTin variable name.'];
-      const index = Number(indexExpanded.value);
-      let value = '0';
-      if (Number.isSafeInteger(index) && index !== 0 && Math.abs(index) <= existing.length) {
-        const position = index > 0 ? index - 1 : existing.length + index;
-        value = String(existing[position]?.value ?? '0');
-      }
+      const idx = expand(tokens[2]); if (idx.error) return [idx.error];
+      const resultName = normalizeSimpleVariableName(tokens[3]); if (!resultName) return ['List GET result variable must be a simple TinTin variable name.'];
+      const n = Number(idx.value); const pos = Number.isSafeInteger(n) && n !== 0 ? (n > 0 ? n - 1 : existing.length + n) : -1;
+      const value = pos >= 0 && pos < existing.length ? (indexKey() ? comparable(existing[pos]) : existing[pos].value) : '0';
       if (!this.assignVariable(resultName, value, options)) return [`List GET could not store ${resultName}.`];
-      return [`List ${base} GET stored item ${indexExpanded.value} in ${resultName}.`];
+      return [`List ${base} GET stored item ${idx.value} in ${resultName}.`];
     }
-
-    if (operation === 'set') {
-      if (tokens.length !== 4) return [this.usage('list {variable} set {index} {value}')];
-      const indexExpanded = options.variablesExpanded
-        ? { value: tokens[2], error: '' }
-        : this.expandFunctionAndVariables(tokens[2], source, options);
-      if (indexExpanded.error) return [indexExpanded.error];
-      const valueExpanded = options.variablesExpanded
-        ? { value: tokens[3], error: '' }
-        : this.expandFunctionAndVariables(tokens[3], source, options);
-      if (valueExpanded.error) return [valueExpanded.error];
-      const index = Number(indexExpanded.value);
-      if (!Number.isSafeInteger(index) || index === 0 || Math.abs(index) > existing.length) {
-        return [`List ${base} SET index must address an existing item.`];
-      }
-      const values = existing.map((entry) => entry.value);
-      const position = index > 0 ? index - 1 : values.length + index;
-      values[position] = String(valueExpanded.value ?? '');
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const stored = this.variableEngine.defineTable(base, values.map((value, offset) => ({ key: String(offset + 1), value })), this.variableAssignmentClass(base));
-      if (!stored) return [`List ${base} could not be stored because the variable limit was reached.`];
-      notifyListMutation();
-      return [`List ${base} SET updated item ${index}.`];
-    }
-
-    if (operation === 'sort') {
-      if (tokens.length < 3) return [this.usage('list {variable} sort {item} ...')];
-      const values = existing.map((entry) => String(entry.value ?? ''));
-      let inserted = 0;
-      for (const raw of tokens.slice(2)) {
-        const expanded = options.variablesExpanded
-          ? { value: raw, error: '' }
-          : this.expandFunctionAndVariables(raw, source, options);
-        if (expanded.error) return [expanded.error];
-        const text = String(expanded.value ?? '');
-        const packed = splitTopLevelCommands(text, {
-          maxCommands: DEFAULT_MAX_LIST_ITEMS,
-          preserveEscapedSemicolon: true,
-          commandPrefix: this.commandPrefix
-        });
-        if (packed.errorCode) return [`List ${base} SORT has invalid or excessive separators.`];
-        const candidates = text.includes(';') ? packed.commands : [text];
-        for (const value of candidates) {
-          let position = values.findIndex((entry) => String(value).localeCompare(entry) <= 0);
-          if (position < 0) position = values.length;
-          values.splice(position, 0, String(value));
-          inserted += 1;
-          if (values.length > DEFAULT_MAX_LIST_ITEMS) return [`List ${base} may contain at most ${DEFAULT_MAX_LIST_ITEMS} items.`];
-        }
-      }
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const stored = this.variableEngine.defineTable(base, values.map((value, offset) => ({ key: String(offset + 1), value })), this.variableAssignmentClass(base));
-      if (!stored) return [`List ${base} could not be stored because the variable limit was reached.`];
-      notifyListMutation();
-      return [`List ${base} SORT inserted ${inserted} item${inserted === 1 ? '' : 's'} (${values.length} total).`];
-    }
-
     if (operation === 'find') {
-      if (tokens.length !== 4) return [this.usage('list {variable} find {value} {result variable}')];
-      const expanded = options.variablesExpanded
-        ? { value: tokens[2], error: '' }
-        : this.expandFunctionAndVariables(tokens[2], source, options);
-      if (expanded.error) return [expanded.error];
-      const resultName = normalizeSimpleVariableName(tokens[3]);
-      if (!resultName) return ['List FIND result variable must be a simple TinTin variable name.'];
-      const matcher = compileActionPattern(String(expanded.value));
-      const index = matcher ? existing.findIndex((entry) => matcher.test(String(entry.value))) : -1;
-      if (!this.assignVariable(resultName, String(index >= 0 ? index + 1 : 0), options)) {
-        return [`List FIND could not store ${resultName}.`];
-      }
-      return [`List ${base} FIND stored ${index >= 0 ? index + 1 : 0} in ${resultName}.`];
+      if (tokens.length !== 4) return [this.usage('list {variable} find {regex} {result variable}')];
+      const pat = expand(tokens[2]); if (pat.error) return [pat.error];
+      const resultName = normalizeSimpleVariableName(tokens[3]); if (!resultName) return ['List FIND result variable must be a simple TinTin variable name.'];
+      const found = existing.findIndex((entry) => matchTinTinRegexp(comparable(entry), pat.value).matched);
+      if (!this.assignVariable(resultName, String(found >= 0 ? found + 1 : 0), options)) return [`List FIND could not store ${resultName}.`];
+      return [`List ${base} FIND stored ${found >= 0 ? found + 1 : 0} in ${resultName}.`];
     }
-
-    if (operation === 'delete') {
-      if (tokens.length < 3 || tokens.length > 4) return [this.usage('list {variable} delete {index} [count]')];
-      const expanded = options.variablesExpanded
-        ? { value: tokens[2], error: '' }
-        : this.expandFunctionAndVariables(tokens[2], source, options);
-      if (expanded.error) return [expanded.error];
-      const countExpanded = tokens[3] === undefined
-        ? { value: '1', error: '' }
-        : (options.variablesExpanded
-          ? { value: tokens[3], error: '' }
-          : this.expandFunctionAndVariables(tokens[3], source, options));
-      if (countExpanded.error) return [countExpanded.error];
-      const index = Number(expanded.value);
-      const count = Number(countExpanded.value);
-      if (!Number.isSafeInteger(index) || index === 0 || Math.abs(index) > existing.length) {
-        return [`List ${base} DELETE index must address an existing item (1..${Math.max(1, existing.length)} or -1..-${Math.max(1, existing.length)}).`];
+    if (operation === 'collapse' || operation === 'simplify') {
+      const separator = operation === 'collapse' ? String(expand(tokens[2] ?? '').value ?? '') : ';';
+      let values = existing.map((entry) => String(entry.value ?? ''));
+      if (operation === 'simplify' && tokens.length > 2) {
+        for (const raw of tokens.slice(2)) { const x=expand(raw); if (x.error) return [x.error]; values.push(String(x.value ?? '')); }
       }
-      if (!Number.isSafeInteger(count) || count < 1 || count > DEFAULT_MAX_LIST_ITEMS) {
-        return [`List ${base} DELETE count must be between 1 and ${DEFAULT_MAX_LIST_ITEMS}.`];
-      }
-      const values = existing.map((entry) => entry.value);
-      let removed = 0;
-      for (let attempt = 0; attempt < count && values.length; attempt += 1) {
-        if (Math.abs(index) > values.length) break;
-        const position = index > 0 ? index - 1 : values.length + index;
-        values.splice(position, 1);
-        removed += 1;
-      }
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const entries = values.map((value, offset) => ({ key: String(offset + 1), value }));
-      const stored = this.variableEngine.defineTable(base, entries, this.variableAssignmentClass(base));
-      if (!stored && values.length) return [`List ${base} could not be stored because the variable limit was reached.`];
-      if (!values.length) this.variableEngine.clearTable(base);
-      notifyListMutation();
-      return [`List ${base}: deleted ${removed} item${removed === 1 ? '' : 's'} from ${index} (${values.length} remaining).`];
+      const record = this.variableEngine.define(base, values.join(separator), this.variableAssignmentClass(base));
+      indexMap.delete(base); notify();
+      return [record ? `List ${base} ${operation === 'collapse' ? 'collapsed' : 'simplified'} to a scalar variable.` : `List ${base} could not be ${operation}d.`];
     }
-
-    if (operation === 'create') {
-      const raw = tokens.slice(2).join(' ');
-      const expanded = options.variablesExpanded
-        ? { value: raw, error: '' }
-        : this.expandFunctionAndVariables(raw, source, options);
-      if (expanded.error) return [expanded.error];
-      const expandedText = String(expanded.value || '');
-      let values = [];
-      if (expandedText.trim()) {
-        const parsed = splitTopLevelCommands(expandedText, {
-          maxCommands: DEFAULT_MAX_LIST_ITEMS,
-          preserveEscapedSemicolon: true,
-          commandPrefix: this.commandPrefix
-        });
-        if (parsed.errorCode) return [`List ${base} CREATE has invalid or excessive separators.`];
-        values = parsed.commands;
-        if (values.length <= 1 && !expandedText.includes(';')) {
-          const braced = parseTinTinBraceChunks(expandedText);
-          if (braced?.length) values = braced;
-          else {
-            const tokenized = tokenizeBraced(expandedText, { preserveEscapedSemicolon: true });
-            if (tokenized.length > 1) values = tokenized;
-          }
-        }
-        values = values.map((value) => String(value).trim()).filter(Boolean).slice(0, DEFAULT_MAX_LIST_ITEMS);
-      }
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const entries = values.map((value, index) => ({ key: String(index + 1), value }));
-      const stored = this.variableEngine.defineTable(base, entries, this.variableAssignmentClass(base));
-      if (!stored && values.length) return [`List ${base} could not be stored because the variable limit was reached.`];
-      if (!values.length) this.variableEngine.clearTable(base);
-      notifyListMutation();
-      return [`List ${base} created (${values.length} item${values.length === 1 ? '' : 's'}).`];
+    if (operation === 'explode') {
+      if (tokens.length !== 3) return [this.usage('list {variable} explode {separator}')];
+      const sep=expand(tokens[2]); if (sep.error) return [sep.error]; if (!String(sep.value).length) return ['List EXPLODE separator cannot be empty.'];
+      const scalar=this.variableEngine.get(base)?.value ?? ''; const values=String(scalar).split(String(sep.value));
+      if (!defineSimpleList(values)) return [`List ${base} EXPLODE could not store the result.`]; indexMap.delete(base); notify(); return [`List ${base} exploded into ${values.length} items.`];
     }
-
-    if (operation === 'tokenize') {
-      const rawText = tokens.slice(2).join(' ');
-      const expanded = options.variablesExpanded
-        ? { value: rawText, error: '' }
-        : this.expandFunctionAndVariables(rawText, source, options);
-      if (expanded.error) return [expanded.error];
-      const characters = [...String(expanded.value ?? '')];
-      if (characters.length > DEFAULT_MAX_LIST_ITEMS) {
-        return [`List tokenize is limited to ${DEFAULT_MAX_LIST_ITEMS} characters.`];
-      }
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const entries = characters.map((value, index) => ({ key: String(index + 1), value }));
-      const stored = this.variableEngine.defineTable(base, entries, this.variableAssignmentClass(base));
-      if (!stored) return ['List tokenize could not store the result because the variable limit was reached or the variable name was invalid.'];
-      this.tracePipeline(source, 'list', () => `${base} TOKENIZE => ${characters.length} item${characters.length === 1 ? '' : 's'}`);
-      notifyListMutation();
-      return [`List ${base} tokenized into ${characters.length} character${characters.length === 1 ? '' : 's'}.`];
-    }
-
-    if (operation === 'add') {
-      if (tokens.length < 3) return [this.usage('list {variable} {add} {item} ...')];
-      const additions = [];
-      for (const raw of tokens.slice(2)) {
-        const expanded = options.variablesExpanded
-          ? { value: raw, error: '' }
-          : this.expandFunctionAndVariables(raw, source, options);
-        if (expanded.error) return [expanded.error];
-        const text = String(expanded.value ?? '');
-        const packed = splitTopLevelCommands(text, {
-          maxCommands: DEFAULT_MAX_LIST_ITEMS,
-          preserveEscapedSemicolon: true,
-          commandPrefix: this.commandPrefix
-        });
-        if (packed.errorCode) return [`List ${base} ADD has invalid or excessive separators.`];
-        additions.push(...(text.includes(';') ? packed.commands : [text]));
-      }
-      if (existing.length + additions.length > DEFAULT_MAX_LIST_ITEMS) {
-        return [`List ${base} may contain at most ${DEFAULT_MAX_LIST_ITEMS} items.`];
-      }
-      const values = [...existing.map((entry) => entry.value), ...additions];
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const entries = values.map((value, index) => ({ key: String(index + 1), value }));
-      const stored = this.variableEngine.defineTable(base, entries, this.variableAssignmentClass(base));
-      if (!stored) return [`List ${base} could not be stored because the variable limit was reached.`];
-      this.tracePipeline(source, 'list', () => `${base} ADD => ${values.length} items`);
-      notifyListMutation();
-      return [`List ${base}: added ${additions.length} item${additions.length === 1 ? '' : 's'} (${values.length} total).`];
-    }
-
-    if (operation === 'order' || operation === 'reverse') {
-      let values = existing.map((entry) => entry.value);
-      if (tokens.length > 2) {
-        for (const raw of tokens.slice(2)) {
-          const expanded = options.variablesExpanded
-            ? { value: raw, error: '' }
-            : this.expandFunctionAndVariables(raw, source, options);
-          if (expanded.error) return [expanded.error];
-          values.push(String(expanded.value ?? ''));
-        }
-      }
-      if (values.length > DEFAULT_MAX_LIST_ITEMS) return [`List ${base} may contain at most ${DEFAULT_MAX_LIST_ITEMS} items.`];
-      if (operation === 'order') {
-        values = values
-          .map((value, index) => ({ value, index }))
-          .sort((left, right) => String(left.value).localeCompare(String(right.value), undefined, { numeric: true, sensitivity: 'base' }) || left.index - right.index)
-          .map((entry) => entry.value);
+    if (operation === 'copy') {
+      if (tokens.length !== 3) return [this.usage('list {variable} copy {variable}')];
+      const srcExpanded = expand(tokens[2]); if (srcExpanded.error) return [srcExpanded.error];
+      const src=normalizeVariableName(srcExpanded.value); if (!src) return ['List COPY source variable is invalid.'];
+      const srcEntries=this.variableEngine.tableEntries(src);
+      if (srcEntries.length) {
+        const records=this.variableEngine.list().filter((r)=>r.name.startsWith(`${src}[`)); this.variableEngine.delete(base);
+        for (const record of records) if (!this.variableEngine.define(`${base}${record.name.slice(src.length)}`, record.value, record.className || this.variableAssignmentClass(base))) return [`List ${base} COPY could not store the result.`];
       } else {
-        values.reverse();
+        const values=scalarListValues(this.variableEngine.get(src)?.value ?? ''); if (values===null || !defineSimpleList(values)) return [`List ${base} COPY could not store the result.`];
       }
-      if (!ensureListMarker()) return [`List ${base} could not be created because the variable limit was reached.`];
-      const entries = values.map((value, index) => ({ key: String(index + 1), value }));
-      const stored = this.variableEngine.defineTable(base, entries, this.variableAssignmentClass(base));
-      if (!stored && values.length) return [`List ${base} could not be stored because the variable limit was reached.`];
-      if (!values.length) this.variableEngine.clearTable(base);
-      this.tracePipeline(source, 'list', () => `${base} ${operation.toUpperCase()} => ${values.length} items`);
-      notifyListMutation();
-      return [`List ${base} ${operation === 'order' ? 'ordered' : 'reversed'} (${values.length} item${values.length === 1 ? '' : 's'}).`];
+      indexMap.delete(base); notify(); return [`List ${base} copied from ${src}.`];
     }
+    if (operation === 'create' || operation === 'tokenize') {
+      const raw=tokens.slice(2).join(' '); const x=expand(raw); if (x.error) return [x.error];
+      const values=operation==='tokenize' ? [...String(x.value ?? '')] : scalarListValues(x.value);
+      if (values===null || values.length>DEFAULT_MAX_LIST_ITEMS || !defineSimpleList(values)) return [`List ${base} could not be created.`];
+      indexMap.delete(base); notify(); return operation === 'tokenize'
+        ? [`List ${base} tokenized into ${values.length} character${values.length === 1 ? '' : 's'}.`]
+        : [`List ${base} created (${values.length} item${values.length === 1 ? '' : 's'}).`];
+    }
+    if (operation === 'add' || operation === 'insert' || operation === 'sort') {
+      const unpackItems = (rawItems, label) => {
+        const values = [];
+        for (const raw of rawItems) {
+          const x = expand(raw);
+          if (x.error) return { values: [], error: x.error };
+          const text = String(x.value ?? '');
+          const packed = splitTopLevelCommands(text, {
+            maxCommands: DEFAULT_MAX_LIST_ITEMS,
+            preserveEscapedSemicolon: true,
+            commandPrefix: this.commandPrefix
+          });
+          if (packed.errorCode) return { values: [], error: `List ${base} ${label} has invalid or excessive separators.` };
+          values.push(...(text.includes(';') ? packed.commands : [text]));
+        }
+        return { values, error: '' };
+      };
+      const makeNewEntries = (values) => values.map((value, index) => ({ key: `__new_${index}`, value: String(value ?? ''), __new: true }));
 
-    return ['NukeFire supports TinTin #LIST ADD, CLEAR, CREATE, DELETE, FIND, GET, INSERT/INS, ORDER, REVERSE, SET, SIZE, SORT, and TOKENIZE.'];
+      if (operation === 'insert') {
+        if (tokens.length !== 4) return [this.usage('list {variable} insert {index} {item}')];
+        const idx = expand(tokens[2]);
+        if (idx.error) return [idx.error];
+        const unpacked = unpackItems(tokens.slice(3), 'INSERT');
+        if (unpacked.error) return [unpacked.error];
+        const n = Number(idx.value);
+        if (!Number.isSafeInteger(n) || n === 0) return [`List ${base} INSERT index must be non-zero.`];
+        let pos = 0;
+        if (existing.length === 0) {
+          if (![1, -1].includes(n)) return [`List ${base} INSERT index must be +1 or -1 for an empty list.`];
+        } else if (n > 0) {
+          if (n > existing.length) return [`List ${base} INSERT positive index must be between 1 and ${existing.length}.`];
+          pos = n - 1;
+        } else {
+          if (Math.abs(n) > existing.length) return [`List ${base} INSERT negative index must be between -1 and -${existing.length}.`];
+          pos = existing.length + n + 1;
+        }
+        const work=[...existing]; work.splice(pos,0,...makeNewEntries(unpacked.values));
+        if (work.length > DEFAULT_MAX_LIST_ITEMS || !rewriteOrder(work)) return [`List ${base} INSERT could not store the result.`];
+        indexMap.delete(base); notify();
+        return [`List ${base}: inserted item at ${n} (${work.length} total).`];
+      }
+
+      const unpacked = unpackItems(tokens.slice(2), operation.toUpperCase());
+      if (unpacked.error) return [unpacked.error];
+      if (!unpacked.values.length && operation === 'add') return [this.usage(`list {variable} ${operation} {item} ...`)];
+      let work=[...existing,...makeNewEntries(unpacked.values)];
+      if (work.length > DEFAULT_MAX_LIST_ITEMS) return [`List ${base} may contain at most ${DEFAULT_MAX_LIST_ITEMS} items.`];
+      if (operation === 'add') {
+        if (!rewriteOrder(work)) return [`List ${base} ADD could not store the result.`];
+        indexMap.delete(base); notify();
+        return [`List ${base}: added ${unpacked.values.length} item${unpacked.values.length === 1 ? '' : 's'} (${work.length} total).`];
+      }
+      work=work.map((entry,position)=>({entry,position,value:entry.__new?String(entry.value??''):comparable(entry)}))
+        .sort((a,b)=>String(a.value).localeCompare(String(b.value))||a.position-b.position)
+        .map((item)=>item.entry);
+      if (!rewriteOrder(work)) return [`List ${base} SORT could not store the result.`];
+      notify();
+      return [`List ${base} SORT added ${unpacked.values.length} item${unpacked.values.length === 1 ? '' : 's'} and sorted ${work.length} total.`];
+    }
+    if (operation === 'set') {
+      if(tokens.length!==4) return [this.usage('list {variable} set {index} {item}')]; const idx=expand(tokens[2]); const val=expand(tokens[3]); if(idx.error)return[idx.error]; if(val.error)return[val.error];
+      const n=Number(idx.value); const pos=Number.isSafeInteger(n)&&n!==0?(n>0?n-1:existing.length+n):-1; if(pos<0||pos>=existing.length)return [`List ${base} SET index must address an existing item.`];
+      this.variableEngine.delete(`${base}[${existing[pos].key}]`); if(!defineListItem(`${base}[${existing[pos].key}]`,val.value))return [`List ${base} SET could not store the item.`]; notify(); return [`List ${base} SET updated item ${n}.`];
+    }
+    if (operation === 'delete') {
+      if(tokens.length<3||tokens.length>4)return[this.usage('list {variable} delete {index} [amount]')]; const idx=expand(tokens[2]); const cnt=tokens[3]===undefined?{value:'1',error:''}:expand(tokens[3]); if(idx.error)return[idx.error]; if(cnt.error)return[cnt.error];
+      const n=Number(idx.value), amount=Number(cnt.value); if(!Number.isSafeInteger(n)||n===0||!Number.isSafeInteger(amount)||amount<1)return [`List ${base} DELETE arguments are invalid.`];
+      const work=[...existing]; let removed=0; for(let k=0;k<amount&&work.length;k++){const pos=n>0?n-1:work.length+n;if(pos<0||pos>=work.length)break;work.splice(pos,1);removed++;} if(!rewriteOrder(work))return[`List ${base} DELETE could not store the result.`]; notify(); return[`List ${base}: deleted ${removed} item${removed===1?'':'s'}.`];
+    }
+    if (operation === 'numerate') { if(!rewriteOrder(existing))return[`List ${base} NUMERATE could not store the result.`]; notify(); return[`List ${base} numerated (${existing.length} items).`]; }
+    if (operation === 'reverse' || operation === 'shuffle' || operation === 'swap' || operation === 'order') {
+      let work=[...existing];
+      const appendItems = (rawItems) => {
+        if (!rawItems.length) return { error: '' };
+        const values = [];
+        for (const raw of rawItems) {
+          const x = expand(raw); if (x.error) return { error: x.error };
+          const packed = scalarListValues(x.value);
+          if (packed === null) return { error: `List ${base} has invalid item separators.` };
+          values.push(...packed);
+        }
+        if (work.length + values.length > DEFAULT_MAX_LIST_ITEMS) return { error: `List ${base} may contain at most ${DEFAULT_MAX_LIST_ITEMS} items.` };
+        for (let i = 0; i < values.length; i += 1) work.push({ key: `__new_${i}`, value: String(values[i] ?? ''), __new: true });
+        return { error: '' };
+      };
+      if(operation==='reverse' || operation==='shuffle' || operation==='order') {
+        const added = appendItems(tokens.slice(2)); if (added.error) return [added.error];
+      }
+      if(operation==='reverse') work.reverse();
+      else if(operation==='shuffle'){ for(let i=work.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[work[i],work[j]]=[work[j],work[i]];} }
+      else if(operation==='swap'){
+        if(tokens.length!==4)return[this.usage('list {variable} swap {index} {index}')];
+        const ax=expand(tokens[2]), bx=expand(tokens[3]); if(ax.error)return[ax.error]; if(bx.error)return[bx.error];
+        const a=Number(ax.value),b=Number(bx.value); const pos=(n)=>Number.isSafeInteger(n)&&n!==0?(n>0?n-1:work.length+n):-1; const ai=pos(a),bi=pos(b);
+        if(ai<0||bi<0||ai>=work.length||bi>=work.length)return[`List ${base} SWAP index is outside the list.`]; [work[ai],work[bi]]=[work[bi],work[ai]];
+      }
+      else {
+        const numeric = (value) => { const n = Number(value); return Number.isFinite(n) ? n : 0; };
+        work=work.map((e,i)=>({e,i,c:e.__new ? e.value : comparable(e)})).sort((a,b)=>numeric(a.c)-numeric(b.c)||a.i-b.i).map(x=>x.e);
+      }
+      if(!rewriteOrder(work))return[`List ${base} ${operation.toUpperCase()} could not store the result.`]; notify(); return[`List ${base} ${operation.toUpperCase()} complete.`];
+    }
+    if (operation === 'tabulate') {
+      if (tokens.length > 3) return [this.usage('list {variable} tabulate [key]')];
+      if (!existing.length) return [`List ${base} TABULATE requires a non-empty list.`];
+      const requested = tokens[2] === undefined ? { value: '', error: '' } : expand(tokens[2]);
+      if (requested.error) return [requested.error];
+      const requestedKey = String(requested.value || '').trim();
+      const nested = existing.every((entry) => this.variableEngine.tableEntries(`${base}[${entry.key}]`).length > 0);
+      let work = [...existing];
+      const numeric = (value) => { const n = Number(value); return Number.isFinite(n) ? n : 0; };
+      const renamed = [];
+      if (nested) {
+        const key = requestedKey || indexKey();
+        if (!key) return [`List ${base} TABULATE requires an index key for list tables.`];
+        for (const entry of work) {
+          const value = this.variableEngine.get(`${base}[${entry.key}][${key}]`)?.value;
+          if (value === undefined) return [`List ${base} TABULATE could not find key ${key} in item ${entry.key}.`];
+          renamed.push({ entry, key: String(value) });
+        }
+        renamed.sort((a,b)=>numeric(a.key)-numeric(b.key));
+      } else {
+        renamed.push(...work.map((entry)=>({entry,key:String(entry.value ?? '')})).sort((a,b)=>numeric(a.key)-numeric(b.key)));
+      }
+      const seen = new Set();
+      for (const item of renamed) { if (!item.key || seen.has(item.key)) return [`List ${base} TABULATE produced a duplicate or empty key: ${item.key || '(empty)'}.`]; seen.add(item.key); }
+      const snapshots = renamed.map(({entry,key})=>({entry,key,records:collectNodeRecords(entry.key)}));
+      this.variableEngine.delete(base);
+      for (const item of snapshots) {
+        const nextRoot=`${base}[${item.key}]`, oldRoot=`${base}[${item.entry.key}]`;
+        if (!item.records.length) { if (!this.variableEngine.define(nextRoot,item.entry.value,this.variableAssignmentClass(base))) return [`List ${base} TABULATE could not store the result.`]; continue; }
+        for (const record of item.records) { if (!this.variableEngine.define(`${nextRoot}${record.name.slice(oldRoot.length)}`,record.value,record.className||this.variableAssignmentClass(base))) return [`List ${base} TABULATE could not store the result.`]; }
+      }
+      indexMap.delete(base); notify(); return [`List ${base} TABULATE complete.`];
+    }
+    if (operation === 'filter') {
+      if(tokens.length<3||tokens.length>4)return[this.usage('list {variable} filter {keep regex} [remove regex]')]; const keepX=expand(tokens[2]||''), removeX=tokens[3]===undefined?{value:'',error:''}:expand(tokens[3]); if(keepX.error)return[keepX.error]; if(removeX.error)return[removeX.error]; const keep=String(keepX.value||''),remove=String(removeX.value||'');
+      const work=existing.filter((e)=>{const v=comparable(e); const keepOk=!keep||matchTinTinRegexp(v,keep).matched; const removeHit=remove&&matchTinTinRegexp(v,remove).matched; return keepOk&&!removeHit;}); if(!rewriteOrder(work))return[`List ${base} FILTER could not store the result.`]; notify(); return[`List ${base} FILTER kept ${work.length} items.`];
+    }
+    if (operation === 'refine') {
+      if(tokens.length<3||tokens.length>4)return[this.usage('list {variable} refine {keep math} [remove math]')]; const keepX=expand(tokens[2]||''), removeX=tokens[3]===undefined?{value:'',error:''}:expand(tokens[3]); if(keepX.error)return[keepX.error]; if(removeX.error)return[removeX.error]; const keep=String(keepX.value||''),remove=String(removeX.value||'');
+      const truth=(expr,value)=>{if(!expr)return false; const result=evaluateMathExpression(expr.replace(/&0/gu,String(value))); return !result.error&&Number(result.text)!==0;};
+      const work=existing.filter((e)=>{const v=comparable(e); return (!keep||truth(keep,v))&&!(remove&&truth(remove,v));}); if(!rewriteOrder(work))return[`List ${base} REFINE could not store the result.`]; notify(); return[`List ${base} REFINE kept ${work.length} items.`];
+    }
+    return ['NukeFire supports modern bounded TinTin #LIST operations including ADD, CLEAR, COLLAPSE, COPY, CREATE, DELETE, EXPLODE, FILTER, FIND, GET, INDEXATE, INSERT, NUMERATE, ORDER, REFINE, REVERSE, SET, SHUFFLE, SIMPLIFY, SIZE, SORT, SWAP, TABULATE, and TOKENIZE.'];
   }
 
   handleReplaceCommand(tokens, source, options = {}) {
-    if (tokens.length !== 3) return [this.usage('replace {variable} {old text} {new text}')];
+    if (tokens.length !== 3) return [this.usage('replace {variable} {regular expression} {new text}')];
     const name = normalizeVariableName(tokens[0]);
     if (!name) return ['Replace variable name is invalid.'];
     const record = this.variableEngine.get(name);
     if (!record) return [`Unknown variable: ${tokens[0]}.`];
-    const oldExpanded = options.variablesExpanded ? { value: tokens[1], error: '' } : this.expandFunctionAndVariables(tokens[1], source, options);
-    const newExpanded = options.variablesExpanded ? { value: tokens[2], error: '' } : this.expandFunctionAndVariables(tokens[2], source, options);
-    if (oldExpanded.error) return [oldExpanded.error];
-    if (newExpanded.error) return [newExpanded.error];
-    const oldText = String(oldExpanded.value ?? '');
-    if (!oldText) return ['Replace search text cannot be empty.'];
-    const value = String(record.value ?? '').split(oldText).join(String(newExpanded.value ?? ''));
+    const patternExpanded = options.variablesExpanded ? { value: tokens[1], error: '' } : this.expandFunctionAndVariables(tokens[1], source, options);
+    if (patternExpanded.error) return [patternExpanded.error];
+    const compiled = compileTinTinRegexp(String(patternExpanded.value ?? ''));
+    if (compiled.error) return [compiled.error.replace('TinTin REGEXP', 'Replace')];
+    let regex;
+    try { regex = new RegExp(compiled.source, `${compiled.regex.ignoreCase ? 'i' : ''}gu`); }
+    catch (error) { return [`Replace regular expression is invalid: ${error?.message || error}`]; }
+    const replacementTemplate = String(tokens[2] ?? '');
+    const input = String(record.value ?? '');
+    let replacements = 0;
+    const value = input.replace(regex, (...args) => {
+      replacements += 1;
+      const groups = args.at(-1) && typeof args.at(-1) === 'object' ? args.at(-1) : {};
+      const captures = { 0: args[0] || '' };
+      for (const entry of compiled.captures) captures[entry.target] = groups?.[entry.group] ?? '';
+      const withCaptures = substituteTinTinCommandCaptures(replacementTemplate, captures);
+      const expanded = options.variablesExpanded ? { value: withCaptures, error: '' } : this.expandFunctionAndVariables(withCaptures, source, options);
+      return expanded.error ? withCaptures : String(expanded.value ?? '');
+    });
     const stored = this.variableEngine.define(name, value, record.className || '');
-    return [stored ? `Variable ${name} updated by REPLACE.` : `Variable ${name} could not be updated.`];
+    return [stored ? `Variable ${name} updated by REPLACE (${replacements} match${replacements === 1 ? '' : 'es'}).` : `Variable ${name} could not be updated.`];
   }
 
   handleParseCommand(tokens, source, options = {}) {
@@ -5662,6 +5908,22 @@ class SessionManager {
     return this.variableEngine.get(nameValue)?.className || this.classManager.activeName;
   }
 
+  handleCatCommand(tokens, source, options = {}) {
+    if (tokens.length < 2) return [this.usage('cat {variable} {argument}')];
+    const destination = options.variablesExpanded ? { value: tokens[0], error: '' } : this.expandFunctionAndVariables(tokens[0], source, options);
+    if (destination.error) return [destination.error];
+    const name = normalizeVariableName(destination.value);
+    if (!name) return ['Cat variable name is invalid.'];
+    const raw = tokens.slice(1).join(' ');
+    const expanded = options.variablesExpanded ? { value: raw, error: '' } : this.expandFunctionAndVariables(raw, source, options);
+    if (expanded.error) return [expanded.error];
+    const current = this.variableEngine.get(name);
+    const combined = `${current?.value ?? ''}${expanded.value ?? ''}`;
+    const assigned = this.assignTinTinVariable(name, combined, options);
+    if (assigned.error) return [assigned.error];
+    return [`Variable ${name} concatenated.`];
+  }
+
   handleMathCommand(tokens, source, options = {}) {
     if (tokens.length < 2) return [this.usage('math {variable} {expression}')];
     const destination = (!source || options.variablesExpanded)
@@ -5724,6 +5986,398 @@ class SessionManager {
       return Boolean(requested && profile && requested === profile);
     }
     return false;
+  }
+
+  luaAutomationId(value) {
+    const id = Math.max(1, Math.trunc(Number(value) || 0));
+    return Number.isSafeInteger(id) ? id : 0;
+  }
+
+  luaAutomationEngineKind(kindValue) {
+    const kind = String(kindValue || '').trim().toLowerCase();
+    if (kind === 'alias') return 'alias';
+    if (['substring-trigger', 'regex-trigger', 'exact-trigger'].includes(kind)) return 'trigger';
+    if (kind === 'event') return 'event';
+    if (kind === 'timer') return 'timer';
+    return '';
+  }
+
+  removeLuaAutomation(session, idValue, options = {}) {
+    const id = this.luaAutomationId(idValue);
+    const record = session?.luaAutomations?.get(id);
+    if (!id || !record) return false;
+    if (record.timer) {
+      this.delayClearTimer(record.timer);
+      record.timer = null;
+    }
+    this.withTinTinSession(session, () => {
+      if (record.engineKind === 'alias') this.aliasEngine.removeLuaTransient?.(id);
+      else if (record.engineKind === 'trigger') this.actionEngine.removeLuaTransient?.(id);
+      else if (record.engineKind === 'event') this.eventEngine.removeLuaTransient?.(id);
+    });
+    session.luaAutomations.delete(id);
+    if (options.forgetCallback === true) {
+      try {
+        const forgotten = this.handlers.onLuaCallbackForgotten?.(session.id, id);
+        if (forgotten && typeof forgotten.catch === 'function') forgotten.catch(() => {});
+      } catch {
+        // Host-side retirement remains authoritative even if Worker cleanup fails.
+      }
+    }
+    return true;
+  }
+
+  clearLuaAutomations(session) {
+    if (!session?.luaAutomations) return 0;
+    const ids = [...session.luaAutomations.keys()];
+    for (const id of ids) this.removeLuaAutomation(session, id, { forgetCallback: false });
+    session.luaCallbackTimestamps = [];
+    this.withTinTinSession(session, () => {
+      this.aliasEngine.clearLuaTransients?.();
+      this.actionEngine.clearLuaTransients?.();
+      this.eventEngine.clearLuaTransients?.();
+    });
+    return ids.length;
+  }
+
+  setLuaAutomationEnabled(session, record, enabledValue) {
+    if (!session || !record) return false;
+    const enabled = Boolean(enabledValue);
+    record.enabled = enabled;
+    if (record.engineKind === 'timer') {
+      if (!enabled && record.timer) {
+        this.delayClearTimer(record.timer);
+        record.timer = null;
+      } else if (enabled && !record.timer) this.armLuaTimer(session, record);
+      return true;
+    }
+    return this.withTinTinSession(session, () => {
+      if (record.engineKind === 'alias') return this.aliasEngine.setLuaTransientEnabled?.(record.id, enabled) === true;
+      if (record.engineKind === 'trigger') return this.actionEngine.setLuaTransientEnabled?.(record.id, enabled) === true;
+      if (record.engineKind === 'event') return this.eventEngine.setLuaTransientEnabled?.(record.id, enabled) === true;
+      return false;
+    });
+  }
+
+  armLuaTimer(session, record) {
+    if (!session || !record || record.engineKind !== 'timer' || record.enabled === false || record.timer) return false;
+    const seconds = Number(record.seconds);
+    if (!Number.isFinite(seconds) || seconds < 0.01 || seconds > this.maxDelaySeconds) return false;
+    record.timer = this.delaySetTimer(() => {
+      record.timer = null;
+      if (this.sessions.get(session.id) !== session || session.luaAutomations?.get(record.id) !== record || record.enabled === false) return;
+      this.invokeLuaAutomation(session, record.id, { matches: [], namedMatches: {}, args: [] }, { source: 'timer' });
+    }, Math.max(10, Math.round(seconds * 1000)));
+    return true;
+  }
+
+  registerLuaAutomation(reference, automationValue = {}, options = {}) {
+    const session = this.findSession(reference);
+    if (!session) return { registered: false, reason: 'unknown-session' };
+    session.luaAutomations ||= new Map();
+    const spec = automationValue && typeof automationValue === 'object' ? automationValue : {};
+    const id = this.luaAutomationId(spec.id);
+    const kind = String(spec.kind || '').trim().toLowerCase();
+    const engineKind = this.luaAutomationEngineKind(kind);
+    if (!id || !engineKind) return { registered: false, reason: 'invalid-automation' };
+    if (!session.luaAutomations.has(id) && session.luaAutomations.size >= this.maxLuaAutomations) {
+      return { registered: false, reason: 'limit' };
+    }
+    if (session.luaAutomations.has(id)) this.removeLuaAutomation(session, id, { forgetCallback: false });
+
+    const pattern = String(spec.pattern || '').normalize('NFKC');
+    const expireAfter = Math.max(0, Math.trunc(Number(spec.expireAfter) || 0));
+    const record = {
+      id,
+      kind,
+      engineKind,
+      pattern,
+      enabled: true,
+      expireAfter,
+      remaining: expireAfter,
+      pendingMatches: 0,
+      oneShot: spec.oneShot === true,
+      seconds: Number(spec.seconds) || 0,
+      repeating: spec.repeating === true,
+      timer: null,
+      source: String(options.source || 'lua').slice(0, 32)
+    };
+
+    let installed = false;
+    if (engineKind === 'timer') {
+      if (!Number.isFinite(record.seconds) || record.seconds < 0.01 || record.seconds > this.maxDelaySeconds) {
+        return { registered: false, reason: 'invalid-timer' };
+      }
+      installed = true;
+    } else {
+      installed = this.withTinTinSession(session, () => {
+        if (engineKind === 'alias') return Boolean(this.aliasEngine.defineLuaTransient?.(id, pattern));
+        if (engineKind === 'trigger') {
+          const triggerKind = kind === 'regex-trigger' ? 'regex' : kind === 'exact-trigger' ? 'exact' : 'substring';
+          return Boolean(this.actionEngine.defineLuaTransient?.(id, triggerKind, pattern));
+        }
+        if (engineKind === 'event') return Boolean(this.eventEngine.defineLuaTransient?.(id, pattern, record.oneShot));
+        return false;
+      });
+    }
+    if (!installed) return { registered: false, reason: 'invalid-pattern' };
+    session.luaAutomations.set(id, record);
+    if (engineKind === 'timer' && !this.armLuaTimer(session, record)) {
+      session.luaAutomations.delete(id);
+      return { registered: false, reason: 'timer-failed' };
+    }
+    return { registered: true, id, kind };
+  }
+
+  controlLuaAutomation(reference, automationValue = {}) {
+    const session = this.findSession(reference);
+    if (!session) return { changed: false, reason: 'unknown-session' };
+    const spec = automationValue && typeof automationValue === 'object' ? automationValue : {};
+    const id = this.luaAutomationId(spec.id);
+    const record = session.luaAutomations?.get(id);
+    if (!id || !record) return { changed: false, reason: 'unknown-id' };
+    const requestedKind = this.luaAutomationEngineKind(spec.kind);
+    if (requestedKind && requestedKind !== record.engineKind) return { changed: false, reason: 'wrong-kind' };
+    const action = String(spec.action || '').trim().toLowerCase();
+    if (action === 'kill') return { changed: this.removeLuaAutomation(session, id, { forgetCallback: false }), id, action };
+    if (action === 'enable') return { changed: this.setLuaAutomationEnabled(session, record, true), id, action };
+    if (action === 'disable') return { changed: this.setLuaAutomationEnabled(session, record, false), id, action };
+    return { changed: false, reason: 'invalid-action' };
+  }
+
+  allowLuaCallback(session) {
+    if (!session) return false;
+    const now = Date.now();
+    session.luaCallbackTimestamps ||= [];
+    session.luaCallbackTimestamps = session.luaCallbackTimestamps.filter((timestamp) => now - timestamp < 1000);
+    if (session.luaCallbackTimestamps.length >= this.maxLuaCallbacksPerSecond) return false;
+    session.luaCallbackTimestamps.push(now);
+    return true;
+  }
+
+  invokeLuaAutomation(session, idValue, contextValue = {}, options = {}) {
+    const id = this.luaAutomationId(idValue);
+    const record = session?.luaAutomations?.get(id);
+    if (!id || !record || record.enabled === false) return false;
+    if (record.expireAfter > 0 && record.remaining - record.pendingMatches <= 0) return false;
+    if (!this.allowLuaCallback(session)) return false;
+    const runner = this.handlers.onLuaCallback;
+    if (typeof runner !== 'function') return false;
+
+    if (record.oneShot) this.setLuaAutomationEnabled(session, record, false);
+    record.pendingMatches += 1;
+    const context = contextValue && typeof contextValue === 'object' ? contextValue : {};
+    const request = {
+      sessionId: session.id,
+      callbackId: id,
+      context: {
+        line: String(context.line || '').slice(0, 16384),
+        command: String(context.command || '').slice(0, 4096),
+        matches: Array.isArray(context.matches) ? context.matches.slice(0, 100).map((value) => String(value ?? '').slice(0, 4096)) : [],
+        namedMatches: context.namedMatches && typeof context.namedMatches === 'object' ? context.namedMatches : {},
+        args: Array.isArray(context.args) ? context.args.slice(0, 32) : []
+      },
+      source: String(options.source || record.engineKind || 'callback').slice(0, 32)
+    };
+
+    Promise.resolve(runner(request))
+      .then((result) => {
+        if (this.sessions.get(session.id) !== session) return;
+        const current = session.luaAutomations?.get(id);
+        if (current) current.pendingMatches = Math.max(0, current.pendingMatches - 1);
+        this.emit(session.id, 'lua-result', { ...result, source: request.source, callbackId: id });
+        if (!current) return;
+        const skipExpiration = result?.values?.[0] === true;
+        if (current.oneShot || (current.engineKind === 'timer' && !current.repeating)) {
+          this.removeLuaAutomation(session, id, { forgetCallback: true });
+          return;
+        }
+        if (current.expireAfter > 0 && !skipExpiration) {
+          current.remaining = Math.max(0, current.remaining - 1);
+          if (current.remaining <= 0) {
+            this.removeLuaAutomation(session, id, { forgetCallback: true });
+            return;
+          }
+        }
+        if (current.engineKind === 'timer' && current.repeating && current.enabled !== false) this.armLuaTimer(session, current);
+      })
+      .catch((error) => {
+        if (this.sessions.get(session.id) !== session) return;
+        const current = session.luaAutomations?.get(id);
+        if (current) current.pendingMatches = Math.max(0, current.pendingMatches - 1);
+        this.emit(session.id, 'lua-result', {
+          ok: false,
+          error: { type: 'host', message: String(error?.message || error || 'Lua callback host error').slice(0, 4096) },
+          echoes: [], sends: [], variableSets: [], tableSets: [], gmcpSends: [], executions: [], automations: [],
+          source: request.source,
+          callbackId: id
+        });
+        if (!current) return;
+        if (current.oneShot || (current.engineKind === 'timer' && !current.repeating)) {
+          this.removeLuaAutomation(session, id, { forgetCallback: true });
+          return;
+        }
+        if (current.expireAfter > 0) {
+          current.remaining = Math.max(0, current.remaining - 1);
+          if (current.remaining <= 0) {
+            this.removeLuaAutomation(session, id, { forgetCallback: true });
+            return;
+          }
+        }
+        if (current.engineKind === 'timer' && current.repeating && current.enabled !== false) this.armLuaTimer(session, current);
+      });
+    return true;
+  }
+
+  fireLuaEventHandlers(session, eventNameValue, argumentsValue = []) {
+    if (!session) return 0;
+    const eventName = String(eventNameValue || '').normalize('NFKC').trim().slice(0, 160);
+    if (!eventName) return 0;
+    const handlers = this.withTinTinSession(session, () => this.eventEngine.matchLuaTransients?.(eventName) || []);
+    let fired = 0;
+    for (const handler of handlers) {
+      if (this.invokeLuaAutomation(session, handler.id, {
+        matches: [],
+        namedMatches: {},
+        args: [eventName, ...(Array.isArray(argumentsValue) ? argumentsValue.slice(0, 31) : [])]
+      }, { source: eventName.startsWith('gmcp.') || eventName === 'gmcp' ? 'gmcp-event' : 'event' })) fired += 1;
+    }
+    return fired;
+  }
+
+  raiseLuaEvent(reference, eventNameValue, argsJsonValue = '[]') {
+    const session = this.findSession(reference);
+    if (!session) return { fired: 0, reason: 'unknown-session' };
+    const eventName = String(eventNameValue || '').normalize('NFKC').trim().slice(0, 160);
+    const json = String(argsJsonValue || '[]');
+    if (!eventName || /[\r\n\u0000]/u.test(eventName) || Buffer.byteLength(json, 'utf8') > 64 * 1024) return { fired: 0, reason: 'invalid-event' };
+    let args;
+    try { args = JSON.parse(json); } catch { return { fired: 0, reason: 'invalid-arguments' }; }
+    if (!Array.isArray(args)) return { fired: 0, reason: 'invalid-arguments' };
+    const boundedArgs = args.slice(0, 31);
+    const luaFired = this.fireLuaEventHandlers(session, eventName, boundedArgs);
+    const tintinResult = this.fireTinTinEvent(session, eventName, boundedArgs, { skipLua: true });
+    return { fired: luaFired + (tintinResult.fired ? 1 : 0), eventName };
+  }
+
+  raiseLuaGlobalEvent(reference, eventNameValue, argsJsonValue = '[]') {
+    const source = this.findSession(reference);
+    if (!source) return { fired: 0, reason: 'unknown-session' };
+    const eventName = String(eventNameValue || '').normalize('NFKC').trim().slice(0, 160);
+    const json = String(argsJsonValue || '[]');
+    if (!eventName || /[\r\n\u0000]/u.test(eventName) || Buffer.byteLength(json, 'utf8') > 64 * 1024) return { fired: 0, reason: 'invalid-event' };
+    let args;
+    try { args = JSON.parse(json); } catch { return { fired: 0, reason: 'invalid-arguments' }; }
+    if (!Array.isArray(args)) return { fired: 0, reason: 'invalid-arguments' };
+    const boundedArgs = args.slice(0, 30);
+    const originName = String(source.name || source.characterName || source.id).slice(0, 128);
+    let fired = 0;
+    let sessions = 0;
+    for (const target of this.sessions.values()) {
+      if (target.id === source.id) continue;
+      sessions += 1;
+      const deliveredArgs = [...boundedArgs, originName];
+      fired += this.fireLuaEventHandlers(target, eventName, deliveredArgs);
+      const tintinResult = this.fireTinTinEvent(target, eventName, deliveredArgs, { skipLua: true });
+      if (tintinResult.fired) fired += 1;
+    }
+    return { fired, sessions, eventName };
+  }
+
+  requestLuaReconnect(reference) {
+    const session = this.findSession(reference);
+    if (!session) return { requested: false, reason: 'unknown-session' };
+    if (session.status?.state === 'connected' || session.status?.state === 'connecting') {
+      this.disconnectSession(session.id, 'Reconnecting by Lua request.');
+    }
+    Promise.resolve(this.connectSession(session.id, { host: session.host, port: session.port })).catch((error) => {
+      if (this.sessions.has(session.id)) this.emit(session.id, 'error', `Lua reconnect failed: ${String(error?.message || error || 'unknown error').slice(0, 1024)}`);
+    });
+    return { requested: true, sessionId: session.id };
+  }
+
+  dispatchLuaInput(sourceReference, rawCommand, options = {}) {
+    const source = this.findSession(sourceReference);
+    if (!source) return { handled: true, deliveries: [], messages: ['No active session.'], snapshot: this.snapshot() };
+    const command = String(rawCommand ?? '').replace(/[\r\n]+$/u, '');
+    if (!command.includes(';')) {
+      return this.dispatchCommand(source, command, {
+        ...options,
+        luaGenerated: true
+      });
+    }
+    const parsedCommands = splitTopLevelCommands(command, {
+      maxCommands: this.maxCommandLineCommands,
+      preserveEscapedSemicolon: true,
+      commandPrefix: this.commandPrefix
+    });
+    if (parsedCommands.errorCode) {
+      return {
+        handled: true,
+        deliveries: [],
+        messages: [`Lua execute() produced an invalid command list (${parsedCommands.errorCode}).`],
+        snapshot: this.snapshot()
+      };
+    }
+    return this.dispatchCommandSequence(source, parsedCommands.commands, {
+      ...options,
+      luaGenerated: true,
+      commandLineBatch: true
+    });
+  }
+
+  handleLuaCommand(parsed, source, options = {}) {
+    const script = unwrapLuaScriptArgument(parsed?.body || '');
+    if (!script.trim()) {
+      return { deliveries: [], messages: [`Lua usage: ${this.clientCommand('lua {echo("hello")}')}`] };
+    }
+    const depth = Math.max(0, Math.trunc(Number(options.luaDepth) || 0));
+    if (depth >= this.maxLuaExecutionDepth) {
+      return {
+        deliveries: [],
+        messages: [`Lua execution nesting may not exceed ${this.maxLuaExecutionDepth} levels.`]
+      };
+    }
+    const runner = this.handlers.onLuaExecute;
+    if (typeof runner !== 'function') {
+      return { deliveries: [], messages: ['Lua is unavailable in this build.'] };
+    }
+    const request = {
+      sessionId: source.id,
+      script,
+      depth: depth + 1,
+      source: options.luaGenerated ? 'lua'
+        : options.actionGenerated ? 'action'
+          : options.delayGenerated ? 'delay'
+            : options.aliasExpanded ? 'alias'
+              : 'command'
+    };
+    const beforeSync = this.rendererSyncToken();
+    Promise.resolve(runner(request))
+      .then((result) => {
+        if (!this.sessions.has(source.id)) return;
+        const snapshot = this.rendererSyncTokenMatches(beforeSync, this.rendererSyncToken()) ? null : this.snapshot();
+        this.emit(source.id, 'lua-result', {
+          ...result,
+          snapshot,
+          depth: request.depth,
+          source: request.source
+        });
+      })
+      .catch((error) => {
+        if (!this.sessions.has(source.id)) return;
+        this.emit(source.id, 'lua-result', {
+          ok: false,
+          error: { type: 'host', message: String(error?.message || error || 'Lua host error').slice(0, 4096) },
+          echoes: [], sends: [], variableSets: [], executions: [],
+          depth: request.depth,
+          source: request.source
+        });
+      });
+    return {
+      deliveries: [],
+      messages: source.tintin?.config?.commandEcho === true ? ['[Lua] running...'] : []
+    };
   }
 
   dispatchInput(sourceReference, rawCommand) {
@@ -5850,6 +6504,18 @@ class SessionManager {
       : expandedCommand;
     if (!command.startsWith(this.commandPrefix)) {
       if (!options.aliasExpanded && !this.tintinListIgnored('alias')) {
+        const luaAliases = this.aliasEngine.matchLuaTransients?.(command) || [];
+        if (luaAliases.length > 0) {
+          for (const luaAlias of luaAliases) {
+            this.invokeLuaAutomation(source, luaAlias.id, {
+              command,
+              matches: luaAlias.matches || [],
+              namedMatches: luaAlias.namedMatches || {},
+              args: []
+            }, { source: 'alias' });
+          }
+          return { handled: true, deliveries: [], messages: [], snapshot: this.snapshot() };
+        }
         const expansion = this.aliasEngine.expandCommands(command);
         if (expansion.error) {
           return {
@@ -6250,7 +6916,7 @@ class SessionManager {
       }
     } else if (parsed.directive === 'kill') {
       const category = normalizeToken(tokens[0] || 'all');
-      const target = String(tokens[1] || '').trim();
+      const pattern = String(tokens.slice(1).join(' ') || '').trim();
       if (!tokens.length || category === 'all') {
         const cleared = this.clearTinTinState(source);
         this.tracePipeline(source, 'kill', () => `Cleared ${cleared.totalDefinitions} live TinTin definitions.`);
@@ -6260,37 +6926,34 @@ class SessionManager {
           : 'TinTin definitions were already clear.');
         if (cancelled > 0) messages.push(`Cancelled ${cleared.cancelledDelays} pending delay${cleared.cancelledDelays === 1 ? '' : 's'}, ${cleared.cancelledTickers} ticker${cleared.cancelledTickers === 1 ? '' : 's'}, and ${cleared.cancelledSpeedwalk} queued Speedwalk step${cleared.cancelledSpeedwalk === 1 ? '' : 's'}.`);
       } else {
-        const plural = ({ aliases: 'alias', variables: 'variable', functions: 'function', actions: 'action', gags: 'gag', highlights: 'highlight', substitutes: 'substitute', macros: 'macro', events: 'event', tickers: 'ticker', delays: 'delay' })[category] || category.replace(/s$/u, '');
-        const clearMap = {
-          alias: () => { if (target) return this.aliasEngine.delete(target); const count = this.aliasEngine.list().length; this.aliasEngine.clear(); return count; },
-          variable: () => { if (target) return this.variableEngine.delete(target); const count = this.variableEngine.list().length; this.variableEngine.clear(); return count; },
-          function: () => { if (target) return this.functionEngine.delete(target); const count = this.functionEngine.list().length; this.functionEngine.clear(); return count; },
-          action: () => { if (target) return this.actionEngine.delete(target); const count = this.actionEngine.list().length; this.actionEngine.clear(); return count; },
-          gag: () => { if (target) return this.gagEngine.delete(target); const count = this.gagEngine.list().length; this.gagEngine.clear(); return count; },
-          highlight: () => { if (target) return this.highlightEngine.delete(target); const count = this.highlightEngine.list().length; this.highlightEngine.clear(); return count; },
-          substitute: () => { if (target) return this.substituteEngine.delete(target); const count = this.substituteEngine.list().length; this.substituteEngine.clear(); return count; },
-          event: () => target ? this.eventEngine.remove(target) : this.eventEngine.clear(),
-          ticker: () => target ? this.cancelTicker(source, target) : this.clearSessionTickers(source),
-          delay: () => target ? this.cancelNamedDelay(source, target) : (() => { const count = source.delays.size; for (const timer of [...source.delays.keys()]) this.delayClearTimer(timer); source.delays.clear(); return count; })(),
-          macro: () => {
-            if (target) return Boolean(this.macroEngine.delete?.(target) || this.macroEngine.remove?.(target));
-            const count = this.macroEngine.list().length;
-            this.macroEngine.restore({ enabled: true, definitions: [] });
-            return count;
-          }
+        const family = this.normalizeTinTinListFamily(category);
+        const descriptors = {
+          alias: [() => this.aliasEngine.list(), (r) => r.name, (r) => this.aliasEngine.delete(r.name)],
+          variable: [() => this.variableEngine.list(), (r) => r.name, (r) => this.variableEngine.delete(r.name)],
+          function: [() => this.functionEngine.list(), (r) => r.name, (r) => this.functionEngine.delete(r.name)],
+          action: [() => this.actionEngine.list(), (r) => r.pattern, (r) => this.actionEngine.delete(r.pattern)],
+          gag: [() => this.gagEngine.list(), (r) => r.pattern, (r) => this.gagEngine.delete(r.pattern)],
+          highlight: [() => this.highlightEngine.list(), (r) => r.pattern, (r) => this.highlightEngine.delete(r.pattern)],
+          substitute: [() => this.substituteEngine.list(), (r) => r.pattern, (r) => this.substituteEngine.delete(r.pattern)],
+          macro: [() => this.macroEngine.list(), (r) => r.key || r.label, (r) => this.macroEngine.delete(r.key || r.label)],
+          event: [() => this.eventEngine.list(), (r) => r.name, (r) => this.eventEngine.remove(r.name)],
+          ticker: [() => [...source.tickers.values()], (r) => r.name, (r) => this.cancelTicker(source, r.name)],
+          delay: [() => [...source.delays.entries()].map(([name, timer]) => ({ name, timer })), (r) => r.name, (r) => this.cancelNamedDelay(source, r.name)]
         };
-        const clear = clearMap[plural];
-        if (!clear) messages.push(this.usage('kill {all|aliases|variables|functions|actions|gags|highlights|substitutes|macros|events|tickers|delays} [name]'));
+        const descriptor = descriptors[family];
+        if (!descriptor) messages.push(this.usage('kill {aliases|variables|functions|actions|gags|highlights|substitutes|macros|events|tickers|delays} [pattern]'));
         else {
-          const result = clear();
-          const count = typeof result === 'number' ? result : (result ? 1 : 0);
-          messages.push(target
-            ? (count ? `Removed ${plural} ${target}.` : `No matching ${plural}: ${target}.`)
-            : `Cleared ${count} ${plural}${count === 1 ? '' : 's'}.`);
+          const records = descriptor[0]();
+          const matches = pattern ? records.filter((record) => tinTinDefinitionMatches(descriptor[1](record), pattern)) : records;
+          let removed = 0;
+          for (const record of matches) if (descriptor[2](record)) removed += 1;
+          messages.push(pattern
+            ? (removed ? `Removed ${removed} ${family}${removed === 1 ? '' : 's'} matching ${pattern}.` : `No ${family}s matched ${pattern}.`)
+            : `Cleared ${removed} ${family}${removed === 1 ? '' : 's'}.`);
         }
       }
     } else if (parsed.directive === 'commands') {
-      const supported = ['ACTION','ALIAS','ALL','BREAK','BUFFER','CLASS','COMMANDS','CONFIG','CR','DELAY','DIRS','ECHO','END','EVENT','FORALL','FOREACH','FORMAT','FUNCTION','GAG','GREP','HELP','HIGHLIGHT','HISTORY','IF','IGNORE','INFO','KILL','LINE','LIST','LOCAL','LOG','LOOP','MACRO','MAP','MATH','MESSAGE','NOP','PARSE','PATH','PATHDIR','READ','REGEX','REPLACE','RETURN','SEND','SESSION','SHOWME','SNOOP','SPEEDWALK','SUBSTITUTE','SWITCH','TICKER','UNDELAY','VARIABLE','WHILE','WRITE','ZAP'];
+      const supported = ['ACTION','ALIAS','ALL','BREAK','CAT','BUFFER','CLASS','COMMANDS','CONFIG','CR','DELAY','DIRS','ECHO','END','EVENT','FORALL','FOREACH','FORMAT','FUNCTION','GAG','GREP','HELP','HIGHLIGHT','HISTORY','IF','IGNORE','INFO','KILL','LINE','LIST','LOCAL','LOG','LOOP','MACRO','MAP','MATH','MESSAGE','NOP','PARSE','PATH','PATHDIR','READ','REGEX','REPLACE','RETURN','SEND','SESSION','SHOWME','SNOOP','SPEEDWALK','SUBSTITUTE','SWITCH','TICKER','UNDELAY','VARIABLE','WHILE','WRITE','ZAP'];
       messages.push(`TinTin-compatible commands: ${supported.join(', ')}.`);
       messages.push('Terminal-only or unsafe host/network commands are translated, ignored, or blocked explicitly rather than sent to the MUD.');
     } else if (parsed.directive === 'dirs') {
@@ -6350,6 +7013,10 @@ class SessionManager {
       } else messages.push(`Session ${target.name} could not be zapped.`);
     } else if (parsed.directive === 'debug') {
       messages.push(...this.handleDebugCommand(tokens, source));
+    } else if (parsed.directive === 'lua') {
+      const lua = this.handleLuaCommand(parsed, source, options);
+      deliveries = lua.deliveries;
+      messages.push(...lua.messages);
     } else if (parsed.directive === 'showme' || parsed.directive === 'show') {
       if (tokens.length < 1) {
         messages.push(this.usage('showme {text}'));
@@ -6380,6 +7047,8 @@ class SessionManager {
           }
         }
       }
+    } else if (parsed.directive === 'cat') {
+      messages.push(...this.handleCatCommand(tokens, source, options));
     } else if (parsed.directive === 'math') {
       messages.push(...this.handleMathCommand(tokens, source, options));
     } else if (parsed.directive === 'format') {

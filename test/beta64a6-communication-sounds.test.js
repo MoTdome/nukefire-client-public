@@ -21,8 +21,10 @@ function fakeContext() {
   };
 }
 
-test('Tell Auction Gossip Skynet and SSF have distinct bounded native communication cue IDs', () => {
-  for (const cue of ['tell', 'auction', 'gossip', 'skynet', 'ssf']) assert.equal(AUDIO_CUE_IDS.includes(cue), true, cue);
+test('Reader communication channels and stairs have distinct bounded native cue IDs', () => {
+  for (const cue of ['tell', 'auction', 'gossip', 'group', 'grats', 'shout', 'holler', 'skynet', 'ssf', 'stairs']) {
+    assert.equal(AUDIO_CUE_IDS.includes(cue), true, cue);
+  }
 });
 
 test('communication cue playback may explicitly bypass only the foreground gate', () => {
@@ -48,13 +50,13 @@ test('canonical Skynet broadcasts become a detected reviewable communications ch
 test('schema 47 stores conservative per-channel communication sound defaults', () => {
   const settings = source('src/settings-store.js');
   assert.match(settings, /const SETTINGS_SCHEMA_VERSION = 48;/u);
-  assert.match(settings, /communicationCues: Object\.freeze\(\{[\s\S]*gossip: false,[\s\S]*skynet: false,[\s\S]*ssf: false,[\s\S]*background: false/u);
+  assert.match(settings, /communicationCues: Object\.freeze\(\{[\s\S]*gossip: false,[\s\S]*group: false,[\s\S]*grats: false,[\s\S]*shout: false,[\s\S]*holler: false,[\s\S]*skynet: false,[\s\S]*ssf: false,[\s\S]*background: false/u);
   assert.match(settings, /accessibility\.communicationCues/u);
 });
 
-test('Preferences exposes independent Tell Auction Gossip Skynet SSF and background communication controls', () => {
+test('Preferences exposes independent high-value communication and background controls', () => {
   const html = source('renderer/index.html');
-  for (const id of ['communication-cue-tell', 'communication-cue-auction', 'communication-cue-gossip', 'communication-cue-skynet', 'communication-cue-ssf', 'communication-cues-background']) {
+  for (const id of ['communication-cue-tell', 'communication-cue-auction', 'communication-cue-gossip', 'communication-cue-group', 'communication-cue-grats', 'communication-cue-shout', 'communication-cue-holler', 'communication-cue-skynet', 'communication-cue-ssf', 'communication-cues-background']) {
     assert.match(html, new RegExp(`id="${id}"`, 'u'), id);
   }
   assert.match(html, /independent from Self-Voice/iu);

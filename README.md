@@ -1,6 +1,6 @@
 # NukeFire Client
 
-Public source snapshot of **NukeFire Client 0.3.1-beta.73**.
+Public source snapshot of the NukeFire Client Beta.74 development milestone from private source commit `30bcdfa`.
 
 NukeFire Client is the cross-platform Electron client developed for the
 [NukeFire MUD](https://nukefire.org/) and released here so other MUD developers,
@@ -9,22 +9,21 @@ test, adapt, and discuss the ideas used by the client.
 
 ## This snapshot
 
-This repository is intentionally a **clean public snapshot** of `v0.3.1-beta.73`. It does
-not contain the private/development Git history or old local build artifacts.
+This repository is a deliberately reviewed and sanitized public snapshot of the Beta.74 development milestone at private source commit `30bcdfae2e397833de930f32329175a712b7008f`. The application package version is still `0.3.1-beta.73` until the formal Beta.74 release/version bump; this commit is a source/reference milestone rather than a packaged release.
 
-Beta.73 focuses heavily on sustained responsiveness:
+Beta.74 substantially expands the scripting layer while keeping NukeFire's existing safety and simplicity boundaries:
 
-- bounded terminal output and combat-flow pacing;
-- MCCP2 and MCCPX/Zstandard compression support;
-- 64 KiB streaming decoder output chunks;
-- rapid multi-kill target presentation stability;
-- coalesced target-refresh GMCP requests;
-- long-session performance diagnostics;
-- Mapper render/save instrumentation;
-- accessibility-focused Reader and Self-Voice workflows;
-- configurable soundpack support.
+* modern TinTin compatibility with per-session definitions and routing;
+* production Lua 5.4 scripting in the bounded Wasmoon Worker;
+* shared TinTin/Lua variables, tables, GMCP, events, aliases, triggers, timers, and Speedwalk;
+* Mudlet-familiar Lua callbacks, GMCP/MSDP compatibility, diagnostics, and common helper functions;
+* NukeFire-managed modules, protected storage, saved multi-line scripts, and optional autorun;
+* native Custom Panes with live GMCP-driven updates and workspace docking/tabbing;
+* no arbitrary Lua filesystem, shell/process, network, DOM, raw xterm, HTML/CSS/JavaScript pane, or synchronous gag/render-veto authority.
 
-See the included release and testing notes for the exact Beta.73 scope.
+The complete private source milestone passed 1723/1723 tests before this public reconciliation, and the public candidate is independently verified before it is committed and pushed.
+
+See `RELEASE-NOTES-beta74.md` and the included `docs/BETA74-*.md` references for the Beta.74 scripting/pane scope.
 
 ## Test soundpacks
 
@@ -77,9 +76,7 @@ Platform distribution scripts are defined in `package.json`.
 
 ## Security / public-history note
 
-This repository begins with a fresh public commit made from the exact Beta.73
-release tag. Private development history, backup trees, local distribution
-outputs, credentials, and build-machine metadata are intentionally excluded.
+This public repository contains sanitized public snapshots rather than the private development history. Beta.74 is reconciled from private source commit `30bcdfae2e397833de930f32329175a712b7008f` only after review and verification. Private Git history, backup trees, local distribution outputs, credentials, private checkout paths, game-server paths, and build-machine metadata are intentionally excluded.
 
 ## License
 

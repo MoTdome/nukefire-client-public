@@ -3,6 +3,7 @@
 const { compileActionPattern } = require('./action-engine');
 
 const DEFAULT_MAX_EVENTS = 128;
+const DEFAULT_MAX_LUA_TRANSIENT_EVENTS = 256;
 const MAX_EVENT_NAME = 160;
 const MAX_EVENT_COMMAND = 8192;
 const SUPPORTED_EVENT_NAMES = Object.freeze([
@@ -72,6 +73,8 @@ class EventEngine {
   constructor(options = {}) {
     this.maximum = Math.max(1, Number(options.maximum) || DEFAULT_MAX_EVENTS);
     this.definitions = new Map();
+    this.luaTransientEvents = new Map();
+    this.maxLuaTransientEvents = Math.max(1, Math.trunc(Number(options.maxLuaTransientEvents) || DEFAULT_MAX_LUA_TRANSIENT_EVENTS));
     this.enabled = options.enabled !== false;
     this.revision = 0;
     if (options.events) this.restore(options.events);
@@ -118,6 +121,50 @@ class EventEngine {
     }
     return null;
   }
+
+  defineLuaTransient(idValue, eventNameValue, oneShot = false) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    const eventName = String(eventNameValue || '').normalize('NFKC').trim().slice(0, MAX_EVENT_NAME);
+    if (!id || !eventName || /[\r\n\u0000]/u.test(eventName)) return null;
+    if (!this.luaTransientEvents.has(id) && this.luaTransientEvents.size >= this.maxLuaTransientEvents) return null;
+    const record = Object.freeze({ id, eventName, enabled: true, oneShot: oneShot === true });
+    this.luaTransientEvents.set(id, record);
+    return { ...record };
+  }
+
+  setLuaTransientEnabled(idValue, enabled) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    const current = this.luaTransientEvents.get(id);
+    if (!current) return false;
+    this.luaTransientEvents.set(id, Object.freeze({ ...current, enabled: Boolean(enabled) }));
+    return true;
+  }
+
+  removeLuaTransient(idValue) {
+    const id = Math.max(1, Math.trunc(Number(idValue) || 0));
+    return id > 0 && this.luaTransientEvents.delete(id);
+  }
+
+  clearLuaTransients() {
+    const count = this.luaTransientEvents.size;
+    this.luaTransientEvents.clear();
+    return count;
+  }
+
+  matchLuaTransients(eventNameValue, maximum = 32) {
+    if (!this.enabled || this.luaTransientEvents.size === 0) return [];
+    const eventName = String(eventNameValue || '').normalize('NFKC').trim();
+    if (!eventName) return [];
+    const limit = Math.max(1, Math.min(64, Math.trunc(Number(maximum) || 32)));
+    const matches = [];
+    for (const record of this.luaTransientEvents.values()) {
+      if (!record.enabled || record.eventName !== eventName) continue;
+      matches.push({ id: record.id, eventName: record.eventName, oneShot: record.oneShot });
+      if (matches.length >= limit) break;
+    }
+    return matches;
+  }
+
   remove(nameValue) {
     const deleted = this.definitions.delete(normalizeEventName(nameValue));
     if (deleted) this.revision += 1;
@@ -151,5 +198,6 @@ module.exports = {
   isSupportedEventName,
   SUPPORTED_EVENT_NAMES,
   SUPPORTED_EVENT_PREFIXES,
-  DEFAULT_MAX_EVENTS
+  DEFAULT_MAX_EVENTS,
+  DEFAULT_MAX_LUA_TRANSIENT_EVENTS
 };
