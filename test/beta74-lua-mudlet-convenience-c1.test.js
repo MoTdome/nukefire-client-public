@@ -56,6 +56,10 @@
      assert.equal(events.filter((event) => event.event === 'command-line-set').at(-1)?.text, 'tell Bob hello');
      assert.deepEqual(events.filter((event) => event.event === 'speedwalk').map((event) => event.route), ['2n3e']);
      assert.deepEqual(echoes.map((event) => event.args), [['red'], ['green']]);
+     const formatted = events.filter((event) => event.event === 'echo' && event.formattedText);
+     assert.deepEqual(formatted.map((event) => event.format), ['decho', 'hecho']);
+     assert.match(formatted[0].formattedText, /\x1b\[38;2;255;0;0mred/u);
+     assert.match(formatted[1].formattedText, /\x1b\[38;2;0;255;0mgreen/u);
    } finally {
      await runtime.close();
    }

@@ -12,6 +12,9 @@ const MAX_ENTRIES = 64;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 const MAX_EVENT_VARIATIONS = 8;
 const MAX_EVENT_COOLDOWN_MS = 60_000;
+const MAX_CUSTOM_EVENTS = 32;
+const MAX_EVENT_NAME = 80;
+const CUSTOM_EVENT_PATTERN = /^custom\.[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const PACK_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const AUDIO_MIME_TYPES = Object.freeze({
   '.wav': 'audio/wav',
@@ -86,16 +89,32 @@ const SOUNDPACK_EVENTS = Object.freeze({
 });
 const EVENT_SET = new Set(Object.keys(SOUNDPACK_EVENTS));
 
+function isCustomSoundpackEvent(eventNameValue) {
+  const event = String(eventNameValue || '').trim().toLowerCase();
+  return event.length <= MAX_EVENT_NAME && CUSTOM_EVENT_PATTERN.test(event);
+}
+
+function isSupportedSoundpackEvent(eventNameValue) {
+  const event = String(eventNameValue || '').trim().toLowerCase();
+  return EVENT_SET.has(event) || isCustomSoundpackEvent(event);
+}
+
+function soundpackCueId(eventNameValue) {
+  const event = String(eventNameValue || '').trim().toLowerCase();
+  return SOUNDPACK_EVENTS[event] || (isCustomSoundpackEvent(event) ? event : '');
+}
+
 const SOUNDPACK_EVENT_OVERRIDES = Object.freeze({
   'door.blocked': Object.freeze({ source: 'reserved', status: 'not-emitted', note: 'Reserved for a future authoritative blocked-door event.' }),
+  'room.stairs': Object.freeze({ source: 'reserved', status: 'not-emitted', note: 'Reserved until NukeFire exposes an authoritative DCC/Breach staircase signal; ordinary up/down exits are not enough.' }),
   'client.copyover-recovered': Object.freeze({ source: 'reserved', status: 'not-emitted', note: 'Reserved until copyover recovery exposes one authoritative renderer event.' })
 });
 
 function soundpackEventMetadata(eventNameValue) {
   const event = String(eventNameValue || '').trim().toLowerCase();
+  if (isCustomSoundpackEvent(event)) return { source: 'player', status: 'active', note: 'Player-created sound event for TinTin Actions.' };
   if (SOUNDPACK_EVENT_OVERRIDES[event]) return { ...SOUNDPACK_EVENT_OVERRIDES[event] };
   if (event.startsWith('communication.')) return { source: 'communications', status: 'active', note: 'Generated from the Communications stream.' };
-  if (event === 'room.stairs') return { source: 'derived', status: 'active', note: 'Derived from authoritative Room.Info exits.' };
   if (event.startsWith('client.')) return { source: 'client', status: 'active', note: 'Generated from client connection state.' };
   if (event.startsWith('combat.') || event.startsWith('vitals.') || event.startsWith('group.') || event.startsWith('loot.')) {
     return { source: 'derived', status: 'active', note: 'Derived from authoritative GMCP game state.' };
@@ -126,9 +145,13 @@ function normalizeManifest(input) {
   const version = cleanText(input.version, 32) || '1.0.0';
   const sourceEvents = input.events && typeof input.events === 'object' && !Array.isArray(input.events) ? input.events : {};
   const events = {};
+  let customEventCount = 0;
   for (const [eventNameValue, fileValue] of Object.entries(sourceEvents)) {
     const eventName = String(eventNameValue || '').trim().toLowerCase();
-    if (!EVENT_SET.has(eventName)) throw new Error(`Unsupported soundpack event: ${eventName || 'empty event'}.`);
+    if (!isSupportedSoundpackEvent(eventName)) throw new Error(`Unsupported soundpack event: ${eventName || 'empty event'}. Player-created events must use custom.<name>.`);
+    if (isCustomSoundpackEvent(eventName) && ++customEventCount > MAX_CUSTOM_EVENTS) {
+      throw new Error(`Soundpacks may define at most ${MAX_CUSTOM_EVENTS} custom.* events.`);
+    }
     const source = typeof fileValue === 'string' ? { files: [fileValue] } : fileValue;
     if (!source || typeof source !== 'object' || Array.isArray(source)) {
       throw new Error(`Soundpack event ${eventName} must be a filename or bounded event options.`);
@@ -314,7 +337,7 @@ class SoundpackStore {
 
   async assignEvent(id, eventNameValue, filepath, options = {}) {
     const eventName = String(eventNameValue || '').trim().toLowerCase();
-    if (!EVENT_SET.has(eventName)) throw new Error('Unsupported soundpack event.');
+    if (!isSupportedSoundpackEvent(eventName)) throw new Error('Unsupported soundpack event. Player-created events must use custom.<name>.');
     const selected = path.resolve(String(filepath || ''));
     const stat = await fs.stat(selected);
     const extension = path.extname(selected).toLowerCase();
@@ -322,7 +345,9 @@ class SoundpackStore {
       throw new Error('Selected audio must be a bounded WAV, MP3, OGG, or M4A file.');
     }
     const editable = await this.editablePack(id);
-    const filename = `sounds/${eventName.replace(/\./gu, '-')}${extension}`;
+    const filename = isCustomSoundpackEvent(eventName)
+      ? `sounds/${eventName}${extension}`
+      : `sounds/${eventName.replace(/\./gu, '-')}${extension}`;
     for (const oldFilename of eventFiles(editable.pack.events[eventName])) editable.files.delete(oldFilename);
     editable.files.set(filename, await fs.readFile(selected));
     const events = { ...editable.pack.events, [eventName]: {
@@ -333,7 +358,7 @@ class SoundpackStore {
 
   async clearEvent(id, eventNameValue) {
     const eventName = String(eventNameValue || '').trim().toLowerCase();
-    if (!EVENT_SET.has(eventName)) throw new Error('Unsupported soundpack event.');
+    if (!isSupportedSoundpackEvent(eventName)) throw new Error('Unsupported soundpack event. Player-created events must use custom.<name>.');
     const editable = await this.editablePack(id);
     for (const filename of eventFiles(editable.pack.events[eventName])) editable.files.delete(filename);
     const events = { ...editable.pack.events };
@@ -365,7 +390,9 @@ class SoundpackStore {
     if (!includeAssets) return { ok: true, pack: manifest };
     const assets = {};
     for (const [eventName, options] of Object.entries(manifest.events)) {
-      assets[SOUNDPACK_EVENTS[eventName]] = {
+      const cueId = soundpackCueId(eventName);
+      if (!cueId) continue;
+      assets[cueId] = {
         sources: eventFiles(options).map((filename) => {
           const data = byName.get(filename).getData();
           const mime = AUDIO_MIME_TYPES[path.posix.extname(filename).toLowerCase()];
@@ -403,6 +430,11 @@ class SoundpackStore {
 module.exports = {
   SOUNDPACK_SCHEMA,
   SOUNDPACK_EVENTS,
+  CUSTOM_EVENT_PATTERN,
+  MAX_CUSTOM_EVENTS,
+  isCustomSoundpackEvent,
+  isSupportedSoundpackEvent,
+  soundpackCueId,
   soundpackEventMetadata,
   MAX_ARCHIVE_BYTES,
   MAX_EXPANDED_BYTES,

@@ -8,6 +8,7 @@ const { mainWindowBoundsForWorkArea } = require('../src/window-layout');
 
 const root = path.join(__dirname, '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const packageLock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'test-builds.yml'), 'utf8');
 const rendererSource = fs.readFileSync(path.join(root, 'renderer', 'renderer.js'), 'utf8');
 
@@ -25,7 +26,9 @@ test('first launch uses a wide centered window while respecting smaller work are
 });
 
 test('package config builds unsigned macOS universal and Windows x64 test packages', () => {
-  assert.equal(packageJson.version, '0.3.1-beta.74');
+  assert.match(packageJson.version, /^0\.3\.1-beta\.\d+$/u);
+  assert.equal(packageJson.version, packageLock.version);
+  assert.equal(packageJson.version, packageLock.packages[''].version);
   assert.match(packageJson.scripts.check, /src\/client-command-help\.js/u);
   assert.match(packageJson.scripts.check, /src\/echo-format\.js/u);
   assert.match(packageJson.scripts.check, /src\/math-engine\.js/u);

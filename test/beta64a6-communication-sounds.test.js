@@ -69,7 +69,8 @@ test('communication notifications are semantic, speech-independent, and globally
   const block = start >= 0 && end > start ? renderer.slice(start, end) : '';
   assert.match(block, /COMMUNICATION_CUE_DEDUPE_WINDOW_MS/u);
   assert.match(block, /recentCommunicationCueAt/u);
-  assert.match(block, /audioCues\?\.play\?\.\(channel, \{ allowBackground \}\)/u);
+  assert.match(block, /soundpackEventPlaybackDecision\(`communication\.\$\{channel\}`/u);
+  assert.match(block, /audioCues\?\.play\?\.\(decision\.cueId, \{ allowBackground: decision\.allowBackground \}\)/u);
   assert.doesNotMatch(block, /announce\(|selfVoice\?\.|sendCommand|dispatchCommand/u);
   assert.match(renderer, /appendReaderHistoryCommunication\(record, storedMessage\);\s*playCommunicationAudioCue\(record, storedMessage\);/u);
 });

@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta74-development-30bcdfa",
+  "public_snapshot": "beta75-release-7ef02ed",
   "source_tag": null,
-  "source_commit": "30bcdfae2e397833de930f32329175a712b7008f",
-  "created_at": "2026-09-08T20:33:23.950161+00:00",
+  "source_commit": "7ef02ed7e531271ff76d2777fec60fe33f736b04",
+  "created_at": "2026-09-09T21:25:46.905667+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -48,12 +48,20 @@
   "server_integration_examples_included": false,
   "server_integration_status": "placeholder/readme only; source examples pending review",
   "source_branch": "milestone-1.9-client-development",
-  "package_version": "0.3.1-beta.73",
+  "package_version": "0.3.1-beta.75",
   "excluded_private_paths": [
     "docs/PROJECT_LEDGER.md"
   ],
   "verification": {
-    "private_source": "1723/1723 tests PASS before public reconciliation",
-    "public_candidate": "npm ci + git diff --check + npm run check + npm run verify: PASS"
-  }
+    "private_source": "npm run verify: PASS immediately before private push",
+    "public_candidate": "npm ci + git diff --check + npm run check + npm run verify: PASS before public commit/tag"
+  },
+  "public_release_tag": "v0.3.1-beta.75",
+  "beta75_scope": [
+    "Lua correction pass 1",
+    "accessibility/sound correctness pass 1",
+    "TinTin to managed soundpack events and custom.* authoring",
+    "SOUND list/search/show discovery",
+    "client-local accessibility routing Last/Why/Report/Capabilities/Test/Doctor/profiles"
+  ]
 }

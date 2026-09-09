@@ -5,6 +5,7 @@ const { parentPort } = require('node:worker_threads');
 const wasmoonPath = String(process.env.NUKEFIRE_LUA_WASMOON_PATH || '').trim();
 const { LuaFactory, LuaLibraries } = wasmoonPath ? require(wasmoonPath) : require('wasmoon');
 const { compileLuaAutomationRegex, normalizeLuaAutomationPattern } = require('./lua-automation-pattern');
+const { formatLuaEcho, plainLuaEcho } = require('./lua-echo-format');
 
 const DEFAULT_SOFT_TIMEOUT_MS = 50;
 const DEFAULT_MEMORY_ALLOWANCE = 2 * 1024 * 1024;
@@ -372,6 +373,16 @@ async function createSession(rawSessionId, options = {}) {
     });
     return undefined;
   };
+  const hostFormattedEcho = (formatValue, textValue) => {
+    const format = String(formatValue || '').trim().toLowerCase();
+    if (!['cecho', 'decho', 'hecho'].includes(format)) return false;
+    const formattedText = formatLuaEcho(format, textValue);
+    const plainText = plainLuaEcho(format, textValue);
+    // Keep the Beta.74 echo event/args contract intact for compatibility.
+    // Beta.75 adds host-only formatting metadata; Lua never supplies ANSI.
+    postHostEvent('echo', { args: [plainText], format, formattedText });
+    return true;
+  };
   const hostSend = (value, showValue) => {
     const command = normalizeCommand(value);
     if (!command) return false;
@@ -581,6 +592,7 @@ async function createSession(rawSessionId, options = {}) {
   const installHostApi = () => {
     engine.global.set('echo', hostEcho);
     engine.global.set('print', hostEcho);
+    engine.global.set('__nukefireFormattedEcho', hostFormattedEcho);
     engine.global.set('send', hostSend);
     engine.global.set('execute', hostExecute);
     engine.global.set('expandAlias', hostExecute);
@@ -1008,24 +1020,10 @@ async function createSession(rawSessionId, options = {}) {
           return millis / 1000
         end
         function hasFocus() return sessionField('appFocused') == true end
-        local function stripMudletColorTags(text)
-          local source = tostring(text or '')
-          source = string.gsub(source, '<[%w_:#,%-]+>', '')
-          return source
-        end
-        local function stripMudletHexTags(text)
-          local source = tostring(text or '')
-          source = string.gsub(source, '#[%x][%x][%x][%x][%x][%x]', '')
-          source = string.gsub(source, '|[%x][%x][%x][%x][%x][%x]', '')
-          source = string.gsub(source, '#/?[biruos]', '')
-          source = string.gsub(source, '|/?[biruos]', '')
-          source = string.gsub(source, '#r', '')
-          source = string.gsub(source, '|r', '')
-          return source
-        end
-        function cecho(text) echo(stripMudletColorTags(text)) end
-        function decho(text) echo(stripMudletColorTags(text)) end
-        function hecho(text) echo(stripMudletHexTags(text)) end
+        local formattedEchoHost = __nukefireFormattedEcho
+        function cecho(text) formattedEchoHost('cecho', tostring(text or '')) end
+        function decho(text) formattedEchoHost('decho', tostring(text or '')) end
+        function hecho(text) formattedEchoHost('hecho', tostring(text or '')) end
         function sendAll(...)
           local args = {...}
           local count = select('#', ...)

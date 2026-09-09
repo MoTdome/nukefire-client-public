@@ -43,7 +43,7 @@ test('bounded CR SOUND client control accepts Tell and Auction without opening a
   const start = renderer.indexOf("if (request.action === 'reader.sound.status')");
   const end = renderer.indexOf("if (request.action === 'reader.doctor')", start);
   const block = start >= 0 && end > start ? renderer.slice(start, end) : '';
-  assert.match(block, /tell, auction, gossip, skynet, or ssf/u);
+  assert.match(block, /tell, auction, gossip, group, grats, shout, holler, skynet, or ssf/u);
   assert.match(block, /normalizeCommunicationCueChannel/u);
   assert.doesNotMatch(block, /localStorage\.setItem\(request|eval\(|Function\(/u);
 });

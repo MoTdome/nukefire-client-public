@@ -1,3 +1,48 @@
+## Beta.75 Accessibility Routing Pass 4 (development)
+
+- Adds one bounded per-session semantic presentation journal instead of another accessibility settings stack. Meaningful communication, combat, navigation, loot, crafting, quest, vitals, safety, system, and client events can now be inspected through a common event/category/priority vocabulary.
+- Adds `#ACCESSIBILITY` / `#ACCESS` / `#A11Y` Last Event, Why, report, capabilities, self-test, doctor, clear, and profile commands. Diagnostics/profile mutation are interactive-only so Actions, Aliases, Functions, timers, and Lua callbacks cannot silently change accessibility setup or spam reports.
+- Records actual Reader-History and sound presentation outcomes where those paths are known, including blocking, dedupe, disable, and unavailable reasons; `WHY` reports the most recent suppressed presentation rather than guessing from a second preference model.
+- Extends Reader History with semantic Navigation, Loot, Crafting, Quests, Safety, Vitals, and System entries while retaining existing Communications, Rooms, Combat, and Damage review paths. Repeat semantic events collapse only inside the bounded diagnostic journal; terminal and Reader text remain complete.
+- Adds a sanitized setup report and up to twelve local named accessibility profiles covering Reader Workspace, native/Self-Voice mode, speech/audio gates, soundpack choice, communication cues, safety/priority behavior, and keybindings. Portable export/import reuses the protected `.nfpreset` format rather than creating another file format.
+- Adds a bounded accessibility self-test across Communications, Navigation, Loot, Vitals, Safety, Reader History, and Audio, and extends Doctor with duplicate-speech and last-suppression diagnostics.
+- Keeps Accessibility Routing Pass 4 client-only: local `#accessibility` / `#access` / `#a11y` commands are complete, while new `reader.accessibility.*` GMCP actions and `CR ACCESSIBILITY ...` remain deferred until the current server bridge sources are reviewed.
+- This pass does not add a braille presentation layer.
+
+## Beta.75 TinTin → Soundpack Discovery Pass 3 (development)
+
+- Adds case-insensitive `#SOUND {LIST}`, `#SOUND {LIST} {group}`, `#SOUND {SEARCH} {text}`, and `#SOUND {SHOW} {event}` discovery on top of the existing managed `#SOUND {event}` bridge.
+- Keeps bare LIST concise by showing playable event groups/counts; grouped LIST and SEARCH return bounded alphabetic event-name results instead of dumping the entire catalog.
+- SHOW reports event source, active-pack assignment/fallback state, enabled/disabled state, and the same playback-ready/blocking reason used by real sound playback.
+- Omits reserved/not-emitted events from normal LIST/SEARCH discovery while still allowing SHOW to explain a known reserved name.
+- Discovery commands are interactive-only so an Action/Event/Ticker/Delay cannot accidentally flood combat output with sound catalog reports.
+- Confirms TinTin command/subcommand/event matching is case-insensitive: `#sound`, `#Sound`, `#SOUND`, and upper/lowercase event names normalize to the same managed event.
+
+## Beta.75 TinTin → Soundpack Integration Pass 2 (development)
+
+- Adds `#SOUND {event}` as a tiny Action-safe client command that requests a managed NukeFire soundpack event instead of exposing filenames, paths, URLs, raw Web Audio, or terminal internals.
+- Supports player-created bounded `custom.*` sound events such as `custom.stairs`; custom events have no built-in fallback and are silent when automation-generated but unassigned or blocked.
+- Extends `.nfsp` manifests to carry up to 32 `custom.*` event assignments. Assigned WAV/MP3/OGG/M4A audio is copied into the soundpack archive, so TinTin Actions retain only the stable event name and do not depend on the original source file.
+- Adds a Soundpack Editor Custom Action event field. When Built-in NukeFire is active, using a custom event automatically prepares/activates an editable `personal-sounds` pack unless the player supplied another new-pack ID/name.
+- Keeps all normal playback gates: event enable/disable, Audio Cues on/mute, foreground policy, availability, volume, and cooldown. Manual `#SOUND` reports a blocking reason; Action/Event/Ticker/Delay-generated requests stay quiet.
+- Example: `#ACTION {a dungeon staircase} {#SOUND {custom.stairs}}`.
+
+## Beta.75 Accessibility / Sound Pass 1 (development)
+
+- Keeps Group, Grats, Shout, and Holler as first-class Communications/soundpack cues while making tests/previews obey the same event, channel, master, mute, foreground/background, availability, volume, and cooldown gates as real playback.
+- Reports the concrete reason a configured cue is blocked instead of a generic "could not play" message, including through CR sound tests and the Soundpack Preview Event status.
+- Stops treating every Room.Info up/down exit as the DCC/Breach stairs cue; `room.stairs` remains allowlisted but reserved until an authoritative game signal exists.
+- Adds no Lua API expansion and does not yet add TinTin `#sound`; that remains the next soundpack-integration step after this accessibility correction pass.
+
+## Beta.75 Lua Correction Pass 1 (development)
+
+- Fixes prompt-carry handling so a TELNET prompt boundary discards only the Lua/Action prompt carry and `^` anchors match the next actual mud line, including the real `[Procs] 1 effect:` / `2 effects:` case.
+- Makes `cecho()`, `decho()`, and `hecho()` render supported Mudlet-familiar colors/formatting through NukeFire's bounded safe output parser while preserving the existing Beta.74 `echo` host-event/plain-args contract; raw script-supplied terminal control sequences remain blocked.
+- Adds explicit regression coverage for ordinary/block Lua comments, numeric capture indexing, `ipairs(matches)`, immediate temporary-trigger enablement, and singular/plural `[Procs]` captures.
+- Makes saved-script reruns replace only resources owned by that script (temporary aliases, triggers, timers, event handlers, and Custom Panes), including resources created later inside owned callbacks, without resetting the whole Lua VM.
+- Makes Reload Autorun clear host-side temporary automation as well as rebuilding the Worker VM, so the full-reset path is actually clean on both sides.
+- Adds no new Lua authority or API scope; Beta.75 feature expansion remains gated on this correctness pass.
+
 ## Beta.74 Lua Mudlet Convenience C1
 
 - Adds Mudlet-familiar `sendAll()` and `speedwalk()` while routing through NukeFire's existing guarded direct-send and native Speedwalk machinery.

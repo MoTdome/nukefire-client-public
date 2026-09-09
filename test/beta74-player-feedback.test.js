@@ -19,20 +19,14 @@ test('Beta.74 communication additions are reviewable and sonifiable without text
   assert.match(soundpack, /event\.startsWith\('communication\.'\).*source: 'communications'/u);
 });
 
-test('stairs use authoritative Room.Info as a derived soundpack event with duplicate-room suppression', () => {
+test('room.stairs remains allowlisted but generic up/down Room.Info exits no longer masquerade as DCC stairs', () => {
   const soundpack = source('src/soundpack-store.js');
   assert.match(soundpack, /'room\.stairs': 'stairs'/u);
-  assert.match(soundpack, /event === 'room\.stairs'.*source: 'derived'.*Room\.Info/u);
+  assert.match(soundpack, /'room\.stairs'.*source: 'reserved'.*status: 'not-emitted'/u);
+  assert.match(soundpack, /ordinary up\/down exits are not enough/iu);
   const renderer = source('renderer/renderer.js');
-  const start = renderer.indexOf('function roomInfoExitDirections(body = {})');
-  const end = renderer.indexOf('function formatReaderCombatHistory', start);
-  const block = start >= 0 && end > start ? renderer.slice(start, end) : '';
-  assert.match(block, /body\?\.exits/u);
-  assert.match(block, /body\?\.exit_details/u);
-  assert.match(block, /\['up', 'u', 'down', 'd'\]/u);
-  assert.match(block, /record\.lastStairsCueRoomKey/u);
-  assert.match(block, /playClientSoundpackEvent\('room\.stairs', 'stairs'\)/u);
-  assert.match(renderer, /if \(packageName === 'Room\.Info'\) playRoomStairsCue\(activeSessionRecord\(\), message\?\.body\);/u);
+  assert.doesNotMatch(renderer, /function playRoomStairsCue/u);
+  assert.doesNotMatch(renderer, /playRoomStairsCue\(activeSessionRecord\(\), message\?\.body\)/u);
 });
 
 test('MUSH Reader setup enables the newly requested communication cues while ordinary defaults stay off', () => {

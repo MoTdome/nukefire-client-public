@@ -1,29 +1,26 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client Beta.74 development milestone from private source commit `30bcdfa`.
+Public source snapshot of the NukeFire Client **Beta.75** milestone from private source commit `7ef02ed`.
 
-NukeFire Client is the cross-platform Electron client developed for the
-[NukeFire MUD](https://nukefire.org/) and released here so other MUD developers,
-client authors, accessibility testers, and protocol implementors can inspect,
-test, adapt, and discuss the ideas used by the client.
+NukeFire Client is the cross-platform Electron client developed for the [NukeFire mud](https://nukefire.org) and released here so other mud developers, client authors, accessibility testers, and protocol implementors can inspect, test, adapt, and discuss the ideas used by the client.
 
 ## This snapshot
 
-This repository is a deliberately reviewed and sanitized public snapshot of the Beta.74 development milestone at private source commit `30bcdfae2e397833de930f32329175a712b7008f`. The application package version is still `0.3.1-beta.73` until the formal Beta.74 release/version bump; this commit is a source/reference milestone rather than a packaged release.
+This repository is a deliberately reviewed and sanitized public snapshot of the Beta.75 development milestone at private source commit `7ef02ed7e531271ff76d2777fec60fe33f736b04`. The public package version for this release is `0.3.1-beta.75`.
 
-Beta.74 substantially expands the scripting layer while keeping NukeFire's existing safety and simplicity boundaries:
+Beta.75 focuses on making scripting, sounds, and accessibility easier without broadening client authority:
 
-* modern TinTin compatibility with per-session definitions and routing;
-* production Lua 5.4 scripting in the bounded Wasmoon Worker;
-* shared TinTin/Lua variables, tables, GMCP, events, aliases, triggers, timers, and Speedwalk;
-* Mudlet-familiar Lua callbacks, GMCP/MSDP compatibility, diagnostics, and common helper functions;
-* NukeFire-managed modules, protected storage, saved multi-line scripts, and optional autorun;
-* native Custom Panes with live GMCP-driven updates and workspace docking/tabbing;
-* no arbitrary Lua filesystem, shell/process, network, DOM, raw xterm, HTML/CSS/JavaScript pane, or synchronous gag/render-veto authority.
+- Lua correctness fixes for logical-line regex triggers, safe formatted echo, saved-script comments, and script-owned Save & Run cleanup;
+- TinTin `#SOUND` integration with portable soundpack-owned `custom.*` events;
+- case-insensitive SOUND LIST / SEARCH / SHOW discovery;
+- stricter communication/soundpack playback gates and useful blocked-playback explanations;
+- local `#A11Y` Last Event / Why / Report / Capabilities / Test / Doctor commands;
+- portable local accessibility profiles and broader semantic Reader History coverage;
+- the existing filesystem, process, network, DOM, raw-terminal, and render-veto safety boundaries remain in place.
 
-The complete private source milestone passed 1723/1723 tests before this public reconciliation, and the public candidate is independently verified before it is committed and pushed.
+The complete private source is verified immediately before private publication, and this public candidate is independently verified before its commit and tag are pushed.
 
-See `RELEASE-NOTES-beta74.md` and the included `docs/BETA74-*.md` references for the Beta.74 scripting/pane scope.
+See `RELEASE-NOTES-beta75.md` and the included `docs/BETA75-*.md` references for the detailed Beta.75 scope.
 
 ## Test soundpacks
 

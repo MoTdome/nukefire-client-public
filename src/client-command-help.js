@@ -39,13 +39,13 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
       'getVariable(name) / setVariable(name, value) and getTable(name) / setTable(name, table) use the same per-session VariableEngine as TinTin scripting. Numeric TinTin list keys become 1-based Lua arrays; named keys become Lua table fields.',
       "gmcp is a bounded Mudlet-familiar snapshot of the session's canonical NukeFire GmcpStore, refreshed before each Lua execution. Examples include gmcp.Char.Vitals and gmcp.Room.Info; transient combat/sound/loot event packets are intentionally not retained in that snapshot.",
       "sendGMCP(\"Core.KeepAlive\") uses Mudlet's familiar one-string form. NukeFire also accepts sendGMCP(\"Package.Name\", luaTable) as a bounded convenience and routes it through the existing GMCP connection path.",
-      'Mudlet-familiar temporary helpers tempAlias, tempTrigger, tempRegexTrigger, tempExactMatchTrigger, tempTimer, registerAnonymousEventHandler, and raiseEvent reuse NukeFire Alias/Action/Event/timer engines. They are session-local and are never written into TinTin profiles.',
-      'Lua callbacks receive familiar line, command, and matches globals. Regex matches use matches[1] for the complete match and following indexes for captures; named captures are also available by name.',
+      'Mudlet-familiar temporary helpers tempAlias, tempTrigger, tempRegexTrigger, tempExactMatchTrigger, tempTimer, registerAnonymousEventHandler, and raiseEvent reuse NukeFire Alias/Action/Event/timer engines. Temporary triggers are enabled immediately when created; enableTrigger(id) is optional unless you previously disabled that trigger. They are session-local and are never written into TinTin profiles.',
+      'Lua callbacks receive familiar line, command, and matches globals. Regex matches use matches[1] for the complete match, matches[2] for capture 1, matches[3] for capture 2, and so on; named captures are also available by name. ipairs(matches) is the normal way to walk the populated numeric match array.',
       'kill/enable/disable Alias, Trigger, and Timer helpers plus killAnonymousEventHandler control the same temporary records. expireAfter follows Mudlet behavior: returning true from a trigger callback prevents that match from counting toward expiration.',
       'GMCP publishes gmcp.Package.Name events through the same callback layer, while raiseEvent can notify both Lua handlers and compatible NukeFire/TinTin Events without creating a second Event store.',
       'For NukeFire Mudlet-package portability, msdp is a read-only compatibility projection of the canonical GMCP store. Relevant GMCP changes raise msdp.FIELD events; sendMSDP REPORT/UNREPORT/RESET/XTERM_256_COLORS setup calls are accepted as compatibility no-ops because NukeFire already has the data through GMCP.',
       'Mudlet-familiar registerNamedEventHandler plus stop/resume/delete/getNamedEventHandlers reuse the same temporary Event callback engine. raiseGlobalEvent broadcasts only to other open NukeFire sessions and appends the sending profile name, matching the common multi-profile NukeFire Mudlet pattern.',
-      'getProfileName(), getEpoch(), hasFocus(), reconnect(), cecho(), table.contains(), table.union(), and spairs() cover common non-GUI helpers used by existing NukeFire Mudlet scripts. reconnect() can only reconnect the owning configured session and never exposes an arbitrary host/port.',
+      'getProfileName(), getEpoch(), hasFocus(), reconnect(), cecho(), table.contains(), table.union(), and spairs() cover common non-GUI helpers used by existing NukeFire Mudlet scripts. cecho()/decho()/hecho() render supported Mudlet-familiar colors and formatting through NukeFire safe local-output parsing; Lua never receives direct terminal access. reconnect() can only reconnect the owning configured session and never exposes an arbitrary host/port.',
       'Mudlet-familiar convenience helpers sendAll(), speedwalk(), getCmdLine()/printCmdLine()/setCmdLine()/appendCmdLine()/clearCmdLine(), getCurrentLine()/getLines(), and lightweight decho()/hecho() reuse NukeFire-owned command, Speedwalk, input-draft, and bounded visible-output state. getLines also accepts negative relative indexes such as getLines(-10, -1).',
       'Mudlet lifecycle compatibility publishes sysConnectionEvent, sysDisconnectionEvent, and sysProtocolEnabled (GMCP plus synthetic MSDP compatibility). Geyser/EMCO, package downloading, arbitrary filesystem persistence, io, and Mudlet map-database APIs are intentionally not emulated; protected Lua storage/modules stay inside NukeFire-owned state instead.',
       'The nf namespace aliases the same approved API (including nf.send, nf.execute, nf.variables, nf.gmcp, and nf.sendGMCP) and adds managed nf.modules access. storage.get/set/delete persists bounded per-session JSON-compatible data; settings.get reads protected package settings; neither surface exposes a path or file handle.',
@@ -70,9 +70,9 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
       'A bare LUASCRIPT command opens the native multi-line Lua Scripts editor for the active session. File > Lua Scripts opens the same editor.',
       'Saved scripts are stored in NukeFire-managed Lua state and share the same protected module source used by require(); no filesystem path, file handle, shell, or package loader is exposed to Lua.',
       'Each script may enable Auto-run. Auto-run scripts load when saved sessions are restored at client startup and before the first explicit Connect for a newly created session, so GMCP/Event handlers can be ready before normal play.',
-      'SAVE & RUN executes the saved source in the current Lua VM. RELOAD AUTORUN deliberately starts a fresh Lua VM for that session, clears transient custom panes and Lua callbacks, and then runs every Auto-run script again.',
-      'Script names use managed module syntax such as main, combat, or panes.vitals. Each script is bounded to 64 KiB and is session-isolated.',
-      'Deleting a saved script also removes its managed module source. Ordinary nf.modules entries that were never registered as saved scripts remain separate.',
+      'SAVE & RUN replaces resources owned by that saved script before executing its new source in the current Lua VM. Its old temporary aliases, triggers, timers, event handlers, and Custom Panes are retired without wiping unrelated Lua globals or resources owned by other scripts. RELOAD AUTORUN deliberately starts a fresh Lua VM for that session and remains the full reset operation.',
+      'Script names use managed module syntax such as main, combat, or panes.vitals. Each script is bounded to 64 KiB and is session-isolated. Normal Lua -- line comments and --[[ block comments ]] are preserved and execute naturally in saved scripts.',
+      'Deleting a saved script retires temporary resources owned by that script and removes its managed module source. Ordinary nf.modules entries that were never registered as saved scripts remain separate.',
       'The editor is NukeFire-native. It does not add Lua filesystem access, HTML/CSS/JavaScript panes, DOM access, or any gag/render-veto capability.'
     ])
   }),
@@ -249,6 +249,55 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
       'Showme output may trigger Actions while remaining outside Communications and vitals parsing.',
       'The local TinTin pipeline remains available while disconnected, so Showme can test Actions before logging in.',
       'Row and column positioning are intentionally deferred to a later interval.'
+    ])
+  }),
+  Object.freeze({
+    name: 'accessibility',
+    aliases: Object.freeze(['access', 'a11y']),
+    summary: 'Inspect, diagnose, copy, test, and save the current accessibility presentation setup.',
+    usages: Object.freeze([
+      'accessibility {last}',
+      'a11y {why}',
+      'a11y {report} [copy]',
+      'a11y {capabilities}',
+      'a11y {test}',
+      'a11y {doctor}',
+      'a11y {clear}',
+      'a11y {profile} {list}',
+      'a11y {profile} {save|use|delete} {name}',
+      'a11y {profile} {export|import}'
+    ]),
+    details: Object.freeze([
+      'LAST reports the most recent meaningful semantic event seen by the client. Repeated identical events are collapsed in the bounded diagnostic journal without removing terminal or Reader output.',
+      'WHY reports the most recent presentation that was blocked, suppressed, deduplicated, disabled, or unavailable, together with the recorded reason.',
+      'REPORT creates a sanitized setup summary. REPORT COPY copies that summary when clipboard access is available; it does not include commands, history, credentials, or private game text.',
+      'CAPABILITIES reports which semantic presentation features this client can provide. TEST exercises Reader History and the normal Audio Cue gates; DOCTOR reports conflicts such as duplicate native-reader plus Self-Voice speech.',
+      'PROFILE SAVE/USE/DELETE manages up to twelve local named accessibility setups. PROFILE EXPORT/IMPORT reuse the protected NukeFire Client Preset format for portable setup files rather than creating a second file format.',
+      'Accessibility diagnostics and profile management are interactive-only. Actions, Aliases, Functions, timers, Lua callbacks, and other automation cannot silently mutate profiles or flood diagnostic output.',
+      'The router observes the existing Reader, speech, soundpack, keybinding, and safety systems instead of creating a parallel routing-settings database.'
+    ])
+  }),
+  Object.freeze({
+    name: 'sound',
+    aliases: Object.freeze([]),
+    summary: 'Play one managed NukeFire soundpack event without exposing audio files or terminal internals.',
+    usages: Object.freeze([
+      'sound {custom.stairs}',
+      'sound {list}',
+      'sound {list} {custom}',
+      'sound {search} {stairs}',
+      'sound {show} {custom.stairs}'
+    ]),
+    details: Object.freeze([
+      'SOUND requests an event from the active NukeFire soundpack. It never accepts a filename, filesystem path, URL, raw Web Audio option, or volume override.',
+      'SOUND command words and event names are case-insensitive: #sound, #Sound, #SOUND, custom.stairs, and CUSTOM.STAIRS resolve through the same bounded command/event normalization.',
+      'SOUND LIST shows available event groups and counts. SOUND LIST {group} lists event names in one group such as communication, quest, door, combat, or custom.',
+      'SOUND SEARCH {text} finds playable event names without requiring the player to remember the exact vocabulary. SOUND SHOW {event} reports source, assignment, enabled state, and the current playback-ready/blocking reason.',
+      'Player-created TinTin sounds should use bounded custom.* names such as custom.stairs, custom.secret-door, or custom.low-health.',
+      'Use SOUND directly to test an event. When SOUND is generated by an Action, Event, Ticker, Delay, or other automation, blocked or missing sound chatter stays quiet so combat output cannot be spammed. LIST/SEARCH/SHOW are interactive discovery commands and do not produce automation chatter.',
+      'Example: #ACTION {a dungeon staircase} {#SOUND {custom.stairs}}. Assign custom.stairs an audio file in Preferences > Audio > Soundpack Editor.',
+      'Custom audio is copied into the selected editable .nfsp soundpack. The Action remembers only the event name; the original WAV/MP3/OGG/M4A file does not need to remain in place after assignment.',
+      'Official semantic event names may also be requested. Reserved/not-emitted events stay out of LIST/SEARCH results, while SHOW can still explain a known reserved event if its name is supplied.'
     ])
   }),
   Object.freeze({
@@ -980,6 +1029,9 @@ function listClientCommandHelp(prefixValue = DEFAULT_CLIENT_COMMAND_PREFIX) {
     'DISPLAY AND FILES',
     `  ${prefix}showme/${prefix}show  ${prefix}echo  ${prefix}format  ${prefix}set fontsize  ${prefix}debug  ${prefix}read  ${prefix}write  ${prefix}edit`,
     `  ${prefix}end  ${prefix}kill/${prefix}killall  ${prefix}info  ${prefix}commands`,
+    '',
+    'ACCESSIBILITY',
+    `  ${prefix}accessibility/${prefix}access/${prefix}a11y  ${prefix}sound`,
     '',
     'AUTOMATION',
     `  ${prefix}alias/${prefix}aliases  ${prefix}unalias  ${prefix}variable/${prefix}variables  ${prefix}unvariable`,

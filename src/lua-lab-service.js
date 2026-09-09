@@ -101,8 +101,15 @@ class LuaLabService {
 
   handleHostEvent(sessionId, event, executionContext, collections = {}) {
     if (event?.sessionId !== sessionId) return;
-    if (event.event === 'echo') collections.echoes?.push(event.args || []);
-    else if (event.event === 'send') collections.sends?.push(this.sendCommand(sessionId, String(event.command || ''), { ...executionContext, showCommand: event.show !== false }));
+    if (event.event === 'echo') {
+      const args = event.args || [];
+      collections.echoes?.push(args);
+      const format = String(event.format || '');
+      const formattedText = String(event.formattedText || '');
+      collections.outputEvents?.push(format && formattedText
+        ? { kind: 'echo', args, format, formattedText }
+        : { kind: 'echo', args });
+    } else if (event.event === 'send') collections.sends?.push(this.sendCommand(sessionId, String(event.command || ''), { ...executionContext, showCommand: event.show !== false }));
     else if (event.event === 'set-variable') collections.variableSets?.push(this.setVariable(sessionId, String(event.name || ''), String(event.value ?? '')));
     else if (event.event === 'set-table') collections.tableSets?.push(this.setTable(sessionId, String(event.name || ''), Array.isArray(event.records) ? event.records : []));
     else if (event.event === 'send-gmcp') collections.gmcpSends?.push(this.sendGmcp(sessionId, String(event.command || '')));
@@ -134,6 +141,7 @@ class LuaLabService {
 
       await this.ensureSession(sessionId);
       const echoes = [];
+      const outputEvents = [];
       const sends = [];
       const variableSets = [];
       const tableSets = [];
@@ -149,10 +157,10 @@ class LuaLabService {
         hardTimeoutMs: this.hardTimeoutMs,
         chunkName: luaChunkName(executionContext)
       }, hostContext, (event) => {
-        this.handleHostEvent(sessionId, event, executionContext, { echoes, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges });
+        this.handleHostEvent(sessionId, event, executionContext, { echoes, outputEvents, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges });
       });
       if (!this.runtime.worker) this.sessions.clear();
-      return { ...result, echoes, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges };
+      return { ...result, echoes, outputEvents, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges };
     };
 
     const previous = this.sessionChains.get(sessionId) || Promise.resolve();
@@ -172,6 +180,7 @@ class LuaLabService {
     const task = async () => {
       await this.ensureSession(sessionId);
       const echoes = [];
+      const outputEvents = [];
       const sends = [];
       const variableSets = [];
       const tableSets = [];
@@ -186,10 +195,10 @@ class LuaLabService {
         softTimeoutMs: 75,
         hardTimeoutMs: this.hardTimeoutMs
       }, hostContext, (event) => {
-        this.handleHostEvent(sessionId, event, executionContext, { echoes, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges });
+        this.handleHostEvent(sessionId, event, executionContext, { echoes, outputEvents, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges });
       });
       if (!this.runtime.worker) this.sessions.clear();
-      return { ...result, echoes, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges };
+      return { ...result, echoes, outputEvents, sends, variableSets, tableSets, gmcpSends, executions, automations, paneUpdates, storageChanges, moduleChanges };
     };
     const previous = this.sessionChains.get(sessionId) || Promise.resolve();
     const pending = previous.then(task, task);
@@ -212,12 +221,38 @@ class LuaLabService {
     }
   }
 
-  async forgetCallback(sessionIdValue, callbackIdValue) {
+  async waitForSessionIdle(sessionIdValue) {
     const sessionId = normalizeSessionId(sessionIdValue);
-    const callbackId = Math.max(1, Math.trunc(Number(callbackIdValue) || 0));
-    if (!callbackId || !this.runtime.worker || !this.sessions.has(sessionId)) return false;
-    try { return await this.runtime.dropCallback(sessionId, callbackId); }
-    catch { return false; }
+    const chain = this.sessionChains.get(sessionId);
+    if (chain) await chain.catch(() => {});
+    return true;
+  }
+
+  forgetCallbacks(sessionIdValue, callbackIdsValue = []) {
+    const sessionId = normalizeSessionId(sessionIdValue);
+    const callbackIds = [...new Set((Array.isArray(callbackIdsValue) ? callbackIdsValue : [callbackIdsValue])
+      .map((value) => Math.max(1, Math.trunc(Number(value) || 0)))
+      .filter(Boolean))];
+    if (!callbackIds.length) return Promise.resolve(0);
+    const task = async () => {
+      if (!this.runtime.worker || !this.sessions.has(sessionId)) return 0;
+      let forgotten = 0;
+      for (const callbackId of callbackIds) {
+        try { if (await this.runtime.dropCallback(sessionId, callbackId)) forgotten += 1; }
+        catch { /* Host-side retirement remains authoritative. */ }
+      }
+      return forgotten;
+    };
+    const previous = this.sessionChains.get(sessionId) || Promise.resolve();
+    const pending = previous.then(task, task);
+    const tail = pending.then(() => undefined, () => undefined);
+    this.sessionChains.set(sessionId, tail);
+    tail.finally(() => { if (this.sessionChains.get(sessionId) === tail) this.sessionChains.delete(sessionId); });
+    return pending;
+  }
+
+  async forgetCallback(sessionIdValue, callbackIdValue) {
+    return (await this.forgetCallbacks(sessionIdValue, [callbackIdValue])) > 0;
   }
 
   async closeSession(sessionIdValue) {

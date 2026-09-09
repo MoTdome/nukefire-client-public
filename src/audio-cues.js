@@ -6,6 +6,8 @@
   'use strict';
 
   const DEFAULT_AUDIO_CUE_VOLUME = 0.65;
+  const CUSTOM_CUE_PATTERN = /^custom\.[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
+  const MAX_CUSTOM_CUE_ID = 80;
   const AUDIO_CUE_IDS = Object.freeze([
     'hit', 'miss', 'incoming', 'critical', 'catastrophic', 'kill', 'danger',
     'health-75', 'health-50', 'health-10',
@@ -193,7 +195,8 @@
 
   function normalizeCueId(value) {
     const cueId = String(value || '').trim().toLowerCase();
-    return Object.hasOwn(CUE_DEFINITIONS, cueId) ? cueId : '';
+    if (Object.hasOwn(CUE_DEFINITIONS, cueId)) return cueId;
+    return cueId.length <= MAX_CUSTOM_CUE_ID && CUSTOM_CUE_PATTERN.test(cueId) ? cueId : '';
   }
 
   function defaultContextFactory() {
@@ -457,7 +460,10 @@
     setSoundpack(pack = null, assets = {}) {
       this.stopAll();
       const next = {};
-      for (const cueId of Object.keys(CUE_DEFINITIONS)) {
+      const candidateCueIds = new Set([...Object.keys(CUE_DEFINITIONS), ...Object.keys(assets || {})]);
+      for (const rawCueId of candidateCueIds) {
+        const cueId = normalizeCueId(rawCueId);
+        if (!cueId) continue;
         const input = assets?.[cueId];
         const legacySource = typeof input === 'string' ? input : '';
         const sourceList = legacySource ? [legacySource] : (Array.isArray(input?.sources) ? input.sources : []);
@@ -478,9 +484,37 @@
       return Object.keys(next).length;
     }
 
+    playbackBlockReason(options = {}) {
+      if (this.disposed) return 'Audio Cues are unavailable because the audio controller is closed.';
+      if (!this.enabled) return 'Audio Cues are off.';
+      if (this.muted) return 'Audio Cues are muted.';
+      if (!(this.foreground || options.allowBackground === true)) return 'Audio Cues are blocked while NukeFire is in the background.';
+      if (!this.available) return 'Audio playback is unavailable on this system.';
+      if (!(this.volume > 0)) return 'Audio Cue volume is 0 percent.';
+      return '';
+    }
+
+    cuePlaybackBlockReason(value, options = {}) {
+      const cueId = normalizeCueId(value);
+      if (!cueId) return 'That Audio Cue is not available.';
+      const baseReason = this.playbackBlockReason(options);
+      if (baseReason) return baseReason;
+      const now = Date.now();
+      const custom = this.soundpackAssets[cueId];
+      if (!custom && !Object.hasOwn(CUE_DEFINITIONS, cueId)) return 'That custom sound has no audio assigned in the active soundpack.';
+      if (custom?.cooldownMs > 0) {
+        const previous = this.soundpackLastPlayed.get(cueId) || 0;
+        if (now - previous < custom.cooldownMs) return 'That sound is waiting for its configured cooldown.';
+      } else {
+        const builtinCooldown = BUILTIN_CUE_COOLDOWNS[cueId] || 0;
+        const previous = this.builtinLastPlayed.get(cueId) || 0;
+        if (builtinCooldown > 0 && now - previous < builtinCooldown) return 'That sound is waiting for its built-in cooldown.';
+      }
+      return '';
+    }
+
     canPlay(options = {}) {
-      const foregroundAllowed = this.foreground || options.allowBackground === true;
-      return !this.disposed && this.enabled && !this.muted && foregroundAllowed && this.available && this.volume > 0;
+      return this.playbackBlockReason(options) === '';
     }
 
     unlock() {
@@ -622,6 +656,7 @@
   return Object.freeze({
     DEFAULT_AUDIO_CUE_VOLUME,
     AUDIO_CUE_IDS,
+    CUSTOM_CUE_PATTERN,
     CUE_DEFINITIONS,
     SERVER_SOUND_EVENT_CUES,
     normalizeCueId,

@@ -122,7 +122,11 @@ const DEFAULT_MAX_CONDITIONAL_DEPTH = 16;
 const DEFAULT_MAX_LUA_EXECUTION_DEPTH = 4;
 const DEFAULT_MAX_LUA_AUTOMATIONS = 256;
 const DEFAULT_MAX_LUA_CALLBACKS_PER_SECOND = 128;
-const DEFERRED_ACTION_VARIABLE_DIRECTIVES = new Set(['echo', 'format', 'math', 'show', 'showme', 'lua']);
+const SOUND_EVENT_NAME_MAX = 80;
+const SOUND_EVENT_NAME_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
+const SOUND_QUERY_TEXT_MAX = 80;
+const SOUND_LIST_FILTER_PATTERN = /^[a-z0-9_-]+$/u;
+const DEFERRED_ACTION_VARIABLE_DIRECTIVES = new Set(['echo', 'format', 'math', 'show', 'showme', 'lua', 'sound']);
 const ACTION_MANAGEMENT_DIRECTIVES = new Set([
   'alias', 'aliases', 'unalias',
   'action', 'actions', 'unaction', 'gag', 'gags', 'ungag',
@@ -1924,6 +1928,11 @@ class SessionManager {
       },
       onGmcpState: (state) => this.emit(id, 'gmcp-state', state),
       onPromptBoundary: (boundary) => {
+        // A TELNET prompt boundary ends the non-newline prompt carry for
+        // Actions/Lua triggers. The prompt itself is not an incoming mud line,
+        // so discard that carry rather than synthetically matching it. The next
+        // actual line therefore starts at column zero for normal ^ semantics.
+        session.actionLines?.reset();
         const prompt = this.flushGagText(session);
         if (prompt.communicationText) this.emit(id, 'communication-text', prompt.communicationText);
         if (prompt.visibleText) this.emit(id, 'text', prompt.visibleText);
@@ -6002,6 +6011,15 @@ class SessionManager {
     return '';
   }
 
+  luaAutomationOwner(value) {
+    const owner = String(value || '')
+      .normalize('NFKC')
+      .trim()
+      .replace(/[\u0000-\u001F\u007F]/gu, '')
+      .slice(0, 192);
+    return owner && /^[A-Za-z0-9_.:@/-]+$/u.test(owner) ? owner : '';
+  }
+
   removeLuaAutomation(session, idValue, options = {}) {
     const id = this.luaAutomationId(idValue);
     const record = session?.luaAutomations?.get(id);
@@ -6038,6 +6056,17 @@ class SessionManager {
       this.eventEngine.clearLuaTransients?.();
     });
     return ids.length;
+  }
+
+  removeLuaAutomationsByOwner(reference, ownerValue) {
+    const session = this.findSession(reference);
+    const owner = this.luaAutomationOwner(ownerValue);
+    if (!session?.luaAutomations || !owner) return [];
+    const ids = [...session.luaAutomations.values()]
+      .filter((record) => record?.owner === owner)
+      .map((record) => record.id);
+    for (const id of ids) this.removeLuaAutomation(session, id, { forgetCallback: false });
+    return ids;
   }
 
   setLuaAutomationEnabled(session, record, enabledValue) {
@@ -6100,7 +6129,8 @@ class SessionManager {
       seconds: Number(spec.seconds) || 0,
       repeating: spec.repeating === true,
       timer: null,
-      source: String(options.source || 'lua').slice(0, 32)
+      source: String(options.source || 'lua').slice(0, 32),
+      owner: this.luaAutomationOwner(options.resourceOwner)
     };
 
     let installed = false;
@@ -6177,7 +6207,8 @@ class SessionManager {
         namedMatches: context.namedMatches && typeof context.namedMatches === 'object' ? context.namedMatches : {},
         args: Array.isArray(context.args) ? context.args.slice(0, 32) : []
       },
-      source: String(options.source || record.engineKind || 'callback').slice(0, 32)
+      source: String(options.source || record.engineKind || 'callback').slice(0, 32),
+      resourceOwner: record.owner || ''
     };
 
     Promise.resolve(runner(request))
@@ -6324,6 +6355,30 @@ class SessionManager {
       luaGenerated: true,
       commandLineBatch: true
     });
+  }
+
+  normalizeSoundEventName(value) {
+    const event = String(value || '').normalize('NFKC').trim().toLowerCase();
+    if (!event || event.length > SOUND_EVENT_NAME_MAX || !SOUND_EVENT_NAME_PATTERN.test(event)) return '';
+    return event;
+  }
+
+  soundRequestInteractive(options = {}) {
+    return !(
+      options.actionGenerated === true
+      || options.aliasExpanded === true
+      || Boolean(options.functionContext)
+      || options.loopGenerated === true
+      || options.eventGenerated === true
+      || options.tickerGenerated === true
+      || options.delayGenerated === true
+      || options.repeatGenerated === true
+      || options.foreachGenerated === true
+      || options.forallGenerated === true
+      || options.whileGenerated === true
+      || options.parseGenerated === true
+      || options.luaGenerated === true
+    );
   }
 
   handleLuaCommand(parsed, source, options = {}) {
@@ -6953,7 +7008,7 @@ class SessionManager {
         }
       }
     } else if (parsed.directive === 'commands') {
-      const supported = ['ACTION','ALIAS','ALL','BREAK','CAT','BUFFER','CLASS','COMMANDS','CONFIG','CR','DELAY','DIRS','ECHO','END','EVENT','FORALL','FOREACH','FORMAT','FUNCTION','GAG','GREP','HELP','HIGHLIGHT','HISTORY','IF','IGNORE','INFO','KILL','LINE','LIST','LOCAL','LOG','LOOP','MACRO','MAP','MATH','MESSAGE','NOP','PARSE','PATH','PATHDIR','READ','REGEX','REPLACE','RETURN','SEND','SESSION','SHOWME','SNOOP','SPEEDWALK','SUBSTITUTE','SWITCH','TICKER','UNDELAY','VARIABLE','WHILE','WRITE','ZAP'];
+      const supported = ['ACTION','ALIAS','ALL','BREAK','CAT','BUFFER','CLASS','COMMANDS','CONFIG','CR','DELAY','DIRS','ECHO','END','EVENT','FORALL','FOREACH','FORMAT','FUNCTION','GAG','GREP','HELP','HIGHLIGHT','HISTORY','IF','IGNORE','INFO','KILL','LINE','LIST','LOCAL','LOG','LOOP','MACRO','MAP','MATH','MESSAGE','NOP','PARSE','PATH','PATHDIR','READ','REGEX','REPLACE','RETURN','SEND','SESSION','SHOWME','SNOOP','SOUND','SPEEDWALK','SUBSTITUTE','SWITCH','TICKER','UNDELAY','VARIABLE','WHILE','WRITE','ZAP'];
       messages.push(`TinTin-compatible commands: ${supported.join(', ')}.`);
       messages.push('Terminal-only or unsafe host/network commands are translated, ignored, or blocked explicitly rather than sent to the MUD.');
     } else if (parsed.directive === 'dirs') {
@@ -7017,6 +7072,107 @@ class SessionManager {
       const lua = this.handleLuaCommand(parsed, source, options);
       deliveries = lua.deliveries;
       messages.push(...lua.messages);
+    } else if (parsed.directive === 'sound') {
+      const operation = String(tokens[0] || '').normalize('NFKC').trim().toLowerCase();
+      const interactive = this.soundRequestInteractive(options);
+      if (!tokens.length) {
+        messages.push(this.usage('sound {event}'));
+        messages.push(this.usage('sound {list} [group]'));
+        messages.push(this.usage('sound {search} {text}'));
+        messages.push(this.usage('sound {show} {event}'));
+      } else if (!interactive && ['list', 'search', 'show'].includes(operation)) {
+        // Discovery is intentionally interactive-only. Automation may play a
+        // sound event, but it cannot dump catalog/search/status chatter.
+      } else if (operation === 'list') {
+        if (tokens.length > 2) {
+          messages.push(this.usage('sound {list} [group]'));
+        } else if (interactive) {
+          const filter = String(tokens[1] || '').normalize('NFKC').trim().toLowerCase();
+          if (filter && (filter.length > 32 || !SOUND_LIST_FILTER_PATTERN.test(filter))) {
+            messages.push('Sound list groups use letters, numbers, underscores, or hyphens.');
+          } else {
+            this.emit(source.id, 'soundpack-event-query', { operation: 'list', filter });
+          }
+        }
+      } else if (operation === 'search') {
+        if (tokens.length < 2) {
+          messages.push(this.usage('sound {search} {text}'));
+        } else if (interactive) {
+          const raw = tokens.slice(1).join(' ');
+          const expanded = options.variablesExpanded
+            ? { value: raw, error: '' }
+            : this.expandFunctionAndVariables(raw, source, options);
+          if (expanded.error) messages.push(expanded.error);
+          else {
+            const query = String(expanded.value || '').normalize('NFKC').trim().toLowerCase().replace(/[\u0000-\u001F\u007F]/gu, '').slice(0, SOUND_QUERY_TEXT_MAX);
+            if (!query) messages.push(this.usage('sound {search} {text}'));
+            else this.emit(source.id, 'soundpack-event-query', { operation: 'search', query });
+          }
+        }
+      } else if (operation === 'show') {
+        if (tokens.length !== 2) {
+          messages.push(this.usage('sound {show} {event}'));
+        } else if (interactive) {
+          const expanded = options.variablesExpanded
+            ? { value: tokens[1], error: '' }
+            : this.expandFunctionAndVariables(tokens[1], source, options);
+          if (expanded.error) messages.push(expanded.error);
+          else {
+            const event = this.normalizeSoundEventName(expanded.value);
+            if (!event) messages.push('Sound event names use letters, numbers, dots, underscores, or hyphens.');
+            else this.emit(source.id, 'soundpack-event-query', { operation: 'show', event });
+          }
+        }
+      } else if (tokens.length !== 1) {
+        messages.push(this.usage('sound {event}'));
+      } else {
+        const expanded = options.variablesExpanded
+          ? { value: tokens[0], error: '' }
+          : this.expandFunctionAndVariables(tokens[0], source, options);
+        if (expanded.error) messages.push(expanded.error);
+        else {
+          const event = this.normalizeSoundEventName(expanded.value);
+          if (!event) {
+            messages.push('Sound event names use letters, numbers, dots, underscores, or hyphens. Player-created names should use custom.<name>.');
+          } else {
+            this.tracePipeline(source, 'sound', () => `Managed soundpack event requested: ${event}${interactive ? ' (interactive)' : ' (automation)'}.`);
+            this.emit(source.id, 'soundpack-event-request', {
+              event,
+              interactive,
+              reportSuccess: interactive && source.tintin?.config?.commandEcho === true
+            });
+          }
+        }
+      }
+    } else if (parsed.directive === 'accessibility' || parsed.directive === 'access' || parsed.directive === 'a11y') {
+      const interactive = this.soundRequestInteractive(options);
+      if (!interactive) {
+        // Accessibility diagnostics/profile management are interactive-only so
+        // an Action, Alias, Function, timer, or Lua callback cannot flood or
+        // silently mutate the player's accessibility setup.
+      } else {
+        const operation = String(tokens[0] || 'status').normalize('NFKC').trim().toLowerCase();
+        let payload = { operation };
+        if (operation === 'status') payload = { operation: 'capabilities' };
+        else if (['last', 'why', 'doctor', 'test', 'capabilities', 'clear'].includes(operation)) payload = { operation };
+        else if (operation === 'report') payload = { operation: 'report', copy: String(tokens[1] || '').trim().toLowerCase() === 'copy' };
+        else if (operation === 'profile') {
+          const sub = String(tokens[1] || 'list').normalize('NFKC').trim().toLowerCase();
+          const value = tokens.slice(2).join(' ').normalize('NFKC').trim().slice(0, 80);
+          if (sub === 'list') payload = { operation: 'profile-list' };
+          else if (['save', 'use', 'delete'].includes(sub) && value) payload = { operation: `profile-${sub}`, value };
+          else if (sub === 'export') payload = { operation: 'profile-export' };
+          else if (sub === 'import') payload = { operation: 'profile-import' };
+          else {
+            messages.push(this.usage('accessibility {profile} {list|save|use|delete|export|import} [name]'));
+            payload = null;
+          }
+        } else {
+          messages.push(this.usage('accessibility {last|why|report|capabilities|test|doctor|clear|profile}'));
+          payload = null;
+        }
+        if (payload) this.emit(source.id, 'accessibility-command', payload);
+      }
     } else if (parsed.directive === 'showme' || parsed.directive === 'show') {
       if (tokens.length < 1) {
         messages.push(this.usage('showme {text}'));

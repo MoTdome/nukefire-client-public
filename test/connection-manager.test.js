@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const packageJson = require('../package.json');
 const { EventEmitter } = require('node:events');
 const { deflateSync, zstdCompressSync } = require('node:zlib');
 const { TelnetParser, TELNET } = require('../src/telnet-parser');
@@ -89,7 +90,7 @@ test('GMCP initialization advertises and requests the NukeFire packages', async 
 
   assert.deepEqual(messages[0], {
     packageName: 'Core.Hello',
-    body: { client: 'NukeFire Client', version: '0.3.1-beta.74' }
+    body: { client: 'NukeFire Client', version: packageJson.version }
   });
   assert.deepEqual(messages[1], {
     packageName: 'Core.Supports.Set',

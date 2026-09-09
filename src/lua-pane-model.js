@@ -26,6 +26,15 @@ function normalizeId(value) {
   return LUA_PANE_ID.test(id) ? id : '';
 }
 
+function normalizeOwner(value) {
+  const owner = String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/[\u0000-\u001F\u007F]/gu, '')
+    .slice(0, 192);
+  return owner && /^[A-Za-z0-9_.:@/-]+$/u.test(owner) ? owner : '';
+}
+
 function parsePayloadJson(value) {
   const source = String(value ?? '{}');
   if (Buffer.byteLength(source, 'utf8') > MAX_LUA_PANE_COMMAND_BYTES) return null;
@@ -105,7 +114,7 @@ class LuaPaneRegistry {
     return current.count <= LUA_PANE_RATE_LIMIT;
   }
 
-  apply(sessionIdValue, rawCommand = {}) {
+  apply(sessionIdValue, rawCommand = {}, options = {}) {
     const sessionId = String(sessionIdValue || '').trim();
     const action = boundedText(rawCommand?.action, 16).toLowerCase();
     const paneId = normalizeId(rawCommand?.paneId);
@@ -122,7 +131,7 @@ class LuaPaneRegistry {
       const title = boundedText(payload.title || paneId, MAX_LUA_PANE_TITLE);
       if (!rows || !title) return { ok: false, reason: 'invalid-definition' };
       if (!panes.has(paneId) && panes.size >= this.maxPanes) return { ok: false, reason: 'pane-limit' };
-      const pane = { id: paneId, title, visible: payload.visible !== false, rows, values: Object.create(null) };
+      const pane = { id: paneId, title, visible: payload.visible !== false, rows, values: Object.create(null), owner: normalizeOwner(options.owner) };
       for (const row of rows) pane.values[row.id] = defaultRowValue(row);
       panes.set(paneId, pane);
       return { ok: true, event: { action: 'upsert', pane: clonePane(pane) } };
@@ -155,6 +164,17 @@ class LuaPaneRegistry {
     return panes ? [...panes.values()].map(clonePane) : [];
   }
 
+  clearOwner(sessionIdValue, ownerValue) {
+    const sessionId = String(sessionIdValue || '').trim();
+    const owner = normalizeOwner(ownerValue);
+    const panes = this.sessions.get(sessionId);
+    if (!sessionId || !owner || !panes) return [];
+    const paneIds = [...panes.values()].filter((pane) => pane.owner === owner).map((pane) => pane.id);
+    for (const paneId of paneIds) panes.delete(paneId);
+    if (!panes.size) this.sessions.delete(sessionId);
+    return paneIds;
+  }
+
   clearSession(sessionIdValue) {
     const sessionId = String(sessionIdValue || '').trim();
     this.rate.delete(sessionId);
@@ -169,5 +189,6 @@ module.exports = {
   MAX_LUA_PANE_ROWS,
   MAX_LUA_PANE_COMMAND_BYTES,
   normalizeId,
+  normalizeOwner,
   normalizeRows
 };

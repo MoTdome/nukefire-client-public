@@ -1,6 +1,6 @@
 {
   "name": "nukefire-mac-client",
-  "version": "0.3.1-beta.74",
+  "version": "0.3.1-beta.75",
   "private": true,
   "description": "A focused desktop MUD client for NukeFire.",
   "main": "main.js",

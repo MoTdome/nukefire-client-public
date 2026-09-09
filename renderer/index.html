@@ -1940,8 +1940,13 @@
                   <button id="soundpack-editor-duplicate" type="button">Duplicate Selected Pack</button>
                   <button id="soundpack-editor-export" type="button">Export Selected Pack</button>
                 </div>
-                <label><span>Semantic event</span><select id="soundpack-editor-event" aria-describedby="soundpack-editor-event-status"></select></label>
-                <label class="checkbox"><input id="soundpack-editor-enabled" type="checkbox" checked> Enable this semantic event</label>
+                <label><span>Semantic or custom event</span><select id="soundpack-editor-event" aria-describedby="soundpack-editor-event-status"></select></label>
+                <div class="preference-grid">
+                  <label><span>Custom Action event</span><input id="soundpack-editor-custom-event" maxlength="80" placeholder="custom.stairs" autocomplete="off" spellcheck="false" aria-describedby="soundpack-editor-custom-help"></label>
+                  <div class="preferences-actions"><button id="soundpack-editor-custom-use" type="button">Use Custom Event</button></div>
+                </div>
+                <p id="soundpack-editor-custom-help">Player-created sounds use custom.* names. Example: custom.stairs can be called from #ACTION {a dungeon staircase} {#SOUND {custom.stairs}}. If Built-in NukeFire is active, Use Custom Event prepares a Personal Sounds pack automatically. Assigned audio is copied into that .nfsp soundpack.</p>
+                <label class="checkbox"><input id="soundpack-editor-enabled" type="checkbox" checked> Enable this sound event</label>
                 <div class="preference-grid">
                   <label><span>Event volume percent</span><input id="soundpack-editor-volume" type="number" min="0" max="100" value="100"></label>
                   <label><span>Cooldown milliseconds</span><input id="soundpack-editor-cooldown" type="number" min="0" max="60000" value="0"></label>
@@ -2120,6 +2125,7 @@
   <script src="../src/knowledge-store.js"></script>
   <script src="../src/reader-review.js"></script>
   <script src="../src/reader-history.js"></script>
+  <script src="../src/accessibility-router.js"></script>
   <script src="../src/reader-safety.js"></script>
   <script src="../src/reader-onboarding.js"></script>
   <script src="../src/speech-markers.js"></script>

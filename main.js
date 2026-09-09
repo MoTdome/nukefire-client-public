@@ -162,14 +162,40 @@ function decodeLuaScriptBase64(value, maxBytes = 96 * 1024) {
   return buffer.toString('utf8');
 }
 
+function luaScriptResourceOwner(nameValue) {
+  const name = normalizeModuleName(nameValue);
+  return name ? `script/${name}` : '';
+}
+
+async function cleanupManagedLuaScriptResources(sessionIdValue, nameValue) {
+  const sessionId = String(sessionIdValue || '');
+  const owner = luaScriptResourceOwner(nameValue);
+  if (!sessionId || !owner || !sessionManager?.findSession(sessionId)) return { owner, callbackIds: [], paneIds: [] };
+
+  // Stop new invocations first. A callback already in flight is allowed to
+  // finish, then a second owner sweep catches anything it created on the way out.
+  const callbackIds = new Set(sessionManager.removeLuaAutomationsByOwner(sessionId, owner));
+  if (luaLabService) await luaLabService.waitForSessionIdle(sessionId).catch(() => false);
+  for (const id of sessionManager.removeLuaAutomationsByOwner(sessionId, owner)) callbackIds.add(id);
+
+  const paneIds = luaPaneRegistry.clearOwner(sessionId, owner);
+  for (const paneId of paneIds) sessionManager.emit(sessionId, 'lua-pane-state', { action: 'destroy', paneId });
+  if (luaLabService && callbackIds.size) {
+    await luaLabService.forgetCallbacks(sessionId, [...callbackIds]).catch(() => 0);
+  }
+  return { owner, callbackIds: [...callbackIds], paneIds };
+}
+
 async function runManagedLuaScript(sessionIdValue, nameValue, sourceValue = null, source = 'saved-script') {
   const sessionId = String(sessionIdValue || '');
   const name = normalizeModuleName(nameValue);
   const script = sourceValue === null ? luaManagedStore?.getScript(sessionId, name) : { name, source: String(sourceValue || '') };
   if (!sessionId || !name || !script?.source) return { ok: false, error: { type: 'usage', message: `Saved Lua script ${name || '(invalid)'} was not found.` } };
+  const resourceOwner = luaScriptResourceOwner(name);
+  await cleanupManagedLuaScriptResources(sessionId, name);
   let result;
   try {
-    result = await ensureLuaLabService().execute(sessionId, script.source, { source, scriptName: name });
+    result = await ensureLuaLabService().execute(sessionId, script.source, { source, scriptName: name, resourceOwner });
   } catch (error) {
     result = { ok: false, error: { type: 'host', message: String(error?.message || error || 'Lua script host error').slice(0, 4096) }, echoes: [] };
   }
@@ -200,7 +226,11 @@ function ensureLuaAutorunForSession(sessionIdValue, reason = 'session') {
 
 async function reloadLuaAutorunForSession(sessionIdValue) {
   const sessionId = String(sessionIdValue || '');
-  if (!sessionId || !sessionManager?.findSession(sessionId)) return [];
+  const session = sessionId ? sessionManager?.findSession(sessionId) : null;
+  if (!sessionId || !session) return [];
+  // Reload Autorun is the intentionally global Lua reset. Clear both sides of
+  // temporary automation before destroying/recreating the Worker VM.
+  sessionManager.clearLuaAutomations(session);
   for (const pane of luaPaneRegistry.snapshot(sessionId)) {
     sessionManager.emit(sessionId, 'lua-pane-state', { action: 'destroy', paneId: pane.id });
   }
@@ -309,6 +339,7 @@ async function handleLuaScriptCoordinatorCommand(sessionIdValue, commandValue) {
   if (operation === 'delete') {
     const name = normalizeModuleName(tokens[0]);
     if (!name) return luaScriptCoordinatorResult([`Usage: ${prefix}luascript delete <name>`]);
+    if (luaManagedStore?.getScript(sessionId, name)) await cleanupManagedLuaScriptResources(sessionId, name);
     const deleted = luaManagedStore?.deleteScript(sessionId, name);
     publishLuaScriptCatalog(sessionId);
     return luaScriptCoordinatorResult([deleted?.deleted ? `Deleted saved Lua script ${name}.` : `Lua script ${name} was not found.`]);
@@ -334,6 +365,7 @@ async function handleLuaScriptCoordinatorCommand(sessionIdValue, commandValue) {
   if (operation === '__delete') {
     const name = normalizeModuleName(decodeLuaScriptBase64(tokens[0], 512) || '');
     if (!name) return luaScriptCoordinatorResult(['Lua script delete request was invalid.']);
+    if (luaManagedStore?.getScript(sessionId, name)) await cleanupManagedLuaScriptResources(sessionId, name);
     const deleted = luaManagedStore?.deleteScript(sessionId, name);
     publishLuaScriptCatalog(sessionId);
     publishLuaScriptEditor(sessionId, '', { isNew: true });
@@ -893,7 +925,7 @@ function createWindow() {
           sessionId,
           callbackId,
           request.context || {},
-          { source }
+          { source, resourceOwner: String(request.resourceOwner || '') }
         );
         noteLuaDiagnosticResult(sessionId, result, { source, origin: source, callbackId });
         return result;
@@ -1390,9 +1422,9 @@ function ensureLuaLabService() {
     reconnect: (sessionId) => sessionManager
       ? sessionManager.requestLuaReconnect(sessionId)
       : { requested: false, reason: 'sessions-unavailable' },
-    paneCommand: (sessionId, command) => {
+    paneCommand: (sessionId, command, context = {}) => {
       if (!sessionManager) return { ok: false, reason: 'sessions-unavailable' };
-      const result = luaPaneRegistry.apply(sessionId, command);
+      const result = luaPaneRegistry.apply(sessionId, command, { owner: String(context.resourceOwner || '') });
       if (result.ok && result.event) sessionManager.emit(sessionId, 'lua-pane-state', result.event);
       return result;
     },
