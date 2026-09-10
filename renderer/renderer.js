@@ -3840,7 +3840,7 @@ async function copyLongSessionReport() {
   if (!longSessionMonitor) return false;
   const report = longSessionMonitor.report({
     client: 'NukeFire Client',
-    version: '0.3.1-beta.73',
+    version: '0.3.1-beta.76',
     platform: navigator.platform || '',
     userAgent: navigator.userAgent || '',
     experiment: 'beta73-combat-scroll-pacing-v1'
@@ -10488,7 +10488,7 @@ function accessibilityProfileSnapshot(nameValue) {
       audioCuesForegroundOnly: state.accessibility.audioCuesForegroundOnly !== false,
       audioCuesVolume: Number(state.accessibility.audioCuesVolume) || 0,
       soundpackId: String(state.accessibility.soundpackId || 'builtin'),
-      soundpackDisabledEvents: [...(state.accessibility.soundpackDisabledEvents || [])].slice(0, 256),
+      soundpackDisabledEvents: [...(state.accessibility.soundpackDisabledEvents || [])].slice(0, MAX_SOUNDPACK_EVENT_PREFERENCES),
       communicationCues: { ...(state.accessibility.communicationCues || {}) },
       announceImportant: state.accessibility.announceImportant !== false
     },
@@ -11073,7 +11073,7 @@ async function importSoundpack(options = {}) {
   return options.detailed ? imported : activated;
 }
 
-async function withCommandDraftPreserved(operation) {
+async function withCommandDraftPreserved(operation, options = {}) {
   const draft = commandInput.value;
   const start = commandInput.selectionStart;
   const end = commandInput.selectionEnd;
@@ -11082,6 +11082,7 @@ async function withCommandDraftPreserved(operation) {
   finally {
     commandInput.value = draft;
     if (Number.isInteger(start) && Number.isInteger(end)) commandInput.setSelectionRange(start, end, direction || 'none');
+    if (options.focusCommand === true) scheduleFrame(() => focusCommand({ preserveSelection: true }));
   }
 }
 
@@ -11091,6 +11092,7 @@ function soundpackEditorStatus(message) {
 }
 
 const CUSTOM_SOUNDPACK_EVENT_PATTERN = /^custom\.[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
+const MAX_SOUNDPACK_EVENT_PREFERENCES = 2500;
 
 function normalizeCustomSoundpackEvent(value) {
   const event = String(value || '').trim().toLowerCase();
@@ -11099,7 +11101,7 @@ function normalizeCustomSoundpackEvent(value) {
 
 function customSoundpackEventRecord(eventValue) {
   const event = normalizeCustomSoundpackEvent(eventValue);
-  return event ? { event, cue: event, source: 'player', status: 'active', note: 'Player-created sound event for TinTin Actions.' } : null;
+  return event ? { event, cue: event, source: 'player', status: 'active', note: event.startsWith('custom.music.') ? 'Player-created single-track music event for TinTin Actions.' : 'Player-created sound event for TinTin Actions.' } : null;
 }
 
 function normalizeSoundpackDisabledEvents(value) {
@@ -11113,9 +11115,12 @@ function normalizeSoundpackDisabledEvents(value) {
   for (const raw of source) {
     const event = String(raw || '').trim().toLowerCase();
     if (!event || event.length > 80 || !/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u.test(event) || seen.has(event)) continue;
+    // Communication enable/disable is owned only by communicationCues. Drop
+    // stale communication.* entries from the legacy soundpack-disabled list.
+    if (event.startsWith('communication.')) continue;
     seen.add(event);
     result.push(event);
-    if (result.length >= 64) break;
+    if (result.length >= MAX_SOUNDPACK_EVENT_PREFERENCES) break;
   }
   return result;
 }
@@ -11138,14 +11143,35 @@ function soundpackEventRecord(eventValue) {
   return state.accessibility.soundpackEvents.find((record) => String(record?.event || '').toLowerCase() === event) || null;
 }
 
+function soundpackCommunicationChannel(eventValue) {
+  const event = String(eventValue || '').trim().toLowerCase();
+  if (!event.startsWith('communication.')) return '';
+  return normalizeCommunicationCueChannel(event.slice('communication.'.length));
+}
+
 function soundpackEventEnabled(eventValue) {
   const event = String(eventValue || '').trim().toLowerCase();
+  const communicationChannel = soundpackCommunicationChannel(event);
+  if (communicationChannel) return state.accessibility.communicationCues?.[communicationChannel] === true;
   return Boolean(event) && !state.accessibility.soundpackDisabledEvents.includes(event);
 }
 
 function setSoundpackEventEnabled(eventValue, enabled, options = {}) {
   const event = String(eventValue || '').trim().toLowerCase();
   if (!event || (state.accessibility.soundpackEvents.length && !soundpackEventRecord(event))) return null;
+  const communicationChannel = soundpackCommunicationChannel(event);
+  if (communicationChannel) {
+    // Communication enable/disable has one authority.  Soundpack controls may
+    // reach it, but they never create a second per-event communication gate.
+    const disabled = new Set(state.accessibility.soundpackDisabledEvents);
+    disabled.delete(event); // clean up any legacy duplicate gate while touched
+    setSoundpackDisabledEvents([...disabled], { persist: options.persist !== false, announceChange: false });
+    setCommunicationCueChannel(communicationChannel, Boolean(enabled), { persist: options.persist !== false, announceChange: false });
+    const control = $('#soundpack-editor-enabled');
+    if (control && $('#soundpack-editor-event')?.value === event) control.checked = Boolean(enabled);
+    if (options.announceChange) announce(`${communicationChannelLabel(communicationChannel)} communication sound ${enabled ? 'enabled' : 'disabled'}.`, { force: true, interrupt: true });
+    return Boolean(enabled);
+  }
   const disabled = new Set(state.accessibility.soundpackDisabledEvents);
   if (enabled) disabled.delete(event);
   else disabled.add(event);
@@ -11189,16 +11215,18 @@ function soundpackEventPlaybackDecision(eventValue, options = {}) {
   if (record?.status === 'not-emitted') {
     return { allowed: false, event, cueId, allowBackground: false, reason: record.note || 'That soundpack event is reserved and is not currently emitted.' };
   }
-  if (!soundpackEventEnabled(event)) return { allowed: false, event, cueId, allowBackground: false, reason: `${event} is disabled.` };
 
   let allowBackground = false;
+  const communicationChannel = soundpackCommunicationChannel(event);
   if (event.startsWith('communication.')) {
-    const channel = normalizeCommunicationCueChannel(event.slice('communication.'.length));
+    const channel = communicationChannel;
     if (!channel) return { allowed: false, event, cueId, allowBackground, reason: 'That communication sound is not supported.' };
     if (state.accessibility.communicationCues?.[channel] !== true) {
       return { allowed: false, event, cueId, allowBackground, reason: `${communicationChannelLabel(channel)} communication sound is off.` };
     }
     allowBackground = state.accessibility.communicationCues?.background === true;
+  } else if (!soundpackEventEnabled(event)) {
+    return { allowed: false, event, cueId, allowBackground: false, reason: `${event} is disabled.` };
   }
 
   const audioDecision = audioCuePlaybackDecision(cueId, { allowBackground });
@@ -11258,12 +11286,25 @@ async function loadSoundpackEventCatalog() {
   return state.accessibility.soundpackEvents;
 }
 
-async function ensureEditableSoundpackForCustomEvent() {
-  let id = String($('#soundpack-select')?.value || state.accessibility.soundpackId || 'builtin').trim().toLowerCase();
+async function ensureEditableSoundpackForCustomEvent(options = {}) {
+  let id = String(options.packId || $('#soundpack-select')?.value || state.accessibility.soundpackId || 'builtin').trim().toLowerCase();
   if (id !== 'builtin') return id;
-  const requestedId = String($('#soundpack-editor-id')?.value || 'personal-sounds').trim().toLowerCase() || 'personal-sounds';
-  const requestedName = String($('#soundpack-editor-name')?.value || 'Personal Sounds').trim() || 'Personal Sounds';
-  const requestedAuthor = String($('#soundpack-editor-author')?.value || 'Player').trim() || 'Player';
+
+  // The command line may be used before Preferences has ever been opened. Refresh
+  // the existing store first so an already-created Personal Sounds pack is reused
+  // instead of trying to create a duplicate.
+  if (typeof window.nukefire.listSoundpacks === 'function') {
+    try {
+      const listed = await window.nukefire.listSoundpacks();
+      state.accessibility.soundpacks = Array.isArray(listed?.packs) ? listed.packs : state.accessibility.soundpacks;
+      state.accessibility.soundpackInvalid = Array.isArray(listed?.invalid) ? listed.invalid : state.accessibility.soundpackInvalid;
+      updateSoundpackControls();
+    } catch (_error) {}
+  }
+
+  const requestedId = String(options.requestedId || $('#soundpack-editor-id')?.value || 'personal-sounds').trim().toLowerCase() || 'personal-sounds';
+  const requestedName = String(options.requestedName || $('#soundpack-editor-name')?.value || 'Personal Sounds').trim() || 'Personal Sounds';
+  const requestedAuthor = String(options.requestedAuthor || $('#soundpack-editor-author')?.value || 'Player').trim() || 'Player';
   const existing = (state.accessibility.soundpacks || []).find((pack) => String(pack?.id || '').trim().toLowerCase() === requestedId);
   if (existing) {
     const activated = await activateSoundpack(requestedId, { announceChange: false });
@@ -11282,6 +11323,82 @@ async function ensureEditableSoundpackForCustomEvent() {
   return activated ? result.pack.id : '';
 }
 
+function ensureCustomSoundpackCatalogRecord(eventValue) {
+  const event = normalizeCustomSoundpackEvent(eventValue);
+  if (!event) return null;
+  let record = soundpackEventRecord(event);
+  if (!record) {
+    record = customSoundpackEventRecord(event);
+    state.accessibility.soundpackEvents.push(record);
+    const select = $('#soundpack-editor-event');
+    if (select && ![...select.options].some((option) => option.value === event)) {
+      const option = document.createElement('option');
+      option.value = event;
+      option.textContent = `${event} — player custom`;
+      select.append(option);
+    }
+  }
+  return record;
+}
+
+async function soundpackEventAssignmentSnapshot(idValue, eventValue) {
+  const id = String(idValue || state.accessibility.soundpackId || 'builtin').trim().toLowerCase();
+  const event = String(eventValue || '').trim().toLowerCase();
+  if (!event || typeof window.nukefire.describeSoundpack !== 'function') {
+    return { assigned: false, volume: 1, cooldown_ms: 0, packName: String(audioCues?.soundpackName || id) };
+  }
+  try {
+    const described = await window.nukefire.describeSoundpack(id);
+    const assigned = described?.pack?.events?.[event] || null;
+    return {
+      assigned: Boolean(assigned),
+      volume: assigned ? Math.max(0, Math.min(1, Number(assigned.volume) || 0)) : 1,
+      cooldown_ms: assigned ? Math.max(0, Number(assigned.cooldown_ms) || 0) : 0,
+      packName: String(described?.pack?.name || audioCues?.soundpackName || id)
+    };
+  } catch (_error) {
+    return { assigned: false, volume: 1, cooldown_ms: 0, packName: String(audioCues?.soundpackName || id) };
+  }
+}
+
+async function assignSoundpackEventAudio(idValue, eventValue, options = {}) {
+  const id = String(idValue || state.accessibility.soundpackId || 'builtin').trim().toLowerCase();
+  const event = String(eventValue || '').trim().toLowerCase();
+  if (id === 'builtin') return { ok: false, canceled: false, error: 'Built-in NukeFire cannot be edited.' };
+  if (!event || typeof window.nukefire.assignSoundpackEvent !== 'function') {
+    return { ok: false, canceled: false, error: 'Protected sound assignment is unavailable.' };
+  }
+  try {
+    const result = await withCommandDraftPreserved(() => window.nukefire.assignSoundpackEvent({
+      id,
+      event,
+      volume: Number.isFinite(Number(options.volume)) ? Number(options.volume) : 1,
+      cooldown_ms: Number.isFinite(Number(options.cooldown_ms)) ? Number(options.cooldown_ms) : 0
+    }));
+    if (result?.canceled) return { ok: false, canceled: true, error: '' };
+    if (!result?.ok) return { ok: false, canceled: false, error: result?.error || 'invalid request' };
+    await activateSoundpack(id, { announceChange: false });
+    await loadSoundpackEventCatalog();
+    return { ok: true, canceled: false, pack: result.pack || null };
+  } finally {
+    if (options.focusCommand === true) scheduleFrame(() => focusCommand({ preserveSelection: true }));
+  }
+}
+
+async function clearSoundpackEventAudio(idValue, eventValue, options = {}) {
+  const id = String(idValue || state.accessibility.soundpackId || 'builtin').trim().toLowerCase();
+  const event = String(eventValue || '').trim().toLowerCase();
+  if (id === 'builtin') return { ok: false, error: 'Built-in NukeFire has no editable assignment to clear.' };
+  if (!event || typeof window.nukefire.clearSoundpackEvent !== 'function') return { ok: false, error: 'Soundpack clearing is unavailable.' };
+  const result = await withCommandDraftPreserved(() => window.nukefire.clearSoundpackEvent({ id, event }));
+  if (!result?.ok) return { ok: false, error: result?.error || 'invalid request' };
+  await activateSoundpack(id, { announceChange: false });
+  await loadSoundpackEventCatalog();
+  if (options.keepCustomCatalog === true) ensureCustomSoundpackCatalogRecord(event);
+  if (options.focusCommand === true) scheduleFrame(() => focusCommand({ preserveSelection: true }));
+  return { ok: true, pack: result.pack || null };
+}
+
 async function selectCustomSoundpackEvent() {
   const input = $('#soundpack-editor-custom-event');
   const event = normalizeCustomSoundpackEvent(input?.value);
@@ -11292,18 +11409,7 @@ async function selectCustomSoundpackEvent() {
   }
   const editablePackId = await ensureEditableSoundpackForCustomEvent();
   if (!editablePackId) return false;
-  let record = soundpackEventRecord(event);
-  if (!record) {
-    record = customSoundpackEventRecord(event);
-    state.accessibility.soundpackEvents.push(record);
-    const select = $('#soundpack-editor-event');
-    if (select) {
-      const option = document.createElement('option');
-      option.value = event;
-      option.textContent = `${event} — player custom`;
-      select.append(option);
-    }
-  }
+  ensureCustomSoundpackCatalogRecord(event);
   const select = $('#soundpack-editor-event');
   if (select) select.value = event;
   soundpackEditorStatus(`${event} selected in ${editablePackId}. Assign an audio file; NukeFire will copy it into that .nfsp soundpack.`);
@@ -11363,33 +11469,36 @@ async function assignSelectedSoundpackEvent() {
   if (id === 'builtin') { soundpackEditorStatus('Duplicate Built-in NukeFire before assigning custom sounds.'); return false; }
   const volume = Number($('#soundpack-editor-volume')?.value || 100) / 100;
   const cooldown_ms = Number($('#soundpack-editor-cooldown')?.value || 0);
-  const result = await withCommandDraftPreserved(() => window.nukefire.assignSoundpackEvent({ id, event, volume, cooldown_ms }));
-  if (result?.canceled) { soundpackEditorStatus('Audio assignment canceled; the soundpack was not changed.'); return false; }
-  const message = result?.ok ? `${event} audio assigned in ${result.pack.name}.` : `Audio was not assigned: ${result?.error || 'invalid request'}.`;
+  const result = await assignSoundpackEventAudio(id, event, { volume, cooldown_ms });
+  if (result.canceled) { soundpackEditorStatus('Audio assignment canceled; the soundpack was not changed.'); return false; }
+  const message = result.ok ? `${event} audio assigned in ${result.pack?.name || id}.` : `Audio was not assigned: ${result.error || 'invalid request'}.`;
   soundpackEditorStatus(message);
-  if (result?.ok) {
-    await activateSoundpack(id, { announceChange: false });
-    await loadSoundpackEventCatalog();
-  }
   announce(message, { force: true });
-  return result?.ok === true;
+  return result.ok === true;
 }
 
 async function updateSelectedSoundpackEvent(clear = false) {
   const id = $('#soundpack-select')?.value || 'builtin';
   const event = $('#soundpack-editor-event')?.value || '';
   if (id === 'builtin') { soundpackEditorStatus('Built-in NukeFire cannot be edited. Duplicate it first.'); return false; }
-  const operation = clear
-    ? () => window.nukefire.clearSoundpackEvent({ id, event })
-    : () => window.nukefire.updateSoundpackEvent({ id, event, volume: Number($('#soundpack-editor-volume')?.value || 100) / 100, cooldown_ms: Number($('#soundpack-editor-cooldown')?.value || 0) });
-  const result = await withCommandDraftPreserved(operation);
+  let result;
+  if (clear) {
+    result = await clearSoundpackEventAudio(id, event, { keepCustomCatalog: Boolean(normalizeCustomSoundpackEvent(event)) });
+  } else {
+    result = await withCommandDraftPreserved(() => window.nukefire.updateSoundpackEvent({
+      id,
+      event,
+      volume: Number($('#soundpack-editor-volume')?.value || 100) / 100,
+      cooldown_ms: Number($('#soundpack-editor-cooldown')?.value || 0)
+    }));
+    if (result?.ok) {
+      await activateSoundpack(id, { announceChange: false });
+      await loadSoundpackEventCatalog();
+    }
+  }
   const clearedText = normalizeCustomSoundpackEvent(event) ? 'custom assignment removed' : 'restored to built-in fallback';
   const message = result?.ok ? `${event} ${clear ? clearedText : 'options saved'}.` : `Soundpack was not changed: ${result?.error || 'invalid request'}.`;
   soundpackEditorStatus(message);
-  if (result?.ok) {
-    await activateSoundpack(id, { announceChange: false });
-    await loadSoundpackEventCatalog();
-  }
   announce(message, { force: true });
   return result?.ok === true;
 }
@@ -12010,12 +12119,16 @@ function availableSelfVoiceVoices() {
   }
 }
 
-function refreshSelfVoiceVoiceOptions() {
-  const voices = availableSelfVoiceVoices().slice().sort((left, right) => {
+function sortedSelfVoiceVoices() {
+  return availableSelfVoiceVoices().slice().sort((left, right) => {
     const a = `${left?.lang || ''} ${left?.name || ''}`.toLowerCase();
     const b = `${right?.lang || ''} ${right?.name || ''}`.toLowerCase();
     return a.localeCompare(b);
   });
+}
+
+function refreshSelfVoiceVoiceOptions() {
+  const voices = sortedSelfVoiceVoices();
   const selectedId = String(state.accessibility.selfVoiceVoiceId || '');
   const selectedVoice = voices.find((voice) => selfVoiceVoiceId(voice) === selectedId) || null;
   selfVoice?.setVoice?.(selectedVoice);
@@ -12519,6 +12632,19 @@ function applyReaderKeysCommand(value) {
     };
   }
 
+  if (text === 'hotkeys' || text === 'controls') {
+    if (typeof readerPresetsApi.installReaderHotkeyPreset !== 'function') {
+      return { ok: false, message: 'Reader hotkey preset is unavailable in this client build.' };
+    }
+    const result = readerPresetsApi.installReaderHotkeyPreset(state.keybindings, keybindingApi);
+    updateKeybindings(result.settings, { persist: true });
+    const installed = Array.isArray(result.installed) ? result.installed.length : 0;
+    return {
+      ok: true,
+      message: `Reader hotkeys installed: ${installed} of 12.${keyPresetConflictText(result.skipped)}`
+    };
+  }
+
   if (text === 'mush') {
     if (typeof readerPresetsApi.installMushAccessibilityPreset !== 'function') {
       return { ok: false, message: 'MUSH accessibility key preset is unavailable in this client build.' };
@@ -12554,7 +12680,15 @@ function applyReaderKeysCommand(value) {
     return { ok: true, message: `${label} removed: ${Number(result.removed) || 0}. Other keyboard shortcuts were not changed.` };
   }
 
-  return { ok: false, message: 'CR KEYS expects STATUS, LINES, MOVEMENT, MUSH, or REMOVE LINES, MOVEMENT, or MUSH.' };
+  const removeHotkeys = text.match(/^remove\s+(hotkeys|controls)$/u);
+  if (removeHotkeys) {
+    const result = readerPresetsApi.removeReaderHotkeyPreset?.(state.keybindings, keybindingApi);
+    if (!result) return { ok: false, message: 'Reader hotkeys could not be removed by this client build.' };
+    updateKeybindings(result.settings, { persist: true });
+    return { ok: true, message: `Reader hotkeys removed: ${Number(result.removed) || 0}. Other keyboard shortcuts were not changed.` };
+  }
+
+  return { ok: false, message: 'CR KEYS expects STATUS, LINES, MOVEMENT, HOTKEYS, MUSH, or REMOVE LINES, MOVEMENT, HOTKEYS, or MUSH.' };
 }
 
 async function copyReviewedText() {
@@ -16924,6 +17058,10 @@ function readerControlStateSnapshot() {
       foregroundOnly: state.accessibility.selfVoiceForegroundOnly,
       appForeground: state.accessibility.selfVoiceAppForeground,
       follow: state.accessibility.selfVoiceFollowMode,
+      governor: state.accessibility.selfVoiceGovernorEnabled,
+      priorityAlerts: state.accessibility.selfVoicePriorityAlertsEnabled,
+      interruptOnCommand: state.accessibility.selfVoiceInterruptOnCommand,
+      voiceId: state.accessibility.selfVoiceVoiceId,
       rate: state.accessibility.selfVoiceRate,
       pitch: state.accessibility.selfVoicePitch,
       volume: state.accessibility.selfVoiceVolume,
@@ -16940,6 +17078,8 @@ function readerControlStateSnapshot() {
       invalidPacks: state.accessibility.soundpackInvalid.length
     },
     communicationCues: { ...(state.accessibility.communicationCues || {}) },
+    vitalSpeechMode: state.accessibility.vitalSpeechMode,
+    importantAnnouncements: state.accessibility.announceImportant,
     safetyAlerts: {
       enabled: state.accessibility.readerSafetyAlertsEnabled,
       ...(activeSessionRecord()?.readerSafety?.status?.() || {})
@@ -17135,8 +17275,10 @@ function readerControlStatusText() {
   return `Reader Workspace ${snapshot.readerWorkspace ? 'on' : 'off'}; native reader ${snapshot.nativeScreenReader ? 'on' : 'off'}; ` +
     `Self-Voice ${voice.enabled ? (voice.muted ? 'on and muted' : 'on and unmuted') : 'off'}, ` +
     `speed ${Number(voice.rate).toFixed(1)} times, pitch ${Number(voice.pitch).toFixed(1)}, volume ${Math.round(Number(voice.volume) * 100)} percent, ` +
-    `foreground-only ${voice.foregroundOnly ? 'on' : 'off'}, app foreground ${voice.appForeground ? 'yes' : 'no'}, backend ${voice.available ? 'available' : 'unavailable'}${voice.error ? `, last error ${voice.error}` : ''}; ` +
-    `Safety alerts ${snapshot.safetyAlerts.enabled ? 'on' : 'off'}; Audio Cues ${cues.enabled ? (cues.muted ? 'on and muted' : 'on') : 'off'}; ` +
+    `foreground-only ${voice.foregroundOnly ? 'on' : 'off'}, follow ${voice.follow ? 'on' : 'off'}, backlog governor ${voice.governor ? 'on' : 'off'}, ` +
+    `Tell/System priority ${voice.priorityAlerts ? 'on' : 'off'}, interrupt-on-command ${voice.interruptOnCommand ? 'on' : 'off'}, app foreground ${voice.appForeground ? 'yes' : 'no'}, backend ${voice.available ? 'available' : 'unavailable'}${voice.error ? `, last error ${voice.error}` : ''}; ` +
+    `Vitals ${snapshot.vitalSpeechMode}; important announcements ${snapshot.importantAnnouncements ? 'on' : 'off'}; Safety alerts ${snapshot.safetyAlerts.enabled ? 'on' : 'off'}; ` +
+    `Audio Cues ${cues.enabled ? (cues.muted ? 'on and muted' : 'on') : 'off'}; ` +
     `Sound Triggers ${snapshot.soundTriggers.enabled ? 'on' : 'off'} with ${snapshot.soundTriggers.count} configured.`;
 }
 
@@ -17185,6 +17327,106 @@ async function handleNukeFireControlRequest(body) {
   }
   if (request.action === 'reader.status') {
     return sendNukeFireControlResult(request, true, readerControlStatusText());
+  }
+  if (request.action === 'reader.native.enabled') {
+    const next = controlToggleValue(request.args?.value, state.accessibility.screenReaderMode);
+    if (next === null) return sendNukeFireControlResult(request, false, 'Native screen reader mode expects on, off, or toggle.');
+    setScreenReaderMode(next);
+    return sendNukeFireControlResult(request, true, `Native screen reader mode ${next ? 'enabled' : 'disabled'}.`);
+  }
+  if (request.action === 'reader.voice.governor') {
+    const next = controlToggleValue(request.args?.value, state.accessibility.selfVoiceGovernorEnabled);
+    if (next === null) return sendNukeFireControlResult(request, false, 'Self-Voice backlog governor expects on, off, or toggle.');
+    setSelfVoiceGovernorEnabled(next);
+    return sendNukeFireControlResult(request, true, `Self-Voice backlog governor ${next ? 'enabled' : 'disabled'}.`);
+  }
+  if (request.action === 'reader.voice.priority') {
+    const next = controlToggleValue(request.args?.value, state.accessibility.selfVoicePriorityAlertsEnabled);
+    if (next === null) return sendNukeFireControlResult(request, false, 'Tell/System Self-Voice priority expects on, off, or toggle.');
+    setSelfVoicePriorityAlertsEnabled(next);
+    return sendNukeFireControlResult(request, true, `Tell/System Self-Voice priority ${next ? 'enabled' : 'disabled'}.`);
+  }
+  if (request.action === 'reader.voice.follow') {
+    const next = controlToggleValue(request.args?.value, state.accessibility.selfVoiceFollowMode);
+    if (next === null) return sendNukeFireControlResult(request, false, 'Follow Self-Voice expects on, off, or toggle.');
+    setSelfVoiceFollowMode(next);
+    return sendNukeFireControlResult(request, true, `Follow Self-Voice ${next ? 'enabled' : 'disabled'}.`);
+  }
+  if (request.action === 'reader.voice.interrupt') {
+    const next = controlToggleValue(request.args?.value, state.accessibility.selfVoiceInterruptOnCommand);
+    if (next === null) return sendNukeFireControlResult(request, false, 'Command-send Self-Voice interruption expects on, off, or toggle.');
+    setSelfVoiceInterruptOnCommand(next);
+    return sendNukeFireControlResult(request, true, `Command-send Self-Voice interruption ${next ? 'enabled' : 'disabled'}.`);
+  }
+  if (request.action === 'reader.voice.voices') {
+    const voices = sortedSelfVoiceVoices();
+    const requestedPage = Number.parseInt(String(request.args?.value || '1'), 10);
+    const pageSize = 6;
+    const pageCount = Math.max(1, Math.ceil(voices.length / pageSize));
+    const page = Number.isFinite(requestedPage) ? Math.max(1, Math.min(pageCount, requestedPage)) : 1;
+    const start = (page - 1) * pageSize;
+    const records = voices.slice(start, start + pageSize).map((voice, index) => {
+      const absolute = start + index + 1;
+      return `${absolute} ${String(voice?.name || 'Unnamed').replace(/[;,]/gu, '')}${voice?.lang ? ` ${voice.lang}` : ''}`;
+    });
+    const current = state.accessibility.selfVoiceVoiceId ? 'named voice selected' : 'System Default selected';
+    const message = voices.length
+      ? `Self-Voice voices page ${page} of ${pageCount}, ${voices.length} total: ${records.join('; ')}. ${current}. Use CR VOICE USE <number> or DEFAULT.`
+      : `No named system voices are currently exposed. ${current}.`;
+    return sendNukeFireControlResult(request, true, message);
+  }
+  if (request.action === 'reader.voice.use') {
+    const requested = String(request.args?.value || '').trim().toLowerCase();
+    if (requested === 'default' || requested === 'system') {
+      setSelfVoiceVoiceSettings({ voiceId: '' }, { announceChange: false });
+      return sendNukeFireControlResult(request, true, 'Self-Voice now uses the System Default voice.');
+    }
+    const index = Number.parseInt(requested, 10);
+    const voices = sortedSelfVoiceVoices();
+    if (!Number.isSafeInteger(index) || index < 1 || index > voices.length) {
+      return sendNukeFireControlResult(request, false, 'Choose a voice number shown by CR VOICE VOICES, or use CR VOICE USE DEFAULT.');
+    }
+    const voice = voices[index - 1];
+    setSelfVoiceVoiceSettings({ voiceId: selfVoiceVoiceId(voice) }, { announceChange: false });
+    return sendNukeFireControlResult(request, true, `Self-Voice voice set to ${voice?.name || `voice ${index}`}${voice?.lang ? `, ${voice.lang}` : ''}.`);
+  }
+  if (request.action === 'reader.vitals.format') {
+    const requested = String(request.args?.value || '').trim().toLowerCase();
+    const aliases = { both: 'percent-values', all: 'percent-values', 'percent-values': 'percent-values', percent: 'percent', values: 'values' };
+    const mode = aliases[requested];
+    if (!mode) return sendNukeFireControlResult(request, false, 'Vital speech format expects BOTH, PERCENT, or VALUES.');
+    setVitalSpeechMode(mode, { announceChange: true });
+    return sendNukeFireControlResult(request, true, `Instant vital speech format set to ${mode}.`);
+  }
+  if (request.action === 'reader.announcements.enabled') {
+    const next = controlToggleValue(request.args?.value, state.accessibility.announceImportant);
+    if (next === null) return sendNukeFireControlResult(request, false, 'Important event announcements expect on, off, or toggle.');
+    setImportantAnnouncements(next);
+    return sendNukeFireControlResult(request, true, `Important event announcements ${next ? 'enabled' : 'disabled'}.`);
+  }
+  if (request.action === 'reader.accessibility.command') {
+    const words = String(request.args?.value || '').trim().split(/\s+/u).filter(Boolean);
+    const kind = String(words.shift() || 'capabilities').toLowerCase();
+    let operation = kind;
+    let value = words.join(' ');
+    let copy = false;
+    if (kind === 'report') {
+      if (value && value.toLowerCase() !== 'copy') {
+        return sendNukeFireControlResult(request, false, 'CR ACCESSIBILITY REPORT accepts only optional COPY.');
+      }
+      copy = value.toLowerCase() === 'copy';
+    }
+    if (kind === 'profile') {
+      const profileWords = value.split(/\s+/u).filter(Boolean);
+      const sub = String(profileWords.shift() || 'list').toLowerCase();
+      operation = `profile-${sub}`;
+      value = profileWords.join(' ');
+    }
+    const result = await executeAccessibilityOperation(operation, value, { copy });
+    // CR ACCESSIBILITY uses the same bounded executor as local #A11Y. Results
+    // return through the server command line once, so do not announce a second
+    // local copy here.
+    return sendNukeFireControlResult(request, result.ok === true, result.message);
   }
   if (request.action === 'reader.audio.status') {
     const message = audioCueStatusText();
@@ -17340,7 +17582,10 @@ async function handleNukeFireControlRequest(body) {
       const next = controlToggleValue(words[1], soundpackEventEnabled(event));
       if (next === null || words.length > 2) return sendNukeFireControlResult(request, false, 'Use CR SOUNDPACK <event> ON, OFF, or TOGGLE.');
       setSoundpackEventEnabled(event, next, { announceChange: false });
-      const message = `${event} sound ${next ? 'enabled' : 'disabled'}. The soundpack archive was not modified.`;
+      const communicationChannel = soundpackCommunicationChannel(event);
+      const message = communicationChannel
+        ? `${communicationChannelLabel(communicationChannel)} communication sound ${next ? 'enabled' : 'disabled'}. CR SOUND controls this same setting; the soundpack archive was not modified.`
+        : `${event} sound ${next ? 'enabled' : 'disabled'}. The soundpack archive was not modified.`;
       announce(message, { force: true, interrupt: true });
       return sendNukeFireControlResult(request, true, message);
     }
@@ -20322,13 +20567,135 @@ function applyLuaPaneState(record, payload, active) {
   }
 }
 
+function reportInteractiveSoundMessage(message, options = {}) {
+  const text = String(message || '').trim().replace(/^\[([\s\S]*)\]$/u, '$1');
+  if (!text) return false;
+  appendSystemMessage(text, options.kind || 'info');
+  announce(text, { force: true, interrupt: options.interrupt === true });
+  return true;
+}
+
+async function handleTinTinSoundpackEditRequest(record, payload = {}, active = false) {
+  if (!active || payload?.interactive !== true) return false;
+  const operation = String(payload?.operation || '').trim().toLowerCase();
+  const event = String(payload?.event || '').trim().toLowerCase();
+  const custom = normalizeCustomSoundpackEvent(event);
+  if (!['add', 'assign', 'clear', 'delete'].includes(operation) || !event) return false;
+  if ((operation === 'add' || operation === 'delete') && !custom) {
+    reportInteractiveSoundMessage(`Sound ${operation} rejected: player-created events must use custom.<name>.`, { interrupt: true });
+    return false;
+  }
+
+  if (!state.accessibility.soundpackEvents.length) await loadSoundpackEventCatalog();
+  const known = soundpackEventRecord(event);
+  if (!custom && !known) {
+    reportInteractiveSoundMessage(`Unknown sound event ${event}. Use #SOUND {SEARCH} {text}.`, { interrupt: true });
+    return false;
+  }
+
+  if (operation === 'add' || operation === 'assign') {
+    const packId = await ensureEditableSoundpackForCustomEvent();
+    if (!packId) {
+      reportInteractiveSoundMessage('Sound assignment failed: an editable soundpack could not be prepared.', { interrupt: true });
+      scheduleFrame(() => focusCommand({ preserveSelection: true }));
+      return false;
+    }
+    if (custom) ensureCustomSoundpackCatalogRecord(event);
+    const before = await soundpackEventAssignmentSnapshot(packId, event);
+    const result = await assignSoundpackEventAudio(packId, event, {
+      volume: before.volume,
+      cooldown_ms: before.cooldown_ms,
+      focusCommand: true
+    });
+    if (result.canceled) {
+      reportInteractiveSoundMessage(before.assigned
+        ? `Audio selection cancelled. ${event} was not changed.`
+        : `Audio selection cancelled. ${event} remains unassigned.`);
+      return false;
+    }
+    if (!result.ok) {
+      reportInteractiveSoundMessage(`Sound assignment failed for ${event}: ${result.error || 'invalid request'}.`, { interrupt: true });
+      return false;
+    }
+    const label = custom && !before.assigned
+      ? `Custom sound ${event} created and assigned.`
+      : `Sound ${event} audio assigned.`;
+    reportInteractiveSoundMessage(label);
+    return true;
+  }
+
+  const activePackId = String(state.accessibility.soundpackId || 'builtin').trim().toLowerCase();
+  if (operation === 'clear') {
+    if (activePackId === 'builtin') {
+      reportInteractiveSoundMessage(`Sound ${event} has no editable audio assignment in Built-in NukeFire.`);
+      scheduleFrame(() => focusCommand({ preserveSelection: true }));
+      return true;
+    }
+    const before = await soundpackEventAssignmentSnapshot(activePackId, event);
+    if (!before.assigned) {
+      if (custom) ensureCustomSoundpackCatalogRecord(event);
+      reportInteractiveSoundMessage(`Sound ${event} is already unassigned in ${before.packName}.`);
+      scheduleFrame(() => focusCommand({ preserveSelection: true }));
+      return true;
+    }
+    const result = await clearSoundpackEventAudio(activePackId, event, {
+      keepCustomCatalog: Boolean(custom),
+      focusCommand: true
+    });
+    if (!result.ok) {
+      reportInteractiveSoundMessage(`Sound ${event} could not be cleared: ${result.error || 'invalid request'}.`, { interrupt: true });
+      return false;
+    }
+    reportInteractiveSoundMessage(`Sound ${event} audio assignment cleared.`);
+    return true;
+  }
+
+  // DELETE is deliberately narrower than CLEAR. Custom event names are not a
+  // second database; deleting one removes its editable-pack entry/assignment,
+  // any stale disabled flag, and the transient catalog record for this session.
+  if (activePackId !== 'builtin') {
+    const result = await clearSoundpackEventAudio(activePackId, event, { keepCustomCatalog: false, focusCommand: true });
+    if (!result.ok) {
+      reportInteractiveSoundMessage(`Custom sound ${event} could not be deleted: ${result.error || 'invalid request'}.`, { interrupt: true });
+      return false;
+    }
+  } else {
+    scheduleFrame(() => focusCommand({ preserveSelection: true }));
+  }
+  setSoundpackDisabledEvents(
+    state.accessibility.soundpackDisabledEvents.filter((name) => String(name || '').toLowerCase() !== event),
+    { persist: true, announceChange: false }
+  );
+  state.accessibility.soundpackEvents = state.accessibility.soundpackEvents.filter((item) => String(item?.event || '').toLowerCase() !== event);
+  const select = $('#soundpack-editor-event');
+  const option = select ? [...select.options].find((item) => item.value === event) : null;
+  option?.remove?.();
+  reportInteractiveSoundMessage(`Custom sound ${event} deleted from the active soundpack.`);
+  return true;
+}
+
+function handleTinTinSoundpackControlRequest(record, payload = {}, active = false) {
+  const operation = String(payload?.operation || '').trim().toLowerCase();
+  if (operation !== 'stop') return false;
+  const scope = String(payload?.scope || 'all').trim().toLowerCase() === 'music' ? 'music' : 'all';
+  const stopped = scope === 'music'
+    ? Boolean(audioCues?.stopMusic?.())
+    : Boolean(audioCues?.stopAll?.());
+  if (payload?.interactive === true && active) {
+    reportInteractiveSoundMessage(scope === 'music'
+      ? (stopped ? '[Sound music stopped.]' : '[Sound music: nothing was playing.]')
+      : '[Sound audio stopped.]');
+  }
+  return true;
+}
+
 function handleTinTinSoundpackEventRequest(record, payload = {}, active = false) {
   const event = String(payload?.event || '').trim().toLowerCase();
   if (!event) return false;
   const result = playSoundpackEventWithStatus(event, { cueId: normalizeCustomSoundpackEvent(event) ? event : '' });
   if (payload?.interactive === true && active) {
-    if (!result.played) appendSystemMessage(`[Sound ${event} blocked: ${result.reason}]`);
-    else if (payload?.reportSuccess === true) appendSystemMessage(`[Sound ${event} played.]`);
+    if (!result.played) reportInteractiveSoundMessage(`Sound ${event} blocked: ${result.reason}`, { interrupt: true });
+    else if (payload?.reportSuccess === true) reportInteractiveSoundMessage(`Sound ${event} played.`);
   }
   return result.played;
 }
@@ -20348,6 +20715,14 @@ function tintinSoundEventGroup(eventValue) {
 async function handleTinTinSoundpackQuery(record, payload = {}, active = false) {
   if (!active) return false;
   const operation = String(payload?.operation || '').trim().toLowerCase();
+  if (operation === 'status') {
+    const statusMessage = `Sound status: ${audioCueStatusText()} #SOUND is available independently of Reader Mode and Self-Voice.`;
+    const customMessage = 'Custom sounds: #SOUND {ADD} {custom.name}; {ASSIGN} {event}; {SHOW} {event}; {TEST} {event}; {CLEAR} {event}; {DELETE} {custom.name}. ADD opens the protected audio chooser directly.';
+    appendSystemMessage(statusMessage);
+    appendSystemMessage(customMessage);
+    announce(`${statusMessage} ${customMessage}`, { force: true });
+    return true;
+  }
   if (!state.accessibility.soundpackEvents.length) await loadSoundpackEventCatalog();
   const records = tintinSoundQueryableRecords();
   const playable = records.filter((item) => item.status !== 'not-emitted');
@@ -20364,17 +20739,17 @@ async function handleTinTinSoundpackQuery(record, payload = {}, active = false) 
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([group, count]) => `${group} ${count}`)
         .join(', ');
-      appendSystemMessage(`[Sound groups: ${summary || 'none'}. Use #SOUND {LIST} {group}, #SOUND {SEARCH} {text}, or #SOUND {SHOW} {event}.]`);
+      reportInteractiveSoundMessage(`Sound groups: ${summary || 'none'}. Use #SOUND {LIST} {group}, #SOUND {SEARCH} {text}, or #SOUND {SHOW} {event}.`);
       return true;
     }
     const matches = playable.filter((item) => tintinSoundEventGroup(item.event) === filter);
     if (!matches.length) {
-      appendSystemMessage(`[No playable sound events in group ${filter}. Use #SOUND {LIST} to see groups.]`);
+      reportInteractiveSoundMessage(`No playable sound events in group ${filter}. Use #SOUND {LIST} to see groups.`, { interrupt: true });
       return false;
     }
     const visible = matches.slice(0, TINTIN_SOUND_QUERY_MAX_RESULTS).map((item) => item.event);
     const extra = matches.length - visible.length;
-    appendSystemMessage(`[Sound ${filter}: ${visible.join(', ')}${extra > 0 ? `, +${extra} more` : ''}.]`);
+    reportInteractiveSoundMessage(`Sound ${filter}: ${visible.join(', ')}${extra > 0 ? `, +${extra} more` : ''}.`);
     return true;
   }
 
@@ -20386,12 +20761,12 @@ async function handleTinTinSoundpackQuery(record, payload = {}, active = false) 
       return haystack.includes(query);
     });
     if (!matches.length) {
-      appendSystemMessage(`[No playable sound events match "${query}".]`);
+      reportInteractiveSoundMessage(`No playable sound events match "${query}".`, { interrupt: true });
       return false;
     }
     const visible = matches.slice(0, TINTIN_SOUND_QUERY_MAX_RESULTS).map((item) => item.event);
     const extra = matches.length - visible.length;
-    appendSystemMessage(`[Sound matches for "${query}": ${visible.join(', ')}${extra > 0 ? `, +${extra} more` : ''}.]`);
+    reportInteractiveSoundMessage(`Sound matches for "${query}": ${visible.join(', ')}${extra > 0 ? `, +${extra} more` : ''}.`);
     return true;
   }
 
@@ -20401,12 +20776,13 @@ async function handleTinTinSoundpackQuery(record, payload = {}, active = false) 
     const catalogRecord = soundpackEventRecord(event);
     const custom = normalizeCustomSoundpackEvent(event);
     if (!catalogRecord && !custom) {
-      appendSystemMessage(`[Unknown sound event ${event}. Use #SOUND {SEARCH} {text}.]`);
+      reportInteractiveSoundMessage(`Unknown sound event ${event}. Use #SOUND {SEARCH} {text}.`, { interrupt: true });
       return false;
     }
     const item = catalogRecord || customSoundpackEventRecord(event);
     const enabled = soundpackEventEnabled(event);
     let assignment = custom ? 'no audio assigned in the active soundpack' : 'built-in fallback available';
+    let optionDetails = '';
     let packName = String(audioCues?.soundpackName || state.accessibility.soundpackId || 'Built-in NukeFire');
     const activePackId = String(state.accessibility.soundpackId || 'builtin').trim().toLowerCase();
     if (typeof window.nukefire.describeSoundpack === 'function') {
@@ -20417,13 +20793,14 @@ async function handleTinTinSoundpackQuery(record, payload = {}, active = false) 
         if (options) {
           const fileCount = Array.isArray(options.files) ? Math.max(1, options.files.length) : 1;
           assignment = `${fileCount} assigned sound${fileCount === 1 ? '' : 's'} in ${packName}`;
+          optionDetails = `; volume ${Math.round(Math.max(0, Math.min(1, Number(options.volume) || 0)) * 100)} percent; cooldown ${Math.max(0, Number(options.cooldown_ms) || 0)} milliseconds`;
         }
         else if (!custom && activePackId !== 'builtin') assignment = `built-in fallback through ${packName}`;
       } catch (_error) {}
     }
     const playback = soundpackEventPlaybackDecision(event, { cueId: item?.cue || (custom ? event : '') });
     const playbackText = playback.allowed ? 'playback ready' : `blocked: ${playback.reason}`;
-    appendSystemMessage(`[Sound ${event}: ${soundpackEventSourceLabel(item)}; ${assignment}; ${enabled ? 'enabled' : 'disabled'}; ${playbackText}.]`);
+    reportInteractiveSoundMessage(`Sound ${event}: ${soundpackEventSourceLabel(item)}; ${assignment}${optionDetails}; ${enabled ? 'enabled' : 'disabled'}; ${playbackText}.`);
     return playback.allowed;
   }
   return false;
@@ -20479,7 +20856,9 @@ function handleSessionEvent(event = {}) {
       case 'script-edit-request': void handleTinTinEditRequest(record, payload); break;
       case 'mapper-route-find-request': handleTinTinMapperFindRequest(record, payload, true); break;
       case 'soundpack-event-request': handleTinTinSoundpackEventRequest(record, payload, true); break;
+      case 'soundpack-control-request': handleTinTinSoundpackControlRequest(record, payload, true); break;
       case 'soundpack-event-query': void handleTinTinSoundpackQuery(record, payload, true); break;
+      case 'soundpack-edit-request': void handleTinTinSoundpackEditRequest(record, payload, true); break;
       case 'accessibility-command': void handleAccessibilityCommand(payload); break;
       case 'font-size-request': {
         const requested = String(payload?.value || '').trim().toLowerCase();
@@ -20609,7 +20988,9 @@ function handleSessionEvent(event = {}) {
       case 'script-edit-request': void handleTinTinEditRequest(record, payload); break;
       case 'mapper-route-find-request': handleTinTinMapperFindRequest(record, payload, false); break;
       case 'soundpack-event-request': handleTinTinSoundpackEventRequest(record, payload, false); break;
+      case 'soundpack-control-request': handleTinTinSoundpackControlRequest(record, payload, false); break;
       case 'soundpack-event-query': break;
+      case 'soundpack-edit-request': break;
       case 'font-size-request': break;
       case 'definition-manager-request': break;
       case 'mapper-route-run-request': void handleTinTinPathRunRequest(record, payload, false); break;

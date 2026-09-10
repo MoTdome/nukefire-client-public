@@ -589,6 +589,12 @@ class ActionLineBuffer {
     this.discarding = false;
   }
 
+  flush() {
+    const lines = !this.discarding && this.carry ? [this.carry] : [];
+    this.reset();
+    return lines;
+  }
+
   push(value) {
     const raw = String(value ?? '');
     const input = raw.includes('\r') ? raw.replaceAll('\r', '') : raw;

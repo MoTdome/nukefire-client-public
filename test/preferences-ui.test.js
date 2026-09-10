@@ -134,9 +134,9 @@ test('Preferences categories expose one wide tab panel at a time', () => {
   assert.equal(tablist.getAttribute('aria-orientation'), 'vertical');
   assert.deepEqual(tabs.map((tab) => tab.dataset.preferenceCategory), [
     'display', 'presets', 'command-input', 'keyboard', 'tintin',
-    'workspace', 'quick-commands', 'pipeline-debug', 'accessibility'
+    'workspace', 'quick-commands', 'pipeline-debug', 'audio', 'accessibility'
   ]);
-  assert.equal(panels.length, 9);
+  assert.equal(panels.length, 10);
   assert.deepEqual(panels.filter((panel) => !panel.hidden).map((panel) => panel.dataset.preferenceCategory), ['display']);
   for (const tab of tabs) {
     const panel = document.querySelector(`#${tab.getAttribute('aria-controls')}`);

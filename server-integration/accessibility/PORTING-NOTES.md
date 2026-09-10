@@ -147,7 +147,7 @@ If GMCP is absent or the client does not advertise the controls package, SR must
 
 ## Source coverage available in this public reference
 
-This pass was checked against the current Beta.73-era command table, semantic output policy, client request allowlist, Reader presets, and renderer request/result path. The public repository itself already contains the full production client source.
+This pass was checked against the current Beta.76 command table, semantic output policy, client request allowlist, Reader presets, and renderer request/result path. The public repository itself already contains the full production client source.
 
 For a Circle/TBA port, the remaining game-specific work is mostly integration:
 

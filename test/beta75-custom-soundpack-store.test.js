@@ -31,7 +31,6 @@ test('custom.* events are first-class bounded soundpack manifest entries', () =>
   assert.equal(soundpackCueId('custom.stairs'), 'custom.stairs');
   assert.equal(soundpackEventMetadata('custom.stairs').source, 'player');
 });
-
 test('player event namespace is explicit and custom event count stays bounded', () => {
   assert.equal(isCustomSoundpackEvent('stairs'), false);
   assert.equal(isCustomSoundpackEvent('custom.Bad Name'), false);
@@ -43,7 +42,7 @@ test('player event namespace is explicit and custom event count stays bounded', 
   for (let index = 0; index < MAX_CUSTOM_EVENTS + 1; index += 1) {
     events[`custom.slot-${index}`] = { files: [`sounds/slot-${index}.wav`] };
   }
-  assert.throws(() => normalizeManifest(customManifest(events)), /at most 32 custom\.\* events/u);
+  assert.throws(() => normalizeManifest(customManifest(events)), /at most 2500 custom\.\* events/u);
 });
 
 

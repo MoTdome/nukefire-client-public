@@ -1928,11 +1928,14 @@ class SessionManager {
       },
       onGmcpState: (state) => this.emit(id, 'gmcp-state', state),
       onPromptBoundary: (boundary) => {
-        // A TELNET prompt boundary ends the non-newline prompt carry for
-        // Actions/Lua triggers. The prompt itself is not an incoming mud line,
-        // so discard that carry rather than synthetically matching it. The next
-        // actual line therefore starts at column zero for normal ^ semantics.
-        session.actionLines?.reset();
+        // GA/EOR is the authoritative completion boundary for a prompt that
+        // has no trailing newline. Match that accumulated prompt exactly once,
+        // then leave the buffer empty so the next real line starts at column
+        // zero for normal ^ semantics.
+        const promptActionLines = session.actionLines?.flush?.() || [];
+        for (const promptLine of promptActionLines) {
+          this.processActionsForText(session, `${promptLine}\n`);
+        }
         const prompt = this.flushGagText(session);
         if (prompt.communicationText) this.emit(id, 'communication-text', prompt.communicationText);
         if (prompt.visibleText) this.emit(id, 'text', prompt.visibleText);
@@ -7076,13 +7079,28 @@ class SessionManager {
       const operation = String(tokens[0] || '').normalize('NFKC').trim().toLowerCase();
       const interactive = this.soundRequestInteractive(options);
       if (!tokens.length) {
-        messages.push(this.usage('sound {event}'));
-        messages.push(this.usage('sound {list} [group]'));
-        messages.push(this.usage('sound {search} {text}'));
-        messages.push(this.usage('sound {show} {event}'));
+        if (interactive) this.emit(source.id, 'soundpack-event-query', { operation: 'status' });
       } else if (!interactive && ['list', 'search', 'show'].includes(operation)) {
-        // Discovery is intentionally interactive-only. Automation may play a
-        // sound event, but it cannot dump catalog/search/status chatter.
+        // Discovery is intentionally interactive-only. Automation may play or
+        // stop managed audio, but it cannot dump catalog/search/status chatter.
+      } else if (!interactive && operation === 'status') {
+        // General audio STATUS is also interactive-only so automation cannot
+        // turn a harmless audio check into recurring terminal chatter.
+      } else if (!interactive && ['add', 'assign', 'clear', 'delete'].includes(operation)) {
+        // File pickers and soundpack mutation are direct-player operations only.
+        // Actions, aliases, timers, functions, and Lua may play/test sounds, but
+        // they cannot open a chooser or silently edit the player's soundpack.
+      } else if (operation === 'status') {
+        if (tokens.length !== 1) messages.push(this.usage('sound {status}'));
+        else if (interactive) this.emit(source.id, 'soundpack-event-query', { operation: 'status' });
+      } else if (operation === 'stop') {
+        const scope = String(tokens[1] || 'all').normalize('NFKC').trim().toLowerCase();
+        if (tokens.length > 2 || !['all', 'music'].includes(scope)) {
+          messages.push(this.usage('sound {stop} [music]'));
+        } else {
+          this.tracePipeline(source, 'sound', () => `Managed audio stop requested: ${scope}${interactive ? ' (interactive)' : ' (automation)'}.`);
+          this.emit(source.id, 'soundpack-control-request', { operation: 'stop', scope, interactive });
+        }
       } else if (operation === 'list') {
         if (tokens.length > 2) {
           messages.push(this.usage('sound {list} [group]'));
@@ -7121,6 +7139,42 @@ class SessionManager {
             const event = this.normalizeSoundEventName(expanded.value);
             if (!event) messages.push('Sound event names use letters, numbers, dots, underscores, or hyphens.');
             else this.emit(source.id, 'soundpack-event-query', { operation: 'show', event });
+          }
+        }
+      } else if (operation === 'test') {
+        if (tokens.length !== 2) {
+          messages.push(this.usage('sound {test} {event}'));
+        } else {
+          const expanded = options.variablesExpanded
+            ? { value: tokens[1], error: '' }
+            : this.expandFunctionAndVariables(tokens[1], source, options);
+          if (expanded.error) messages.push(expanded.error);
+          else {
+            const event = this.normalizeSoundEventName(expanded.value);
+            if (!event) messages.push('Sound event names use letters, numbers, dots, underscores, or hyphens.');
+            else {
+              this.tracePipeline(source, 'sound', () => `Managed soundpack test requested: ${event}${interactive ? ' (interactive)' : ' (automation)'}.`);
+              this.emit(source.id, 'soundpack-event-request', { event, interactive, reportSuccess: interactive });
+            }
+          }
+        }
+      } else if (['add', 'assign', 'clear', 'delete'].includes(operation)) {
+        if (tokens.length !== 2) {
+          messages.push(this.usage(`sound {${operation}} {event}`));
+        } else if (interactive) {
+          const expanded = options.variablesExpanded
+            ? { value: tokens[1], error: '' }
+            : this.expandFunctionAndVariables(tokens[1], source, options);
+          if (expanded.error) messages.push(expanded.error);
+          else {
+            const event = this.normalizeSoundEventName(expanded.value);
+            if (!event) {
+              messages.push('Sound event names use letters, numbers, dots, underscores, or hyphens. Player-created names must use custom.<name>.');
+            } else if ((operation === 'add' || operation === 'delete') && !event.startsWith('custom.')) {
+              messages.push(`SOUND ${operation.toUpperCase()} is only for player-created custom.* event names.`);
+            } else {
+              this.emit(source.id, 'soundpack-edit-request', { operation, event, interactive: true });
+            }
           }
         }
       } else if (tokens.length !== 1) {

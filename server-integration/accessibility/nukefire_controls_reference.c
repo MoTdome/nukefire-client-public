@@ -37,6 +37,7 @@ bool accessibility_control_action_allowed(const char *action)
         "reader.status",
         "reader.preset",
         "reader.workspace",
+        "reader.native.enabled",
         "reader.session.begin",
         "reader.exit.restore",
 
@@ -48,7 +49,16 @@ bool accessibility_control_action_allowed(const char *action)
         "reader.voice.pitch",
         "reader.voice.volume",
         "reader.voice.foreground",
+        "reader.voice.governor",
+        "reader.voice.priority",
+        "reader.voice.follow",
+        "reader.voice.interrupt",
+        "reader.voice.voices",
+        "reader.voice.use",
         "reader.voice.restart",
+
+        "reader.vitals.format",
+        "reader.announcements.enabled",
 
         "reader.audio.status",
         "reader.audio.enabled",
@@ -77,6 +87,8 @@ bool accessibility_control_action_allowed(const char *action)
         "reader.soundpack.volume",
         "reader.soundpack.duplicate",
         "reader.soundpack.export",
+
+        "reader.accessibility.command",
 
         "reader.doctor",
         "reader.recover",

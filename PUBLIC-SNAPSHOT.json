@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta75-release-7ef02ed",
+  "public_snapshot": "beta76-release-2b563de",
   "source_tag": null,
-  "source_commit": "7ef02ed7e531271ff76d2777fec60fe33f736b04",
-  "created_at": "2026-09-09T21:25:46.905667+00:00",
+  "source_commit": "2b563de91a757205525836363aa249bc952c664b",
+  "created_at": "2026-09-10T20:37:55+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -45,23 +45,23 @@
       "matching_local_copies": 1
     }
   },
-  "server_integration_examples_included": false,
-  "server_integration_status": "placeholder/readme only; source examples pending review",
+  "server_integration_examples_included": true,
+  "server_integration_status": "sanitized reference examples aligned to the exact 75-action Beta.76 client contract",
   "source_branch": "milestone-1.9-client-development",
-  "package_version": "0.3.1-beta.75",
-  "excluded_private_paths": [
-    "docs/PROJECT_LEDGER.md"
-  ],
+  "package_version": "0.3.1-beta.76",
+  "excluded_private_paths": [],
   "verification": {
-    "private_source": "npm run verify: PASS immediately before private push",
-    "public_candidate": "npm ci + git diff --check + npm run check + npm run verify: PASS before public commit/tag"
+    "private_source": "1795 tests; 1793 pass; 0 fail; 2 skipped immediately before private push",
+    "public_candidate": "npm ci + git diff --check + npm run verify: PASS before public commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.75",
-  "beta75_scope": [
-    "Lua correction pass 1",
-    "accessibility/sound correctness pass 1",
-    "TinTin to managed soundpack events and custom.* authoring",
-    "SOUND list/search/show discovery",
-    "client-local accessibility routing Last/Why/Report/Capabilities/Test/Doctor/profiles"
+  "public_release_tag": "v0.3.1-beta.76",
+  "beta76_scope": [
+    "general audio independent of Reader features",
+    "command-line custom-sound creation and editing through protected shared operations",
+    "manual SOUND Reader announcements",
+    "2500 bounded Personal Sounds allocations",
+    "exact 75-action server/client control parity",
+    "TELNET GA/EOR prompt Action compatibility",
+    "detached GPS caret stability"
   ]
 }

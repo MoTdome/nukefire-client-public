@@ -2063,3 +2063,38 @@ Beta.62 locks the cumulative accessible-output/audio/speech sequence developed o
 - Added two short, distinct bounded native Web Audio signatures and kept communication sounds independent from Self-Voice/native screen-reader speech.
 - Reused the existing Communications classifier and active/background-session dedupe path, so Tell/Auction cues do not introduce a second text parser or duplicate event source.
 - Extended the bounded `reader.sound.channel` / `reader.sound.test` client-control handlers to accept Tell and Auction while preserving the hardcoded semantic-control allowlist.
+# Beta.76 Command-Line Custom Sounds
+
+- Added one command-line path for creating, assigning, inspecting, testing, clearing, and deleting custom sounds without opening Preferences.
+- Kept Preferences, TinTin `#SOUND`, and CR SOUNDPACK on the existing Soundpack Store, protected chooser, `.nfsp`, and playback authorities.
+- Added command-input focus restoration after the protected chooser and explicit cancellation/failure output for screen-reader users.
+- Increased bounded custom capacity to 2,500 events with a 4,096-entry archive ceiling and bounded 1 MB manifest while preserving archive/expanded/audio byte, extension, namespace, and path limits.
+- Corrected shared-asset retention when one event assignment is replaced or cleared.
+- Deferred Action output-only/no-speech behavior and server changes to separate reviewed work.
+
+# Beta.76 Prompt Action Compatibility Hotfix
+
+- Restored TinTin Action and temporary Lua-trigger matching for gameplay prompts that end with TELNET GA/EOR instead of a newline.
+- Treats the bounded accumulated prompt tail as one completed trigger line at the authoritative prompt boundary, then clears it so anchored `^` matches on the next ordinary MUD line still begin at column zero.
+- Preserves split-chunk prompt handling, Action routing and rate limits, secure-input suppression, Gag prompt display, docked/hidden prompt presentation, and the existing server-independent command pipeline.
+- Keeps `#SHOWME` unchanged: it remains bounded local text, while colored local output continues to use the established `#ECHO` formatter.
+
+# Beta.76 GPS Pop-out Caret Stability Hotfix
+
+- Restored mirrored text-input focus and selection synchronously after a generic panel snapshot rebuild.
+- Prevented per-character GPS filtering updates from leaving a focusless animation-frame gap that could move the detached GPS search caret to Home.
+- Preserved the existing protected pop-out control relay, Mapper/GPS state, destination filtering, server commands, and keyboard behavior.
+
+# Beta.76 Manual Sound Reader Announcements
+
+- Routed manually entered `#SOUND` results through the existing forced Reader announcement path so blocked playback, chooser cancellation, assignment, clearing, deletion, status, list, search, and show results are spoken.
+- Preserved quiet failure behavior for Action-, Alias-, timer-, Event-, and Lua-generated sound playback.
+- Kept terminal/system history authoritative and removed the doubled bracket presentation from sound-command results.
+
+# Beta.76 Server Control Parity
+
+- Reconciled the fresh `act.informative.c` and `gmcp.c` sources with the client control surface.
+- Kept one exact 75-action allowlist on both sides, including native screen-reader mode, advanced Self-Voice controls and voice selection, vital speech format, important announcements, Reader hotkeys, and the bounded accessibility command dispatcher.
+- Extended CR SOUND parity to Tell, Auction, Gossip, Group, Grats, Shout, Holler, Skynet, and SSF while preserving one client-side communication-sound authority.
+- Kept server requests semantic and bounded. The server never receives local paths or gains filesystem, shell, JavaScript, Lua, or arbitrary client-command authority.
+- Test-server object compilation and live server/client request-result checks remain required before release publication.

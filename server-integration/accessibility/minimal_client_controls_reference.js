@@ -1,7 +1,7 @@
 /*
  * Minimal NukeFire.Controls client reference.
  *
- * This is a portability example distilled from Beta.73 semantic-controls.js
+ * This is a portability example distilled from Beta.76 semantic-controls.js
  * and renderer/renderer.js. It deliberately has no Electron, filesystem,
  * soundpack, DOM, or game-specific dependencies.
  */
@@ -15,6 +15,7 @@ const CONTROL_ACTIONS = Object.freeze(new Set([
   "reader.preset",
   "reader.load.mushsettings",
   "reader.workspace",
+  "reader.native.enabled",
   "reader.voice.enabled",
   "reader.voice.muted",
   "reader.voice.stop",
@@ -23,7 +24,15 @@ const CONTROL_ACTIONS = Object.freeze(new Set([
   "reader.voice.pitch",
   "reader.voice.volume",
   "reader.voice.foreground",
+  "reader.voice.governor",
+  "reader.voice.priority",
+  "reader.voice.follow",
+  "reader.voice.interrupt",
+  "reader.voice.voices",
+  "reader.voice.use",
   "reader.voice.restart",
+  "reader.vitals.format",
+  "reader.announcements.enabled",
   "reader.audio.status",
   "reader.audio.enabled",
   "reader.audio.muted",
@@ -49,6 +58,7 @@ const CONTROL_ACTIONS = Object.freeze(new Set([
   "reader.soundpack.volume",
   "reader.soundpack.duplicate",
   "reader.soundpack.export",
+  "reader.accessibility.command",
   "reader.doctor",
   "reader.recover",
   "reader.unread",

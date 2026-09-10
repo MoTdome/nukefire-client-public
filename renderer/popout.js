@@ -450,7 +450,12 @@ function applyGenericSnapshot(snapshot = {}) {
       renderMs: performance.now() - renderStartedAt
     });
   }
-  requestAnimationFrame(() => restoreMirrorState(previous));
+  // Restoring on a later frame leaves a short focusless window after every
+  // mirrored input event. GPS filtering can publish overlapping snapshots in
+  // that gap, causing the next character to inherit an old/Home caret. The
+  // rebuilt controls exist as soon as innerHTML returns, so restore the active
+  // control and its selection before another snapshot or key can intervene.
+  restoreMirrorState(previous);
 }
 
 function applySnapshot(snapshot = {}) {

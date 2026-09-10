@@ -34,7 +34,7 @@ test('SOUND help teaches the one-name Action workflow and keeps files inside sou
 
 test('soundpack manifests accept only bounded custom.* player events and map them to their own cue IDs', () => {
   assert.match(soundpackStore, /CUSTOM_EVENT_PATTERN = \/\^custom\\\./u);
-  assert.match(soundpackStore, /MAX_CUSTOM_EVENTS = 32/u);
+  assert.match(soundpackStore, /MAX_CUSTOM_EVENTS = 2500/u);
   assert.match(soundpackStore, /isSupportedSoundpackEvent\(eventName\)/u);
   assert.match(soundpackStore, /Player-created events must use custom\.<name>/u);
   assert.match(soundpackStore, /SOUNDPACK_EVENTS\[event\] \|\| \(isCustomSoundpackEvent\(event\) \? event : ''\)/u);
@@ -77,9 +77,9 @@ test('manual SOUND reports blocking reasons while automation-generated SOUND sta
   assert.match(renderer, /case 'soundpack-event-request': handleTinTinSoundpackEventRequest\(record, payload, true\)/u);
   assert.match(renderer, /case 'soundpack-event-request': handleTinTinSoundpackEventRequest\(record, payload, false\)/u);
   assert.match(renderer, /payload\?\.interactive === true && active/u);
-  assert.match(renderer, /\[Sound \$\{event\} blocked: \$\{result\.reason\}\]/u);
+  assert.match(renderer, /reportInteractiveSoundMessage\(`Sound \$\{event\} blocked: \$\{result\.reason\}`/u);
   const start = renderer.indexOf('function handleTinTinSoundpackEventRequest');
   const end = renderer.indexOf('function handleSessionEvent', start);
   const block = start >= 0 && end > start ? renderer.slice(start, end) : '';
-  assert.doesNotMatch(block, /announce\(/u);
+  assert.match(renderer, /function reportInteractiveSoundMessage[\s\S]*announce\(text, \{ force: true/u);
 });

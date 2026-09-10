@@ -96,6 +96,18 @@ test('line buffer waits for complete lines and drops oversized input safely', ()
   assert.deepEqual(buffer.push(`${'x'.repeat(300)}\nOK\n`), ['OK']);
 });
 
+test('line buffer flush completes one bounded prompt tail and resets cleanly', () => {
+  const buffer = new ActionLineBuffer({ maxLineLength: 256 });
+  assert.deepEqual(buffer.push('Ready to Remort!'), []);
+  assert.deepEqual(buffer.flush(), ['Ready to Remort!']);
+  assert.deepEqual(buffer.flush(), []);
+  assert.deepEqual(buffer.push('next line\n'), ['next line']);
+
+  assert.deepEqual(buffer.push('x'.repeat(300)), []);
+  assert.deepEqual(buffer.flush(), []);
+  assert.deepEqual(buffer.push('recovered\n'), ['recovered']);
+});
+
 test('rate limiter blocks rapid duplicates and caps commands per window', () => {
   const limiter = new ActionRateLimiter({
     maxTriggers: 2, windowMs: 1000, duplicateCooldownMs: 250, noticeIntervalMs: 500

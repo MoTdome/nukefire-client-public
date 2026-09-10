@@ -1,6 +1,6 @@
-# NukeFire.Controls client/server protocol — Beta.73 reference
+# NukeFire.Controls client/server protocol — Beta.76 reference
 
-This document describes the exact accessibility control contract used by the public Beta.73 client. It is intentionally semantic: the server asks for a named Reader operation, while the client owns local implementation details.
+This document describes the exact accessibility control contract used by the public Beta.76 client. It is intentionally semantic: the server asks for a named Reader operation, while the client owns local implementation details.
 
 ## Capability
 
@@ -60,7 +60,7 @@ Example payload:
 }
 ```
 
-The Beta.73 client bounds the human-readable result message to 500 characters. The NukeFire server validates schema, ID range, boolean `ok`, action, and message; rechecks the action against its own allowlist; sanitizes the returned message; and avoids echoing successful line/review operations that already spoke locally.
+The Beta.76 client bounds the human-readable result message to 500 characters. The NukeFire server validates schema, ID range, boolean `ok`, action, and message; rechecks the action against its own allowlist; sanitizes the returned message; and avoids echoing successful line/review operations that already spoke locally.
 
 ## Coordinated Reader setup
 
@@ -82,7 +82,7 @@ Repeated setup calls do **not** overwrite the original pre-Reader snapshot. That
 
 `CR LOAD MUSHSETTINGS` first requests `reader.session.begin`. Only after that succeeds does the server request `reader.load.mushsettings`. The client preserves the current command draft and selection while changing the intended Reader keybindings/input behavior.
 
-## Exact Beta.73 control action allowlist (65)
+## Exact Beta.76 control action allowlist (75)
 
 - `client.status`
 - `reader.status`
@@ -91,6 +91,7 @@ Repeated setup calls do **not** overwrite the original pre-Reader snapshot. That
 - `reader.preset`
 - `reader.load.mushsettings`
 - `reader.workspace`
+- `reader.native.enabled`
 - `reader.voice.enabled`
 - `reader.voice.muted`
 - `reader.voice.stop`
@@ -99,7 +100,15 @@ Repeated setup calls do **not** overwrite the original pre-Reader snapshot. That
 - `reader.voice.pitch`
 - `reader.voice.volume`
 - `reader.voice.foreground`
+- `reader.voice.governor`
+- `reader.voice.priority`
+- `reader.voice.follow`
+- `reader.voice.interrupt`
+- `reader.voice.voices`
+- `reader.voice.use`
 - `reader.voice.restart`
+- `reader.vitals.format`
+- `reader.announcements.enabled`
 - `reader.audio.status`
 - `reader.audio.enabled`
 - `reader.audio.muted`
@@ -125,6 +134,7 @@ Repeated setup calls do **not** overwrite the original pre-Reader snapshot. That
 - `reader.soundpack.volume`
 - `reader.soundpack.duplicate`
 - `reader.soundpack.export`
+- `reader.accessibility.command`
 - `reader.doctor`
 - `reader.recover`
 - `reader.unread`

@@ -1259,6 +1259,12 @@
               <span class="preference-tab-title">Pipeline Debug</span>
               <span class="preference-tab-hint">Bounded command-path diagnostics</span>
             </button>
+            <button id="preference-tab-audio" class="preference-tab" type="button" role="tab"
+              aria-selected="false" aria-controls="preference-panel-audio" tabindex="-1"
+              data-preference-category="audio">
+              <span class="preference-tab-title">Audio</span>
+              <span class="preference-tab-hint">Soundpacks, sounds, music, and notifications</span>
+            </button>
             <button id="preference-tab-accessibility" class="preference-tab" type="button" role="tab"
               aria-selected="false" aria-controls="preference-panel-accessibility" tabindex="-1"
               data-preference-category="accessibility">
@@ -1842,77 +1848,13 @@
           </p>
         </section>
 
-        <section id="preference-panel-accessibility" class="preference-section accessibility-panel" role="tabpanel"
-          data-preference-category="accessibility" aria-labelledby="preference-tab-accessibility accessibility-heading" hidden>
-          <h3 id="accessibility-heading">Accessibility</h3>
-          <div class="preference-help" aria-labelledby="reader-preset-heading">
-            <strong id="reader-preset-heading">Reader setup presets</strong>
-            <p>Choose a starting workflow, then tune any individual Accessibility setting afterward. Presets never replace your selected system voice, pitch, or volume.</p>
-            <label>
-              <span>Reader setup</span>
-              <select id="reader-preset-select" aria-label="Reader setup preset">
-                <option value="native-reader">Native Reader</option>
-                <option value="reader-live-voice">Reader + Live Voice</option>
-                <option value="fast-reader">Fast Reader — 2×</option>
-                <option value="quiet-review">Quiet / Review</option>
-              </select>
-            </label>
-            <div class="preferences-actions" aria-label="Reader preset controls">
-              <button id="reader-preset-apply" class="primary" type="button">Apply Reader Preset</button>
-              <button id="reader-hotkeys-install" type="button">Install Reader Hotkeys F5–F10</button>
-              <button id="reader-hotkeys-remove" type="button">Remove Reader Hotkeys</button>
-            </div>
-            <p id="reader-preset-status" role="status" aria-live="polite">
-              Reader presets are optional. Existing keyboard shortcuts are never overwritten by the Reader Hotkey preset.
-            </p>
-          </div>
-          <label class="checkbox"><input id="screen-reader-mode" type="checkbox"> Native screen reader mode</label>
-          <label class="checkbox"><input id="reader-workspace-enabled" type="checkbox"> Reader workspace — terminal and Reader Review only</label>
-          <label class="checkbox"><input id="self-voice-enabled" type="checkbox"> NukeFire self-voice</label>
-          <label class="checkbox"><input id="self-voice-muted" type="checkbox"> Mute NukeFire self-voice</label>
-          <label class="checkbox"><input id="self-voice-foreground-only" type="checkbox" checked> Speak only while NukeFire is in the foreground</label>
-          <label class="checkbox"><input id="self-voice-governor-enabled" type="checkbox" checked> Condense sustained self-voice backlog</label>
-          <label class="checkbox"><input id="self-voice-priority-alerts-enabled" type="checkbox" checked> Prioritize Tell and System self-voice</label>
-          <label class="checkbox"><input id="self-voice-follow-mode" type="checkbox"> Follow self-voice on room movement</label>
-          <label class="checkbox"><input id="self-voice-interrupt-on-command" type="checkbox"> Interrupt Self-Voice when a command is sent</label>
-          <label>
-            <span>Self-Voice speed: <output id="self-voice-rate-value">1.0×</output></span>
-            <input id="self-voice-rate" type="range" min="0.1" max="10" step="0.1" value="1" aria-label="Self-Voice speed">
-          </label>
-          <label>
-            <span>Self-Voice pitch: <output id="self-voice-pitch-value">1.0</output></span>
-            <input id="self-voice-pitch" type="range" min="0" max="2" step="0.05" value="1" aria-label="Self-Voice pitch">
-          </label>
-          <label>
-            <span>Self-Voice volume: <output id="self-voice-volume-value">100%</output></span>
-            <input id="self-voice-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Self-Voice volume">
-          </label>
-          <label>
-            <span>Self-Voice voice</span>
-            <select id="self-voice-voice" aria-label="Self-Voice voice">
-              <option value="">System Default</option>
-            </select>
-          </label>
-          <div class="preference-help" aria-labelledby="instant-vitals-heading">
-            <strong id="instant-vitals-heading">Instant vital speech</strong>
-            <label>
-              <span>Spoken vital format</span>
-              <select id="vital-speech-mode" aria-describedby="instant-vitals-help">
-                <option value="percent-values">Percent, then current and maximum values</option>
-                <option value="percent">Percent only</option>
-                <option value="values">Current and maximum values only</option>
-              </select>
-            </label>
-            <p id="instant-vitals-help">F5 Read Vitals and keyboard actions for Read Health, Read Mana, and Read Movement use the live GMCP cache locally. They do not send a MUD command and do not enter the server command queue.</p>
-          </div>
-          <label class="checkbox"><input id="announce-important" type="checkbox" checked> Announce important events</label>
-          <div class="preferences-actions" aria-label="Self-voice controls">
-            <button id="self-voice-test" type="button">Test Self-Voice</button>
-            <button id="self-voice-toggle-mute" type="button">Mute Self-Voice</button>
-            <button id="self-voice-stop" type="button">Stop Self-Voice Now</button>
-          </div>
+        <section id="preference-panel-audio" class="preference-section audio-panel" role="tabpanel"
+          data-preference-category="audio" aria-labelledby="preference-tab-audio audio-heading" hidden>
+          <h3 id="audio-heading">Audio</h3>
+          <p class="preference-help">Use soundpacks and managed #SOUND events for ordinary play, accessibility, notifications, effects, or music. Reader Mode is not required.</p>
           <div class="preference-help" aria-labelledby="audio-cue-heading">
             <strong id="audio-cue-heading">Audio cues</strong>
+            <p>Soundpacks and #SOUND are general NukeFire Client audio. They work whether Reader Workspace, native screen reader mode, and NukeFire Self-Voice are on or off.</p>
             <div class="preference-help" aria-labelledby="soundpack-heading">
               <strong id="soundpack-heading">Soundpack</strong>
               <label>
@@ -1945,7 +1887,7 @@
                   <label><span>Custom Action event</span><input id="soundpack-editor-custom-event" maxlength="80" placeholder="custom.stairs" autocomplete="off" spellcheck="false" aria-describedby="soundpack-editor-custom-help"></label>
                   <div class="preferences-actions"><button id="soundpack-editor-custom-use" type="button">Use Custom Event</button></div>
                 </div>
-                <p id="soundpack-editor-custom-help">Player-created sounds use custom.* names. Example: custom.stairs can be called from #ACTION {a dungeon staircase} {#SOUND {custom.stairs}}. If Built-in NukeFire is active, Use Custom Event prepares a Personal Sounds pack automatically. Assigned audio is copied into that .nfsp soundpack.</p>
+                <p id="soundpack-editor-custom-help">Player-created sounds use custom.* names. Example: custom.stairs can be called from #ACTION {a dungeon staircase} {#SOUND {custom.stairs}}. Longer music tracks can use custom.music.* names such as custom.music.boss; starting another custom.music.* event replaces the previous music track without stopping normal sound effects. If Built-in NukeFire is active, Use Custom Event prepares a Personal Sounds pack automatically. Assigned audio is copied into that .nfsp soundpack.</p>
                 <label class="checkbox"><input id="soundpack-editor-enabled" type="checkbox" checked> Enable this sound event</label>
                 <div class="preference-grid">
                   <label><span>Event volume percent</span><input id="soundpack-editor-volume" type="number" min="0" max="100" value="100"></label>
@@ -2064,6 +2006,78 @@
               <div id="sound-trigger-list" class="quick-command-list" role="list" aria-label="Configured Sound Triggers"></div>
               <p id="sound-trigger-empty">Add a trigger to turn repetitive game lines into immediate earcons.</p>
             </div>
+          </div>
+          <p class="preference-help">For music, use an assigned custom.music.* event. Only one custom.music.* track plays at a time. #SOUND {STOP} {MUSIC} stops music only; #SOUND {STOP} stops all managed client audio.</p>
+        </section>
+
+        <section id="preference-panel-accessibility" class="preference-section accessibility-panel" role="tabpanel"
+          data-preference-category="accessibility" aria-labelledby="preference-tab-accessibility accessibility-heading" hidden>
+          <h3 id="accessibility-heading">Accessibility</h3>
+          <div class="preference-help" aria-labelledby="reader-preset-heading">
+            <strong id="reader-preset-heading">Reader setup presets</strong>
+            <p>Choose a starting workflow, then tune any individual Accessibility setting afterward. Presets never replace your selected system voice, pitch, or volume.</p>
+            <label>
+              <span>Reader setup</span>
+              <select id="reader-preset-select" aria-label="Reader setup preset">
+                <option value="native-reader">Native Reader</option>
+                <option value="reader-live-voice">Reader + Live Voice</option>
+                <option value="fast-reader">Fast Reader — 2×</option>
+                <option value="quiet-review">Quiet / Review</option>
+              </select>
+            </label>
+            <div class="preferences-actions" aria-label="Reader preset controls">
+              <button id="reader-preset-apply" class="primary" type="button">Apply Reader Preset</button>
+              <button id="reader-hotkeys-install" type="button">Install Reader Hotkeys F5–F10</button>
+              <button id="reader-hotkeys-remove" type="button">Remove Reader Hotkeys</button>
+            </div>
+            <p id="reader-preset-status" role="status" aria-live="polite">
+              Reader presets are optional. Existing keyboard shortcuts are never overwritten by the Reader Hotkey preset.
+            </p>
+          </div>
+          <label class="checkbox"><input id="screen-reader-mode" type="checkbox"> Native screen reader mode</label>
+          <label class="checkbox"><input id="reader-workspace-enabled" type="checkbox"> Reader workspace — terminal and Reader Review only</label>
+          <label class="checkbox"><input id="self-voice-enabled" type="checkbox"> NukeFire self-voice</label>
+          <label class="checkbox"><input id="self-voice-muted" type="checkbox"> Mute NukeFire self-voice</label>
+          <label class="checkbox"><input id="self-voice-foreground-only" type="checkbox" checked> Speak only while NukeFire is in the foreground</label>
+          <label class="checkbox"><input id="self-voice-governor-enabled" type="checkbox" checked> Condense sustained self-voice backlog</label>
+          <label class="checkbox"><input id="self-voice-priority-alerts-enabled" type="checkbox" checked> Prioritize Tell and System self-voice</label>
+          <label class="checkbox"><input id="self-voice-follow-mode" type="checkbox"> Follow self-voice on room movement</label>
+          <label class="checkbox"><input id="self-voice-interrupt-on-command" type="checkbox"> Interrupt Self-Voice when a command is sent</label>
+          <label>
+            <span>Self-Voice speed: <output id="self-voice-rate-value">1.0×</output></span>
+            <input id="self-voice-rate" type="range" min="0.1" max="10" step="0.1" value="1" aria-label="Self-Voice speed">
+          </label>
+          <label>
+            <span>Self-Voice pitch: <output id="self-voice-pitch-value">1.0</output></span>
+            <input id="self-voice-pitch" type="range" min="0" max="2" step="0.05" value="1" aria-label="Self-Voice pitch">
+          </label>
+          <label>
+            <span>Self-Voice volume: <output id="self-voice-volume-value">100%</output></span>
+            <input id="self-voice-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Self-Voice volume">
+          </label>
+          <label>
+            <span>Self-Voice voice</span>
+            <select id="self-voice-voice" aria-label="Self-Voice voice">
+              <option value="">System Default</option>
+            </select>
+          </label>
+          <div class="preference-help" aria-labelledby="instant-vitals-heading">
+            <strong id="instant-vitals-heading">Instant vital speech</strong>
+            <label>
+              <span>Spoken vital format</span>
+              <select id="vital-speech-mode" aria-describedby="instant-vitals-help">
+                <option value="percent-values">Percent, then current and maximum values</option>
+                <option value="percent">Percent only</option>
+                <option value="values">Current and maximum values only</option>
+              </select>
+            </label>
+            <p id="instant-vitals-help">F5 Read Vitals and keyboard actions for Read Health, Read Mana, and Read Movement use the live GMCP cache locally. They do not send a MUD command and do not enter the server command queue.</p>
+          </div>
+          <label class="checkbox"><input id="announce-important" type="checkbox" checked> Announce important events</label>
+          <div class="preferences-actions" aria-label="Self-voice controls">
+            <button id="self-voice-test" type="button">Test Self-Voice</button>
+            <button id="self-voice-toggle-mute" type="button">Mute Self-Voice</button>
+            <button id="self-voice-stop" type="button">Stop Self-Voice Now</button>
           </div>
           <p class="preference-help">
             Native screen reader mode is the standard VoiceOver, NVDA, JAWS, or Orca path.

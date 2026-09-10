@@ -8,11 +8,11 @@ const SOUNDPACK_SCHEMA = 1;
 const MAX_ARCHIVE_BYTES = 25 * 1024 * 1024;
 const MAX_EXPANDED_BYTES = 50 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
-const MAX_ENTRIES = 64;
-const MAX_MANIFEST_BYTES = 64 * 1024;
+const MAX_ARCHIVE_ENTRIES = 4096;
+const MAX_MANIFEST_BYTES = 1024 * 1024;
 const MAX_EVENT_VARIATIONS = 8;
 const MAX_EVENT_COOLDOWN_MS = 60_000;
-const MAX_CUSTOM_EVENTS = 32;
+const MAX_CUSTOM_EVENTS = 2500;
 const MAX_EVENT_NAME = 80;
 const CUSTOM_EVENT_PATTERN = /^custom\.[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const PACK_ID_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
@@ -184,13 +184,36 @@ function eventFiles(eventOptions) {
   return Array.isArray(eventOptions?.files) ? eventOptions.files : [];
 }
 
+function soundpackFilesReferencedByOtherEvents(events, eventNameValue) {
+  const eventName = String(eventNameValue || '').trim().toLowerCase();
+  const referenced = new Set();
+  for (const [otherEvent, options] of Object.entries(events || {})) {
+    if (String(otherEvent || '').trim().toLowerCase() === eventName) continue;
+    for (const filename of eventFiles(options)) referenced.add(filename);
+  }
+  return referenced;
+}
+
+function soundpackAssignedFilename(eventName, extension, reserved = new Set()) {
+  const base = isCustomSoundpackEvent(eventName)
+    ? `sounds/${eventName}`
+    : `sounds/${eventName.replace(/\./gu, '-')}`;
+  let candidate = `${base}${extension}`;
+  if (!reserved.has(candidate)) return candidate;
+  for (let suffix = 2; suffix <= 64; suffix += 1) {
+    candidate = `${base}-assigned-${suffix}${extension}`;
+    if (!reserved.has(candidate)) return candidate;
+  }
+  throw new Error(`Soundpack event ${eventName} could not allocate a private audio filename.`);
+}
+
 function inspectArchiveBuffer(buffer) {
   if (!Buffer.isBuffer(buffer) || !buffer.length || buffer.length > MAX_ARCHIVE_BYTES) {
     throw new Error(`Soundpack archive must be no larger than ${MAX_ARCHIVE_BYTES / 1024 / 1024} MB.`);
   }
   const archive = new AdmZip(buffer);
   const entries = archive.getEntries();
-  if (!entries.length || entries.length > MAX_ENTRIES) throw new Error(`Soundpack archive must contain 1 through ${MAX_ENTRIES} entries.`);
+  if (!entries.length || entries.length > MAX_ARCHIVE_ENTRIES) throw new Error(`Soundpack archive must contain 1 through ${MAX_ARCHIVE_ENTRIES} entries.`);
   const byName = new Map();
   let expandedBytes = 0;
   for (const entry of entries) {
@@ -345,10 +368,11 @@ class SoundpackStore {
       throw new Error('Selected audio must be a bounded WAV, MP3, OGG, or M4A file.');
     }
     const editable = await this.editablePack(id);
-    const filename = isCustomSoundpackEvent(eventName)
-      ? `sounds/${eventName}${extension}`
-      : `sounds/${eventName.replace(/\./gu, '-')}${extension}`;
-    for (const oldFilename of eventFiles(editable.pack.events[eventName])) editable.files.delete(oldFilename);
+    const referencedElsewhere = soundpackFilesReferencedByOtherEvents(editable.pack.events, eventName);
+    const filename = soundpackAssignedFilename(eventName, extension, referencedElsewhere);
+    for (const oldFilename of eventFiles(editable.pack.events[eventName])) {
+      if (!referencedElsewhere.has(oldFilename)) editable.files.delete(oldFilename);
+    }
     editable.files.set(filename, await fs.readFile(selected));
     const events = { ...editable.pack.events, [eventName]: {
       files: [filename], selection: 'random', volume: options.volume, cooldown_ms: options.cooldown_ms
@@ -360,7 +384,10 @@ class SoundpackStore {
     const eventName = String(eventNameValue || '').trim().toLowerCase();
     if (!isSupportedSoundpackEvent(eventName)) throw new Error('Unsupported soundpack event. Player-created events must use custom.<name>.');
     const editable = await this.editablePack(id);
-    for (const filename of eventFiles(editable.pack.events[eventName])) editable.files.delete(filename);
+    const referencedElsewhere = soundpackFilesReferencedByOtherEvents(editable.pack.events, eventName);
+    for (const filename of eventFiles(editable.pack.events[eventName])) {
+      if (!referencedElsewhere.has(filename)) editable.files.delete(filename);
+    }
     const events = { ...editable.pack.events };
     delete events[eventName];
     return this.writePack({ ...editable.pack, events }, editable.files);
@@ -437,7 +464,9 @@ module.exports = {
   soundpackCueId,
   soundpackEventMetadata,
   MAX_ARCHIVE_BYTES,
+  MAX_ARCHIVE_ENTRIES,
   MAX_EXPANDED_BYTES,
+  MAX_MANIFEST_BYTES,
   MAX_EVENT_VARIATIONS,
   MAX_EVENT_COOLDOWN_MS,
   normalizeEntryName,

@@ -28,7 +28,7 @@ function functionBlock(name, nextName) {
 }
 
 test('SR/CR semantic requests remain a strict commandless allowlist', () => {
-  assert.equal(CONTROL_REQUEST_ACTIONS.size, 65);
+  assert.equal(CONTROL_REQUEST_ACTIONS.size, 75);
   for (const action of [
     'client.status', 'reader.status', 'reader.session.begin', 'reader.exit.restore',
     'reader.preset', 'reader.load.mushsettings', 'reader.workspace',

@@ -154,6 +154,30 @@ test('generic panel pop-out mirrors live content and relays accessible controls'
   assert.equal(actions.at(-1).control.kind, 'input');
   assert.equal(actions.at(-1).control.value, 'Tank');
 
+  // GPS search republishes the generic Mapper snapshot for every character.
+  // The rebuilt text input must regain focus and its current caret immediately,
+  // before a second snapshot or physical key can observe a focusless window.
+  input.focus();
+  input.value = 'Tank Alpha';
+  input.setSelectionRange(10, 10);
+  stateHandler({
+    mode: 'mirror',
+    panelId: 'vitals',
+    label: 'Vitals',
+    subtitle: 'Health, mana, movement, combat, and group status',
+    revision: 2,
+    html: [
+      '<section class="panel vitals-panel" aria-label="Vitals panel">',
+      '<button id="vitals-test-button" data-popout-control="vitals:id:vitals-test-button">Assist</button>',
+      '<input id="vitals-test-input" data-popout-control="vitals:id:vitals-test-input" value="Tank Alpha">',
+      '</section>'
+    ].join('')
+  });
+  const rebuiltInput = dom.window.document.querySelector('#vitals-test-input');
+  assert.equal(dom.window.document.activeElement, rebuiltInput);
+  assert.equal(rebuiltInput.selectionStart, 10);
+  assert.equal(rebuiltInput.selectionEnd, 10);
+
   dom.window.document.querySelector('#dock-panel').click();
   assert.equal(actions.at(-1).action, 'dock');
 });

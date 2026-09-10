@@ -29,6 +29,7 @@ function tick() { return new Promise((resolve) => setImmediate(resolve)); }
 
 function managerHarness(options = {}) {
   const callbacks = [];
+  const events = [];
   const timers = [];
   const cleared = [];
   const manager = new SessionManager({
@@ -43,12 +44,12 @@ function managerHarness(options = {}) {
         return Promise.resolve({ ok: true, values: [], echoes: [], sends: [], variableSets: [], tableSets: [], gmcpSends: [], executions: [], automations: [] });
       }),
       onLuaCallbackForgotten: () => Promise.resolve(true),
-      onEvent: () => {},
+      onEvent: options.onEvent || ((event) => events.push(event)),
       onSessionsChanged: () => {}
     }
   });
   const session = manager.createSession({ id: 'main', name: 'Main' });
-  return { manager, session, callbacks, timers, cleared, connection: manager.sessions.get(session.id).connection };
+  return { manager, session, callbacks, events, timers, cleared, connection: manager.sessions.get(session.id).connection };
 }
 
 test('prompt carry is closed at TELNET prompt boundary so ^ sees the next actual mud line', async () => {
@@ -58,7 +59,7 @@ test('prompt carry is closed at TELNET prompt boundary so ^ sees the next actual
 
   connection.handlers.onText('(MONSTER) >');
   connection.handlers.onPromptBoundary({ type: 'GA' });
-  assert.equal(callbacks.length, 0, 'prompt boundary must discard prompt carry without inventing a trigger line');
+  assert.equal(callbacks.length, 0, 'an unrelated prompt must not match the anchored trigger');
   connection.handlers.onText('[Procs] 1 effect: the chain of broken pilgrimage keys\n');
   await tick();
 
@@ -76,6 +77,39 @@ test('prompt carry is closed at TELNET prompt boundary so ^ sees the next actual
   await tick();
   assert.equal(callbacks.length, 2);
   assert.deepEqual(callbacks[1].context.matches, ['[Procs] 2 effects: alpha, beta', '2', 'alpha, beta']);
+});
+
+test('TinTin Actions match a non-newline prompt exactly once at its TELNET boundary', async () => {
+  const { manager, session, events, connection } = managerHarness();
+  const mw1 = manager.createSession({ id: 'mw1', name: 'MW1' });
+  const mw1Session = manager.sessions.get(mw1.id);
+  const mw1Connection = mw1Session.connection;
+  mw1Session.status = { ...mw1Session.status, state: 'connected' };
+  assert.deepEqual(
+    manager.dispatchInput(session.id, '#action {Ready to Remort!} {#mw1 gs **Remort is ready**}').messages,
+    ['Defined action at priority 5: Ready to Remort!']
+  );
+
+  connection.handlers.onText('(MONSTER) Ready to ');
+  connection.handlers.onText('Remort! >');
+  assert.equal(events.some((event) => event.type === 'action-result'), false);
+  assert.deepEqual(mw1Connection.sent, []);
+
+  connection.handlers.onPromptBoundary({ type: 'GA' });
+  await tick();
+  const results = events.filter((event) => event.type === 'action-result');
+  assert.equal(results.length, 1);
+  assert.equal(results[0].payload.pattern, 'Ready to Remort!');
+  assert.equal(results[0].payload.command, '#mw1 gs **Remort is ready**');
+  // Existing TinTin variable escaping turns each ** pair into one literal *
+  // before the routed server command is queued.
+  assert.deepEqual(mw1Connection.sent, ['gs *Remort is ready*']);
+
+  connection.handlers.onPromptBoundary({ type: 'EOR' });
+  connection.handlers.onText('ordinary next line\n');
+  await tick();
+  assert.equal(events.filter((event) => event.type === 'action-result').length, 1);
+  assert.deepEqual(mw1Connection.sent, ['gs *Remort is ready*']);
 });
 
 test('temporary Lua automation is enabled immediately and script ownership follows callback requests', async () => {

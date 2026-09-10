@@ -1,6 +1,6 @@
 # NukeFire Client — TinTin-like Scripting Guide
 
-> **For NukeFire Client 0.3.1-beta.73**
+> **For NukeFire Client 0.3.1-beta.76**
 > Bounded aliases, actions, variables, functions, files, timers, paths, sessions, and automation.
 
 ## What “TinTin-like” means here

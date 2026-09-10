@@ -199,6 +199,11 @@
     return cueId.length <= MAX_CUSTOM_CUE_ID && CUSTOM_CUE_PATTERN.test(cueId) ? cueId : '';
   }
 
+  function isMusicCueId(value) {
+    const cueId = normalizeCueId(value);
+    return Boolean(cueId) && cueId.startsWith('custom.music.');
+  }
+
   function defaultContextFactory() {
     const Context = root?.AudioContext || root?.webkitAudioContext;
     return typeof Context === 'function' ? () => new Context() : null;
@@ -406,6 +411,7 @@
       this.volume = boundedNumber(options.volume, 0, 1, DEFAULT_AUDIO_CUE_VOLUME);
       this.activeOscillators = new Set();
       this.activeAudio = new Set();
+      this.activeMusicAudio = null;
       this.soundpackAssets = Object.freeze({});
       this.soundpackName = 'Built-in NukeFire';
       this.soundpackSequence = new Map();
@@ -574,9 +580,11 @@
       const custom = this.soundpackAssets[cueId];
       if (custom && typeof root?.Audio === 'function') {
         try {
+          const musicCue = isMusicCueId(cueId);
           const now = Date.now();
           const previous = this.soundpackLastPlayed.get(cueId) || 0;
           if (custom.cooldownMs > 0 && now - previous < custom.cooldownMs) return false;
+          if (musicCue) this.stopMusic();
           const priorIndex = this.soundpackSequence.get(cueId) || 0;
           const index = custom.selection === 'sequential'
             ? priorIndex % custom.sources.length
@@ -587,10 +595,14 @@
           const audio = new root.Audio(customSource);
           audio.preload = 'auto';
           audio.volume = Math.max(0, Math.min(1, this.volume * custom.volume));
-          const release = () => this.activeAudio.delete(audio);
+          const release = () => {
+            this.activeAudio.delete(audio);
+            if (this.activeMusicAudio === audio) this.activeMusicAudio = null;
+          };
           audio.addEventListener?.('ended', release, { once: true });
           audio.addEventListener?.('error', release, { once: true });
           this.activeAudio.add(audio);
+          if (musicCue) this.activeMusicAudio = audio;
           const started = audio.play();
           if (started && typeof started.catch === 'function') started.catch(release);
           return true;
@@ -625,12 +637,23 @@
       return this.scheduleCue(context, cueId, options);
     }
 
+    stopMusic() {
+      const audio = this.activeMusicAudio;
+      if (!audio) return false;
+      try { audio.pause(); } catch (_error) {}
+      try { audio.currentTime = 0; } catch (_error) {}
+      this.activeAudio.delete(audio);
+      this.activeMusicAudio = null;
+      return true;
+    }
+
     stopAll() {
       for (const audio of [...this.activeAudio]) {
         try { audio.pause(); } catch (_error) {}
         try { audio.currentTime = 0; } catch (_error) {}
       }
       this.activeAudio.clear();
+      this.activeMusicAudio = null;
       for (const oscillator of [...this.activeOscillators]) {
         try { oscillator.stop(); } catch (_error) {}
       }
@@ -660,6 +683,7 @@
     CUE_DEFINITIONS,
     SERVER_SOUND_EVENT_CUES,
     normalizeCueId,
+    isMusicCueId,
     vitalsThresholdCue,
     groupSafetyCue,
     semanticCueForEvent,

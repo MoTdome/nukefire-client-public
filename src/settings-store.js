@@ -79,7 +79,7 @@ const TERMINAL_FONT_IDS = Object.freeze([
 const DEFAULT_QUICK_COMMAND_IDS = Object.freeze(['look', 'score', 'inventory', 'equipment', 'who', 'newbie-help']);
 const AFFECT_DISPLAY_MODES = Object.freeze(['classic', 'complete']);
 const SOUNDPACK_EVENT_TOKEN_PATTERN = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
-const MAX_SOUNDPACK_EVENT_PREFERENCES = 64;
+const MAX_SOUNDPACK_EVENT_PREFERENCES = 2500;
 
 const SETTINGS_SCHEMA_VERSION = 48;
 

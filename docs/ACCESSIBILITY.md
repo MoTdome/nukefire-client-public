@@ -1,6 +1,6 @@
 # NukeFire Client — Accessibility & Reader Guide
 
-> **For NukeFire Client 0.3.1-beta.73 and the accompanying NukeFire server accessibility controls**
+> **For NukeFire Client 0.3.1-beta.76 and the accompanying NukeFire server accessibility controls**
 
 This guide is written for screen-reader, braille, keyboard-first, and NukeFire Voice users. It also includes an implementation overview for MUD developers who want to adapt the server-side SR/CR model.
 
@@ -623,14 +623,14 @@ Do **not** turn the accessibility bridge into remote command execution. The serv
 See `../server-integration/accessibility/` for sanitized reference code and porting notes.
 
 
-### Exact Beta.73 client implementation points
+### Exact Beta.76 client implementation points
 
-The public Beta.73 source contains the complete client-side half of CR. The most useful files for implementors are:
+The public Beta.76 source contains the complete client-side half of CR. The most useful files for implementors are:
 
 - `src/semantic-controls.js` — request allowlist, schema validation, text bounds, server-control snapshot normalization, and semantic binding resolution;
 - `src/reader-presets.js` — native/live/fast/quiet Reader presets plus the 12-key Reader and 28-key MUSH-style shortcut definitions;
 - `renderer/renderer.js` — receives `NukeFire.Controls.Request`, performs the local Reader action, snapshots/restores pre-Reader settings, and emits `NukeFire.Controls.Result`.
 
-The client accepts **65 explicit control action IDs** in Beta.73. A request is ignored unless `schema` is exactly `1`, `id` is a positive safe integer, `action` is in that allowlist, and `args` is an object. Only a bounded normalized `args.value` string is exposed to the action dispatcher.
+The client accepts **75 explicit control action IDs** in Beta.76. A request is ignored unless `schema` is exactly `1`, `id` is a positive safe integer, `action` is in that allowlist, and `args` is an object. Only a bounded normalized `args.value` string is exposed to the action dispatcher.
 
 The server and client therefore both validate the semantic action name. Neither side treats the action as JavaScript, a shell command, a pathname, or an arbitrary local client command.

@@ -67,7 +67,7 @@ test('Audio Cue controls are exposed only through the bounded semantic control a
     'reader.audio.volume',
     'reader.audio.foreground'
   ];
-  assert.equal(CONTROL_REQUEST_ACTIONS.size, 65);
+  assert.equal(CONTROL_REQUEST_ACTIONS.size, 75);
   for (const action of actions) {
     assert.equal(CONTROL_REQUEST_ACTIONS.has(action), true, action);
     assert.equal(normalizeControlRequest({ schema: 1, id: 62, action, args: { value: 'on' } })?.action, action);

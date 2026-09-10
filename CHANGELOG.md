@@ -1,3 +1,48 @@
+## 0.3.1-beta.76 — Command-Line Audio and Control Coherence
+
+### GPS pop-out caret stability
+
+- Keeps focus and the exact text selection/caret position stable while a detached Mapper/GPS panel republishes its filtered destination list after each input character.
+- Removes the animation-frame restoration gap from generic pop-out snapshot replacement without changing GPS commands, catalog filtering, panel layout, or the protected control relay.
+
+### High-capacity Personal Sounds
+
+- Raises the real `.nfsp` custom-event allocation ceiling from 32 to 2,500 and the archive entry ceiling from 64 to 4,096, removing the approximately 65-file wall reported by high-volume screen-reader sound users.
+- Raises only the bounded manifest and per-event preference capacities needed to represent those assignments; the `.nfsp` schema, 25 MB archive limit, 50 MB expanded-data limit, 8 MB per-audio limit, protected picker, safe paths, and playback engine remain unchanged.
+- Keeps the 75-entry server control-action allowlist separate from sound allocation capacity.
+
+### Prompt Action compatibility
+
+- Restores `#ACTION` matches on non-newline gameplay prompt text by completing the existing bounded Action/Lua line buffer once at the authoritative TELNET GA/EOR boundary.
+- Keeps the Beta.75 anchored-trigger correction: the prompt buffer is empty before the next ordinary MUD line, so `^` patterns such as the `[Procs]` trigger still start at column zero.
+- Adds regressions for the reported `#action {Ready to Remort!} {#mw1 gs **Remort is ready**}` route, split prompt chunks, exactly-once firing, oversized prompt safety, and the existing anchored Lua trigger.
+- Leaves `#SHOWME` behavior unchanged; `{light green}` is literal SHOWME text, while `#ECHO` remains the supported colored-local-output command.
+
+### Control coherence and command-line custom sounds
+
+- Makes the normal custom-sound workflow command-line first: `#SOUND {ADD} {custom.name}` opens the existing protected audio chooser, while ASSIGN, SHOW, TEST, CLEAR, and DELETE cover the useful editor operations without requiring Preferences navigation.
+- Reuses the same Soundpack Store, `.nfsp` files, Personal Sounds preparation, protected Electron picker, playback engine, and renderer operations as Preferences; the command line never accepts a filesystem path.
+- Returns keyboard focus to the mud command input after command-line audio selection or cancellation, and keeps all soundpack mutation commands direct-player-only so Actions/Lua cannot pop dialogs or silently edit audio.
+- Hardens Soundpack Store clearing/reassignment so an archived audio asset is retained when another event still references it.
+- Unified communication sound enable/disable so CR SOUND and soundpack controls reach one communication-cue authority instead of stacking two independent gates.
+- Adds bounded server-control parity hooks for native reader mode, advanced Self-Voice behavior, voice selection, vital speech format, important announcements, Reader hotkeys, and the existing #A11Y diagnostics/profile operations. The fresh server source pair now uses the same exact 75-action allowlist; test-server compilation and live end-to-end confirmation remain release gates.
+- Expanded Reader status to expose advanced Self-Voice and vital/announcement state.
+- Preserves the existing Reader/Audio/Soundpack engines and existing LIST/SEARCH/SHOW compatibility contracts; this pass adds shared control routes, not duplicate stores or presentation systems.
+
+### General Audio Pass 1
+
+- Moves Soundpacks, Audio Cues, communication sounds, and Sound Triggers out of Accessibility into a first-class Preferences → Audio category for every player. Reader Workspace, native screen reader mode, and NukeFire Self-Voice are not required.
+- Makes the existing managed `#SOUND` independence explicit and permanent: bare `#SOUND` / `#SOUND {STATUS}` report general audio state while `#SOUND {event}` remains usable from normal play and bounded TinTin automation.
+- Adds `#SOUND {STOP}` and `#SOUND {STOP} {MUSIC}` so long audio can be stopped without exposing filenames, filesystem paths, URLs, or a second media-player API.
+- Defines `custom.music.*` as the lightweight player-music convention. Starting a new `custom.music.*` track replaces the previous music track but leaves ordinary sound effects alone.
+- Keeps the existing `.nfsp` format, protected WAV/MP3/OGG/M4A assignment flow, master audio gates, event gates, foreground rules, cooldowns, and server semantic sound events. No second sound engine or Reader-only audio stack is added.
+
+### Manual sound Reader announcements
+
+- Routes every manually requested `#SOUND` result through the existing forced Reader announcement path, including playback gates, chooser cancellation, assignment, clearing, deletion, status, list, search, and show output.
+- Keeps the same messages in terminal/system history and removes the accidental doubled brackets around sound-command results.
+- Keeps Action-, Alias-, timer-, Event-, and Lua-generated sound playback quiet when blocked, preserving the established non-spammy automation contract.
+
 ## Beta.75 Accessibility Routing Pass 4 (development)
 
 - Adds one bounded per-session semantic presentation journal instead of another accessibility settings stack. Meaningful communication, combat, navigation, loot, crafting, quest, vitals, safety, system, and client events can now be inspected through a common event/category/priority vocabulary.

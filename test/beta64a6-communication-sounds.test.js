@@ -77,7 +77,7 @@ test('communication notifications are semantic, speech-independent, and globally
 
 test('CR SOUND semantic control surface is bounded and commandless', () => {
   const actions = ['reader.sound.status', 'reader.sound.channel', 'reader.sound.background', 'reader.sound.test', 'reader.sound.reset'];
-  assert.equal(CONTROL_REQUEST_ACTIONS.size, 65);
+  assert.equal(CONTROL_REQUEST_ACTIONS.size, 75);
   for (const action of actions) {
     assert.equal(CONTROL_REQUEST_ACTIONS.has(action), true, action);
     assert.equal(normalizeControlRequest({ schema: 1, id: 1, action, args: { value: 'gossip on' } })?.action, action);

@@ -42,9 +42,14 @@ reader.session.begin
 reader.status
 reader.preset
 reader.workspace
+reader.native.enabled
 reader.voice.enabled
 reader.voice.rate
+reader.voice.voices
+reader.vitals.format
+reader.announcements.enabled
 reader.audio.enabled
+reader.accessibility.command
 reader.keys
 reader.lines.recall
 reader.review.latest
@@ -58,7 +63,7 @@ The server never sends arbitrary JavaScript, shell, filesystem commands, or unbo
 
 - `sr_cr_commands_reference.c` — portable TBA/Circle-style SR, CR, and legacy READER command structure.
 - `nukefire_controls_reference.c` / `.h` — strict server-side GMCP request/result bridge.
-- `CLIENT-CONTROLS-PROTOCOL.md` — exact Beta.73 request/result schema and 65-action allowlist.
+- `CLIENT-CONTROLS-PROTOCOL.md` — exact Beta.76 request/result schema and 75-action allowlist.
 - `minimal_client_controls_reference.js` — dependency-light cooperating-client dispatcher example.
 - `COMMAND-REGISTRATION.md` — current Circle/TBA command-table wiring.
 - `OUTPUT-SPEECH-POLICY.md` — semantic visibility/speech design.
@@ -68,7 +73,7 @@ The server never sends arbitrary JavaScript, shell, filesystem commands, or unbo
 
 ## Production source basis
 
-The reference was distilled from NukeFire’s Beta.73-era:
+The reference was refreshed for NukeFire Beta.76 from:
 
 - `act.informative.c` SR setup/status/command handling and CLIENT READER dispatch;
 - `gmcp.c` NukeFire.Controls capability checks, action allowlist, request construction, and result validation;
@@ -78,4 +83,4 @@ The public examples favor clarity and portability over exact line-for-line produ
 
 ## Client source already present in this public repository
 
-The public Beta.73 snapshot already contains the full production client files. In particular, implementors can compare the minimal examples here against `src/semantic-controls.js`, `src/reader-presets.js`, and the `NukeFire.Controls.Request` handler in `renderer/renderer.js`. The integration directory does not duplicate those full production files.
+The public Beta.76 snapshot contains the full production client files. In particular, implementors can compare the minimal examples here against `src/semantic-controls.js`, `src/reader-presets.js`, and the `NukeFire.Controls.Request` handler in `renderer/renderer.js`. The integration directory does not duplicate those full production files.
