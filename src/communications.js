@@ -169,8 +169,17 @@
     return /\x1b\[[0-?]*[ -/]*m/u.test(String(value || ''));
   }
 
+  function isNukeFireGroupMovementLine(text) {
+    const value = String(text || '');
+    if (!/^\s*\[\s*group\s*\](?:\s|$)/iu.test(value)) return false;
+
+    return /\sarrive\s+behind\s+.+\s+from\s+.+\.\s*$/iu.test(value)
+      || /\sfollow(?:s)?\s+.+\s+[^\s.]+\.\s*$/iu.test(value);
+  }
+
   function classifyNormalizedText(text) {
     if (!text || !COMMUNICATION_HINT_RE.test(text)) return '';
+    if (isNukeFireGroupMovementLine(text)) return '';
 
     const rules = [
       ['tell', [
