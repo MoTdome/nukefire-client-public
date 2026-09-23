@@ -107,6 +107,8 @@ function applyTheme(snapshot = {}) {
     ? String(ui.interfaceBrightness)
     : 'brighter';
   document.body.dataset.interfaceBrightness = brightness;
+  document.body.dataset.popoutChromeAutoHide = String(ui.popoutChromeAutoHide !== false);
+  document.body.dataset.framelessPopouts = String(ui.framelessPopouts !== false);
   document.body.classList.toggle('terminal-monochrome', Boolean(theme.monochrome));
   document.body.classList.toggle('screen-reader-mode', Boolean(snapshot.screenReaderMode));
 }

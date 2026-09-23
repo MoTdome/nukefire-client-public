@@ -26,9 +26,13 @@ test('font changes wait for browser font metrics before one coalesced fit', () =
   assert.doesNotMatch(renderer, /state\.terminalSizeFrame = scheduleFrame\(\(\) => \{[\s\S]{0,220}xtermAdapter\?\.fit/u);
 });
 
-test('terminal host keeps a safety gap above the prompt and command rows', () => {
-  assert.match(css, /\.xterm-output\s*\{[\s\S]*?inset:\s*0 0 2px;/u);
+test('terminal host keeps a font-aware safety gap above the prompt and command rows', () => {
+  assert.match(css, /\.terminal-output-host\s*\{[\s\S]*?contain:\s*paint;/u);
+  assert.match(css, /\.xterm-output\s*\{[\s\S]*?inset:\s*0 0 var\(--terminal-bottom-guard, 24px\);/u);
   assert.match(css, /\.terminal-shell\s*\{[\s\S]*?grid-template-rows:\s*38px auto minmax\(0, 1fr\) max-content max-content;/u);
+  assert.match(renderer, /function terminalBottomGuardPixels/u);
+  assert.match(renderer, /Math\.ceil\(size \* lineHeight\) \+ 4/u);
+  assert.match(renderer, /terminalFontMetricsSettleTimer/u);
 });
 
 test('#set fontsize provides query, bounded set, and reset without Action access', () => {

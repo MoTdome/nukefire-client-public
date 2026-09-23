@@ -1304,20 +1304,40 @@
           <p id="communications-font-size-help" class="preference-help">
             Sets message text in both docked and popped-out Communications without making the compact channel buttons larger.
           </p>
-          <label class="checkbox">
-            <input id="panel-chrome-auto-hide" type="checkbox">
-            Auto-hide docked panel headers until hover or keyboard focus
-          </label>
-          <p class="preference-help">
-            Gives docked panes a terminal-screen look while keeping panel drag and menu controls available on demand.
-          </p>
-          <label class="checkbox">
-            <input id="play-chrome-auto-hide" type="checkbox" checked>
-            Use terminal-only play mode while connected
-          </label>
-          <p class="preference-help">
-            While playing, the connection and session bars leave the layout completely. Move to the top edge or keyboard-focus their controls to reveal them as an overlay. Reader Mode keeps them visible.
-          </p>
+          <fieldset class="preference-card" aria-describedby="interface-chrome-help">
+            <legend>Interface chrome</legend>
+            <div class="preferences-actions">
+              <button id="chrome-preset-terminal-wall" type="button">Terminal Wall</button>
+              <button id="chrome-preset-classic" type="button">Classic / Persistent</button>
+            </div>
+            <p id="interface-chrome-help" class="preference-help">
+              Presets are shortcuts only. Every choice below remains independently adjustable and persistent.
+            </p>
+            <label class="checkbox">
+              <input id="play-chrome-auto-hide" type="checkbox" checked>
+              Auto-hide connection and session bars while connected
+            </label>
+            <label class="checkbox">
+              <input id="panel-chrome-auto-hide" type="checkbox" checked>
+              Auto-hide docked pane headers
+            </label>
+            <label class="checkbox">
+              <input id="popout-chrome-auto-hide" type="checkbox" checked>
+              Auto-hide detached pane headers
+            </label>
+            <label class="checkbox">
+              <input id="frameless-popouts" type="checkbox" checked>
+              Use frameless detached terminal tiles
+            </label>
+            <label class="checkbox">
+              <input id="decorative-hud" type="checkbox">
+              Show decorative HUD corners and pane rivets
+            </label>
+            <p class="preference-help">
+              Reader Mode keeps important controls visible. Changing detached window frames recreates open popouts at their saved size and position without docking them.
+            </p>
+            <output id="interface-chrome-status" class="preference-help" aria-live="polite"></output>
+          </fieldset>
           <label>
             <span>Interface font</span>
             <select id="ui-font" aria-label="Interface font">

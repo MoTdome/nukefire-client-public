@@ -1,2 +1,2 @@
-NukeFire Client 0.3.1-beta.77
-Terminal Wall, Popout Reliability, and UI Cohesion
+NukeFire Client 0.3.1-beta.78
+Interface Choice and Terminal Geometry

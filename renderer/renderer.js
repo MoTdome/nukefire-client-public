@@ -188,6 +188,7 @@ const speechSoundTriggers = typeof soundTriggerApi.SoundTriggerEngine === 'funct
 let xtermAdapter = null;
 let xtermInitializationBlocked = false;
 let terminalFontMetricsRequest = 0;
+let terminalFontMetricsSettleTimer = null;
 const communicationChannels = communicationsApi.CHANNELS || Object.freeze([
   { id: 'all', label: 'All', availability: 'always' },
   { id: 'gossip', label: 'Gossip', availability: 'always' },
@@ -1316,6 +1317,22 @@ function normalizeTerminalFontSize(value, fallback = TERMINAL_FONT_SIZE_DEFAULT)
   return Math.max(TERMINAL_FONT_SIZE_MIN, Math.min(TERMINAL_FONT_SIZE_MAX, numeric));
 }
 
+function terminalBottomGuardPixels(value) {
+  const size = normalizeTerminalFontSize(value);
+  const compact = $('#compact-output')?.checked === true;
+  const typography = typeof xtermApi.terminalTypography === 'function'
+    ? xtermApi.terminalTypography(state.terminalFont, compact)
+    : { lineHeight: compact ? 1.12 : 1.25 };
+  const lineHeight = Math.max(1, Number(typography?.lineHeight) || 1.25);
+  return Math.ceil(size * lineHeight) + 4;
+}
+
+function applyTerminalBottomGuard(value) {
+  const pixels = terminalBottomGuardPixels(value);
+  document.documentElement.style.setProperty('--terminal-bottom-guard', `${pixels}px`);
+  return pixels;
+}
+
 function scheduleFontMetricsFit() {
   const request = ++terminalFontMetricsRequest;
   const size = normalizeTerminalFontSize($('#font-size')?.value);
@@ -1327,7 +1344,17 @@ function scheduleFontMetricsFit() {
     } catch (_error) {
       // Missing optional fonts safely use the declared monospace fallback.
     }
-    if (request === terminalFontMetricsRequest) scheduleTerminalSizeUpdate();
+    if (request !== terminalFontMetricsRequest) return;
+    scheduleTerminalSizeUpdate();
+
+    // A second quiet settle pass handles installed-font raster/metric changes
+    // that can land after FontFaceSet reports ready. This replaces the manual
+    // Ctrl+/Ctrl- zoom nudge that fixed Cascadia Mono 17px for testers.
+    if (terminalFontMetricsSettleTimer !== null) clearTimeout(terminalFontMetricsSettleTimer);
+    terminalFontMetricsSettleTimer = setTimeout(() => {
+      terminalFontMetricsSettleTimer = null;
+      if (request === terminalFontMetricsRequest) scheduleTerminalSizeUpdate();
+    }, 240);
   })();
 }
 
@@ -1337,6 +1364,7 @@ function applyTerminalFontSize(value, options = {}) {
   if ($('#font-size-scale')) $('#font-size-scale').value = String(size);
   setTextIfChanged($('#font-size-status'), `${size} pixels`);
   document.documentElement.style.setProperty('--terminal-font-size', `${size}px`);
+  applyTerminalBottomGuard(size);
   xtermAdapter?.setFontSize?.(size, { fit: false });
   if (options.persist !== false) {
     localStorage.setItem('nukefire.fontSize', String(size));
@@ -1389,6 +1417,89 @@ function applyPlayChromeAutoHide(value, options = {}) {
   }
   scheduleTerminalSizeUpdate();
   return enabled;
+}
+
+function applyPopoutChromeAutoHide(value, options = {}) {
+  const enabled = value === true || value === 'true';
+  document.body.dataset.popoutChromeAutoHide = String(enabled);
+  const control = $('#popout-chrome-auto-hide');
+  if (control) control.checked = enabled;
+  if (options.persist !== false) {
+    localStorage.setItem('nukefire.popoutChromeAutoHide', String(enabled));
+    schedulePersistentSettingsSave();
+  }
+  publishAllPanelPopoutStates();
+  return enabled;
+}
+
+function applyFramelessPopouts(value, options = {}) {
+  const enabled = value === true || value === 'true';
+  const changed = document.body.dataset.framelessPopouts !== String(enabled);
+  document.body.dataset.framelessPopouts = String(enabled);
+  const control = $('#frameless-popouts');
+  if (control) control.checked = enabled;
+  if (options.persist !== false) {
+    localStorage.setItem('nukefire.framelessPopouts', String(enabled));
+    schedulePersistentSettingsSave();
+  }
+  if (changed && options.recreate !== false) syncPanelPopoutWindows({ focus: false });
+  publishAllPanelPopoutStates();
+  return enabled;
+}
+
+function applyDecorativeHud(value, options = {}) {
+  const enabled = value === true || value === 'true';
+  document.body.dataset.decorativeHud = String(enabled);
+  const control = $('#decorative-hud');
+  if (control) control.checked = enabled;
+  if (options.persist !== false) {
+    localStorage.setItem('nukefire.decorativeHud', String(enabled));
+    schedulePersistentSettingsSave();
+  }
+  return enabled;
+}
+
+function currentChromePresetName() {
+  const terminalWall = document.body.dataset.playChromeAutoHide === 'true'
+    && document.body.dataset.panelChromeAutoHide === 'true'
+    && document.body.dataset.popoutChromeAutoHide === 'true'
+    && document.body.dataset.framelessPopouts === 'true'
+    && document.body.dataset.decorativeHud !== 'true';
+  const classic = document.body.dataset.playChromeAutoHide !== 'true'
+    && document.body.dataset.panelChromeAutoHide !== 'true'
+    && document.body.dataset.popoutChromeAutoHide !== 'true'
+    && document.body.dataset.framelessPopouts !== 'true'
+    && document.body.dataset.decorativeHud === 'true';
+  return terminalWall ? 'Terminal Wall' : (classic ? 'Classic / Persistent' : 'Custom');
+}
+
+function renderChromePresetStatus() {
+  const output = $('#interface-chrome-status');
+  if (output) output.textContent = `Current style: ${currentChromePresetName()}.`;
+}
+
+function applyChromePreset(nameValue) {
+  const name = String(nameValue || '').trim().toLowerCase();
+  const terminalWall = name === 'terminal-wall';
+  if (!terminalWall && name !== 'classic') return false;
+
+  applyPlayChromeAutoHide(terminalWall, { persist: false });
+  applyPanelChromeAutoHide(terminalWall, { persist: false });
+  applyPopoutChromeAutoHide(terminalWall, { persist: false });
+  applyFramelessPopouts(terminalWall, { persist: false, recreate: false });
+  applyDecorativeHud(!terminalWall, { persist: false });
+
+  localStorage.setItem('nukefire.playChromeAutoHide', String(terminalWall));
+  localStorage.setItem('nukefire.panelChromeAutoHide', String(terminalWall));
+  localStorage.setItem('nukefire.popoutChromeAutoHide', String(terminalWall));
+  localStorage.setItem('nukefire.framelessPopouts', String(terminalWall));
+  localStorage.setItem('nukefire.decorativeHud', String(!terminalWall));
+  schedulePersistentSettingsSave();
+  syncPanelPopoutWindows({ focus: false });
+  publishAllPanelPopoutStates();
+  renderChromePresetStatus();
+  announce(`${terminalWall ? 'Terminal Wall' : 'Classic / Persistent'} interface style applied.`, { force: true });
+  return true;
 }
 
 function normalizeInterfaceBrightness(value) {
@@ -1544,6 +1655,7 @@ function renderDockedPrompt(record = activeSessionRecord()) {
   }
   dockedPromptContent.replaceChildren(fragment);
   if (visibilityChanged) scheduleTerminalSizeUpdate();
+  else if (visible) scheduleTerminalSizeUpdate();
 }
 
 
@@ -4368,7 +4480,11 @@ function legacySettingsSnapshot() {
     repeatLastCommandOnEnter: localStorage.getItem('nukefire.repeatLastCommandOnEnter'),
     showLastCommandInInput: localStorage.getItem('nukefire.showLastCommandInInput'),
     brightCommandInputFocus: localStorage.getItem('nukefire.brightCommandInputFocus'),
-    playChromeAutoHide: localStorage.getItem('nukefire.playChromeAutoHide')
+    playChromeAutoHide: localStorage.getItem('nukefire.playChromeAutoHide'),
+    panelChromeAutoHide: localStorage.getItem('nukefire.panelChromeAutoHide'),
+    popoutChromeAutoHide: localStorage.getItem('nukefire.popoutChromeAutoHide'),
+    framelessPopouts: localStorage.getItem('nukefire.framelessPopouts'),
+    decorativeHud: localStorage.getItem('nukefire.decorativeHud')
   };
 }
 
@@ -6261,7 +6377,9 @@ function panelPopoutUiSnapshot() {
     uiFontFamily: UI_FONT_FAMILIES[state.uiFont] || UI_FONT_FAMILIES.system,
     terminalFontFamily: TERMINAL_FONT_FAMILIES[state.terminalFont] || TERMINAL_FONT_FAMILIES.menlo,
     fontSize: Number($('#font-size')?.value) || 16,
-    communicationFontSize: normalizeCommunicationFontSize($('#communications-font-size')?.value)
+    communicationFontSize: normalizeCommunicationFontSize($('#communications-font-size')?.value),
+    popoutChromeAutoHide: document.body.dataset.popoutChromeAutoHide !== 'false',
+    framelessPopouts: document.body.dataset.framelessPopouts !== 'false'
   };
 }
 
@@ -6486,7 +6604,8 @@ async function openPanelPopout(panelId, options = {}) {
     const result = await window.nukefire.openPanelWindow({
       panelId,
       bounds: next[panelId].bounds,
-      focus: options.focus !== false
+      focus: options.focus !== false,
+      frameless: document.body.dataset.framelessPopouts !== 'false'
     });
     if (result?.bounds) {
       state.workspace.activePopouts[panelId].bounds = normalizePanelPopouts({
@@ -7361,6 +7480,9 @@ function collectPersistentSettings() {
       communicationsFontSize: normalizeCommunicationFontSize($('#communications-font-size')?.value),
       panelChromeAutoHide: document.body.dataset.panelChromeAutoHide === 'true',
       playChromeAutoHide: document.body.dataset.playChromeAutoHide !== 'false',
+      popoutChromeAutoHide: document.body.dataset.popoutChromeAutoHide !== 'false',
+      framelessPopouts: document.body.dataset.framelessPopouts !== 'false',
+      decorativeHud: document.body.dataset.decorativeHud === 'true',
       uiFont: state.uiFont,
       terminalFont: state.terminalFont,
       interfaceBrightness: state.interfaceBrightness,
@@ -7456,6 +7578,9 @@ function mirrorPersistentSettings(settings) {
   localStorage.setItem('nukefire.communicationsFontSize', String(normalizeCommunicationFontSize(display.communicationsFontSize)));
   localStorage.setItem('nukefire.panelChromeAutoHide', String(Boolean(display.panelChromeAutoHide)));
   localStorage.setItem('nukefire.playChromeAutoHide', String(display.playChromeAutoHide !== false));
+  localStorage.setItem('nukefire.popoutChromeAutoHide', String(display.popoutChromeAutoHide !== false));
+  localStorage.setItem('nukefire.framelessPopouts', String(display.framelessPopouts !== false));
+  localStorage.setItem('nukefire.decorativeHud', String(display.decorativeHud === true));
   localStorage.setItem('nukefire.uiFont', String(display.uiFont || 'system'));
   localStorage.setItem('nukefire.terminalFont', String(display.terminalFont || 'menlo'));
   localStorage.setItem('nukefire.interfaceBrightness', normalizeInterfaceBrightness(display.interfaceBrightness));
@@ -7635,6 +7760,10 @@ function applyPersistentSettings(settings) {
   applyCommunicationFontSize(display.communicationsFontSize, { persist: false });
   applyPanelChromeAutoHide(Boolean(display.panelChromeAutoHide), { persist: false });
   applyPlayChromeAutoHide(display.playChromeAutoHide !== false, { persist: false });
+  applyPopoutChromeAutoHide(display.popoutChromeAutoHide !== false, { persist: false });
+  applyFramelessPopouts(display.framelessPopouts !== false, { persist: false, recreate: false });
+  applyDecorativeHud(display.decorativeHud === true, { persist: false });
+  renderChromePresetStatus();
   applyFontPreferences(display.uiFont || 'system', display.terminalFont || 'menlo', { persist: false });
   applyInterfaceBrightness(display.interfaceBrightness, { persist: false });
   setAffectsDisplayMode(display.affectsMode, { persist: false, rerender: false });
@@ -22139,6 +22268,7 @@ $('#compression-enabled')?.addEventListener('change', (event) => {
 });
 $('#compact-output').addEventListener('change', (event) => {
   xtermAdapter?.setCompact?.(event.target.checked);
+  applyTerminalBottomGuard($('#font-size')?.value);
   localStorage.setItem('nukefire.compactOutput', String(event.target.checked));
   schedulePersistentSettingsSave();
   scheduleTerminalSizeUpdate();
@@ -22151,8 +22281,28 @@ $('#font-size')?.addEventListener('change', (event) => applyTerminalFontSize(eve
 $('#font-size-reset')?.addEventListener('click', () => applyTerminalFontSize(TERMINAL_FONT_SIZE_DEFAULT, { announceChange: true }));
 $('#communications-font-size')?.addEventListener('input', (event) => applyCommunicationFontSize(event.target.value));
 $('#communications-font-size')?.addEventListener('change', (event) => applyCommunicationFontSize(event.target.value));
-$('#panel-chrome-auto-hide')?.addEventListener('change', (event) => applyPanelChromeAutoHide(event.target.checked));
-$('#play-chrome-auto-hide')?.addEventListener('change', (event) => applyPlayChromeAutoHide(event.target.checked));
+$('#panel-chrome-auto-hide')?.addEventListener('change', (event) => {
+  applyPanelChromeAutoHide(event.target.checked);
+  renderChromePresetStatus();
+});
+$('#play-chrome-auto-hide')?.addEventListener('change', (event) => {
+  applyPlayChromeAutoHide(event.target.checked);
+  renderChromePresetStatus();
+});
+$('#popout-chrome-auto-hide')?.addEventListener('change', (event) => {
+  applyPopoutChromeAutoHide(event.target.checked);
+  renderChromePresetStatus();
+});
+$('#frameless-popouts')?.addEventListener('change', (event) => {
+  applyFramelessPopouts(event.target.checked);
+  renderChromePresetStatus();
+});
+$('#decorative-hud')?.addEventListener('change', (event) => {
+  applyDecorativeHud(event.target.checked);
+  renderChromePresetStatus();
+});
+$('#chrome-preset-terminal-wall')?.addEventListener('click', () => applyChromePreset('terminal-wall'));
+$('#chrome-preset-classic')?.addEventListener('click', () => applyChromePreset('classic'));
 $('#ui-font').addEventListener('change', (event) => {
   applyFontPreferences(event.target.value, state.terminalFont, { announceChange: true });
 });
@@ -23085,8 +23235,12 @@ $('#compact-output').checked = savedCompactOutput;
 const savedFontSize = localStorage.getItem('nukefire.fontSize') || '16';
 applyTerminalFontSize(savedFontSize, { persist: false, refit: false });
 applyCommunicationFontSize(localStorage.getItem('nukefire.communicationsFontSize') || COMMUNICATION_FONT_SIZE_DEFAULT, { persist: false });
-applyPanelChromeAutoHide(localStorage.getItem('nukefire.panelChromeAutoHide') === 'true', { persist: false });
+applyPanelChromeAutoHide(localStorage.getItem('nukefire.panelChromeAutoHide') !== 'false', { persist: false });
 applyPlayChromeAutoHide(localStorage.getItem('nukefire.playChromeAutoHide') !== 'false', { persist: false });
+applyPopoutChromeAutoHide(localStorage.getItem('nukefire.popoutChromeAutoHide') !== 'false', { persist: false });
+applyFramelessPopouts(localStorage.getItem('nukefire.framelessPopouts') !== 'false', { persist: false, recreate: false });
+applyDecorativeHud(localStorage.getItem('nukefire.decorativeHud') === 'true', { persist: false });
+renderChromePresetStatus();
 applyFontPreferences(
   localStorage.getItem('nukefire.uiFont') || 'system',
   localStorage.getItem('nukefire.terminalFont') || 'menlo',

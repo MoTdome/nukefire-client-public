@@ -12,10 +12,21 @@ const settingsStore = require('../src/settings-store');
 
 const source = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 
-test('Beta.77 group movement never becomes Group Say communication', () => {
+test('Beta.78 group movement never becomes Group Say communication in horizontal or vertical exits', () => {
   assert.equal(communications.classifyLine('[Group] Lucifer and Morningstar arrive behind Satan from The West.'), null);
   assert.equal(communications.classifyLine('[Group] Lucifer and Morningstar follow Satan west.'), null);
-  assert.equal(communications.classifyLine("Rance tells the group, 'North.'")?.channel, 'group');
+
+  // Cover vertical labels without assuming that every server path spells them
+  // with the literal words "up" and "down".
+  assert.equal(communications.classifyLine('[Group] Lucifer and Morningstar arrive behind Satan from Above.'), null);
+  assert.equal(communications.classifyLine('[Group] Lucifer and Morningstar arrive behind Satan from Below.'), null);
+  assert.equal(communications.classifyLine('[Group] Lucifer and Morningstar follow Satan up.'), null);
+  assert.equal(communications.classifyLine('[Group] Lucifer and Morningstar follow Satan down.'), null);
+
+  // Normal Group Say must remain classified, even when its text mentions the
+  // same movement words.
+  assert.equal(communications.classifyLine("Rance tells the group, 'We arrive behind Satan from Below.'")?.channel, 'group');
+  assert.equal(communications.classifyLine('[Group] Rance: We arrive behind Satan from Below.')?.channel, 'group');
   assert.equal(communications.classifyLine('[Group] Rance: North.')?.channel, 'group');
 });
 
@@ -43,7 +54,12 @@ test('Beta.77 settings bound and persist UI cohesion controls', () => {
   const defaults = settingsStore.normalizeSettings({});
   assert.equal(defaults.input.echoSentCommands, false);
   assert.equal(defaults.display.communicationsFontSize, 12);
-  assert.equal(defaults.display.panelChromeAutoHide, false);
+  // Beta.78 preserves the Beta.77 Terminal Wall experience for existing/default
+  // users while allowing Classic/Persistent or fully custom chrome afterward.
+  assert.equal(defaults.display.panelChromeAutoHide, true);
+  assert.equal(defaults.display.popoutChromeAutoHide, true);
+  assert.equal(defaults.display.framelessPopouts, true);
+  assert.equal(defaults.display.decorativeHud, false);
 
   const changed = settingsStore.normalizeSettings({
     input: { echoSentCommands: true },

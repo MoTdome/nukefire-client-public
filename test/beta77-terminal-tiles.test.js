@@ -9,13 +9,15 @@ const settingsStore = require('../src/settings-store');
 const root = path.resolve(__dirname, '..');
 const source = (name) => fs.readFileSync(path.join(root, name), 'utf8');
 
-test('Beta.77 detached panels are frameless but retain a draggable reveal header', () => {
+test('Beta.77 frameless detached-panel behavior remains available under Beta.78 customization', () => {
   const main = source('main.js');
   const css = source('renderer/popout.css');
   const html = source('renderer/popout.html');
 
-  assert.ok(main.includes('frame: false,'));
+  assert.ok(main.includes('const frameless = options.frameless !== false;'));
+  assert.ok(main.includes('frame: !frameless,'));
   assert.ok(main.includes('hasShadow: true,'));
+  assert.ok(css.includes('body[data-frameless-popouts="true"] .popout-header'));
   assert.ok(css.includes('-webkit-app-region: drag;'));
   assert.ok(css.includes('-webkit-app-region: no-drag;'));
   assert.ok(css.includes('cursor: move;'));
@@ -57,22 +59,28 @@ test('Beta.77 play-mode hiding explicitly excludes Reader Mode', () => {
   assert.ok(css.split(selector).length - 1 >= 4);
 });
 
-test('Beta.77 terminal-wall polish removes decorative HUD hardware and hides docked pane titlebars in play', () => {
+test('Beta.77 terminal-wall polish remains available through independent Beta.78 chrome controls', () => {
   const css = source('renderer/styles.css');
-  assert.ok(css.includes('Beta.77 terminal-wall polish: content first, decorative HUD hardware removed.'));
-  assert.ok(css.includes('#app::before,'));
-  assert.ok(css.includes('#app::after,'));
-  assert.ok(css.includes('.panel::before {'));
+  assert.ok(css.includes('Beta.78: decorative hardware is independent from terminal/pane chrome.'));
+  assert.ok(css.includes('body[data-decorative-hud="false"] #app::before'));
+  assert.ok(css.includes('body[data-decorative-hud="false"] #app::after'));
+  assert.ok(css.includes('body[data-decorative-hud="false"] .panel::before'));
   assert.ok(css.includes('display: none !important;'));
-  assert.ok(css.includes('.panel > .panel-titlebar {'));
+  assert.ok(css.includes('body[data-panel-chrome-auto-hide="true"]:not(.screen-reader-mode) .panel > .panel-titlebar'));
   assert.ok(css.includes('transform: translateY(calc(-100% + 4px));'));
   assert.ok(css.includes('.panel:hover > .panel-titlebar'));
   assert.ok(css.includes('.panel:focus-within > .panel-titlebar'));
 });
 
-test('Beta.77 terminal-wall polish deliberately leaves pane tab navigation visible', () => {
+test('Beta.77 terminal-wall behavior still leaves pane tab navigation visible', () => {
   const css = source('renderer/styles.css');
-  const polish = css.slice(css.indexOf('Beta.77 terminal-wall polish'));
-  assert.ok(polish.includes('Actual tab strips remain'));
-  assert.equal(polish.includes('.panel-tablist { display: none'), false);
+  assert.ok(css.includes('.panel-tablist[hidden] { display: none !important; }'));
+  assert.equal(
+    css.includes('body[data-panel-chrome-auto-hide="true"]:not(.screen-reader-mode) .panel-tablist'),
+    false
+  );
+  assert.equal(
+    css.includes('body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .panel-tablist'),
+    false
+  );
 });

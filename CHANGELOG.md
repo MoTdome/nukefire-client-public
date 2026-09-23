@@ -661,6 +661,16 @@
 
 # Changelog
 
+## 0.3.1-beta.78 — Interface Choice and Terminal Geometry
+
+- Adds Terminal Wall and Classic/Persistent interface presets plus independent controls for main chrome, docked pane headers, detached pane headers, detached OS frames, and HUD decoration.
+- Decouples docked pane header visibility from terminal-only main play mode.
+- Adds a font-metric-aware bottom safety reserve and paint containment to xterm so the newest line cannot crowd or render beneath the command input boundary.
+- Reconciles terminal sizing whenever the docked prompt updates, calculates its safety reserve from active xterm font metrics, and performs an additional settled refit after fonts load.
+- Fixes the remaining vertical grouped-movement Group Say cue by recognizing NukeFire's generated follower-movement sentence shapes instead of relying on a fixed direction-name list.
+- Preserves Reader Mode visibility, workspace/popout bounds, public release packaging, and Beta.77 communication/audio fixes.
+
+
 ## 0.3.1-beta.77 — Popout Reliability, Terminal Tiles, and UI Cohesion
 
 - Adds terminal-only connected play mode and true frameless detached panel tiles with top-edge reveal/drag controls.

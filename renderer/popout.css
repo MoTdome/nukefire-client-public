@@ -87,8 +87,8 @@ textarea:focus-visible,
   opacity: 1;
   transform: translateY(0);
 }
-/* Frameless detached panel: the hidden/revealed header is the move handle. */
-.popout-header {
+/* Frameless detached panel: the revealed header is the move handle. */
+body[data-frameless-popouts="true"] .popout-header {
   -webkit-app-region: drag;
   cursor: move;
   user-select: none;
@@ -224,6 +224,19 @@ textarea:focus-visible,
 body.terminal-monochrome .communication-body,
 body.terminal-monochrome .communication-body span { color: var(--terminal-foreground) !important; }
 body.terminal-monochrome .communication-body span { background-color: transparent !important; }
+
+body[data-popout-chrome-auto-hide="false"]:not(.screen-reader-mode) .popout-shell {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+body[data-popout-chrome-auto-hide="false"]:not(.screen-reader-mode) .popout-header {
+  position: relative;
+  inset: auto;
+  margin: 0;
+  opacity: 1;
+  transform: none;
+}
 body.screen-reader-mode { --text: #fff; --muted: #d5dbe1; --border: #66717d; }
 body.screen-reader-mode .popout-shell {
   grid-template-rows: auto minmax(0, 1fr);

@@ -353,8 +353,11 @@ const DEFAULT_SETTINGS = Object.freeze({
     compactOutput: false,
     fontSize: 16,
     communicationsFontSize: 12,
-    panelChromeAutoHide: false,
+    panelChromeAutoHide: true,
     playChromeAutoHide: true,
+    popoutChromeAutoHide: true,
+    framelessPopouts: true,
+    decorativeHud: false,
     uiFont: 'system',
     terminalFont: 'menlo',
     interfaceBrightness: 'brighter',
@@ -1392,13 +1395,29 @@ function normalizeSettings(input = {}, now = new Date().toISOString()) {
         24,
         DEFAULT_SETTINGS.display.communicationsFontSize
       ),
-      panelChromeAutoHide: booleanValue(
-        display.panelChromeAutoHide,
-        DEFAULT_SETTINGS.display.panelChromeAutoHide
-      ),
+      panelChromeAutoHide: (
+        display.popoutChromeAutoHide === undefined
+        && display.framelessPopouts === undefined
+        && display.decorativeHud === undefined
+        && booleanValue(display.playChromeAutoHide, DEFAULT_SETTINGS.display.playChromeAutoHide)
+      )
+        ? true
+        : booleanValue(display.panelChromeAutoHide, DEFAULT_SETTINGS.display.panelChromeAutoHide),
       playChromeAutoHide: booleanValue(
         display.playChromeAutoHide,
         DEFAULT_SETTINGS.display.playChromeAutoHide
+      ),
+      popoutChromeAutoHide: booleanValue(
+        display.popoutChromeAutoHide,
+        DEFAULT_SETTINGS.display.popoutChromeAutoHide
+      ),
+      framelessPopouts: booleanValue(
+        display.framelessPopouts,
+        DEFAULT_SETTINGS.display.framelessPopouts
+      ),
+      decorativeHud: booleanValue(
+        display.decorativeHud,
+        DEFAULT_SETTINGS.display.decorativeHud
       ),
       uiFont: normalizeFontId(display.uiFont, UI_FONT_IDS, DEFAULT_SETTINGS.display.uiFont),
       terminalFont: normalizeFontId(display.terminalFont, TERMINAL_FONT_IDS, DEFAULT_SETTINGS.display.terminalFont),
@@ -1558,6 +1577,9 @@ function settingsFromLegacy(legacy = {}) {
       communicationsFontSize: legacy.communicationsFontSize,
       panelChromeAutoHide: legacy.panelChromeAutoHide,
       playChromeAutoHide: legacy.playChromeAutoHide,
+      popoutChromeAutoHide: legacy.popoutChromeAutoHide,
+      framelessPopouts: legacy.framelessPopouts,
+      decorativeHud: legacy.decorativeHud,
       uiFont: legacy.uiFont,
       terminalFont: legacy.terminalFont,
       interfaceBrightness: legacy.interfaceBrightness,

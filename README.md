@@ -1,14 +1,14 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client **Beta.77** milestone from private source commit `211d042`.
+Public source snapshot of the NukeFire Client **Beta.78** milestone from private source commit `211d042`.
 
 NukeFire Client is the cross-platform Electron client developed for the [NukeFire mud](https://nukefire.org) and released here so other mud developers, client authors, accessibility testers, and protocol implementors can inspect, test, adapt, and discuss the ideas used by the client.
 
 ## This snapshot
 
-This repository is a deliberately reviewed and sanitized public snapshot of the Beta.77 development milestone at private source commit `211d04259e5044a6be53ad6ba3e2bde234837cdc`. The public package version for this release is `0.3.1-beta.77`.
+This repository is a deliberately reviewed and sanitized public snapshot of the Beta.77 development milestone at private source commit `211d04259e5044a6be53ad6ba3e2bde234837cdc`. The public package version for this release is `0.3.1-beta.78`.
 
-Beta.77 focuses on pop-out reliability and a content-first terminal workspace:
+Beta.78 follows the Beta.77 reliability pass with user-selectable interface chrome and a hardened main-terminal bottom boundary:
 
 - prevents grouped follower movement summaries from being misclassified as Group Say or playing Group communication audio;
 - keeps native select controls usable in generic detached panels such as GPS and GroupAssist;
@@ -22,7 +22,7 @@ Beta.77 focuses on pop-out reliability and a content-first terminal workspace:
 
 The complete private source was verified before the private Beta.77 commit. This public candidate is independently installed and verified again before its public commit and tag are pushed.
 
-See `RELEASE-NOTES-beta77.md` for the detailed Beta.77 scope. The existing Beta.76 audio/control and server-integration references remain applicable because Beta.77 does not broaden those server contracts.
+See `RELEASE-NOTES-beta78.md` for the Beta.78 customization and terminal-geometry scope; `RELEASE-NOTES-beta77.md` remains the detailed reliability baseline. The existing Beta.76 audio/control and server-integration references remain applicable because Beta.77 does not broaden those server contracts.
 
 ## Test soundpacks
 

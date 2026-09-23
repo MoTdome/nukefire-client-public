@@ -171,11 +171,20 @@
 
   function isNukeFireGroupMovementLine(text) {
     const value = String(text || '');
-    const direction = '(?:north|south|east|west|up|down|northeast|northwest|southeast|southwest)';
-    if (!/^\s*\[\s*group\s*\](?:\s|$)/iu.test(value)) return false;
-    const arrival = new RegExp(`\\sarrive\\s+behind\\s+.+\\s+from\\s+(?:the\\s+)?${direction}\\.?\\s*$`, 'iu');
-    const departure = new RegExp(`\\sfollow(?:s)?\\s+.+\\s+${direction}\\.?\\s*$`, 'iu');
-    return arrival.test(value) || departure.test(value);
+    const tagged = value.match(/^\s*\[\s*group\s*\]\s+([\s\S]+?)\s*$/iu);
+    if (!tagged) return false;
+
+    const body = tagged[1];
+
+    // NukeFire's combined follower movement lines have a fixed sentence shape,
+    // while the final direction label can vary by exit type. In particular,
+    // vertical movement must not depend on the literal words "up" and "down".
+    // Ordinary group speech is colon/quoted and must keep its Group Say cue.
+    if (/[:'"]/u.test(body)) return false;
+
+    const arrival = /^.+?\s+arrive\s+behind\s+.+?\s+from\s+.+\.\s*$/iu;
+    const departure = /^.+?\s+follow(?:s)?\s+.+?\s+\S(?:.*\S)?\.\s*$/iu;
+    return arrival.test(body) || departure.test(body);
   }
 
   function classifyNormalizedText(text) {

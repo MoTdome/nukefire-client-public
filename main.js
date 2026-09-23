@@ -536,8 +536,18 @@ function createPanelWindow(panelId, options = {}) {
     throw new Error(`Unsupported pop-out panel: ${panelId}`);
   }
 
-  const existing = panelWindows.get(panelId);
-  const bounds = normalizeRequestedBounds(options.bounds);
+  let existing = panelWindows.get(panelId);
+  let bounds = normalizeRequestedBounds(options.bounds);
+  const frameless = options.frameless !== false;
+
+  if (existing && !existing.isDestroyed() && existing.__frameless !== frameless) {
+    bounds = panelWindowBounds(existing);
+    existing.__suppressClosedNotification = true;
+    if (panelWindows.get(panelId) === existing) panelWindows.delete(panelId);
+    existing.destroy();
+    existing = null;
+  }
+
   if (existing && !existing.isDestroyed()) {
     existing.setBounds(bounds, false);
     if (options.focus !== false) {
@@ -554,7 +564,7 @@ function createPanelWindow(panelId, options = {}) {
     resizable: true,
     maximizable: true,
     fullscreenable: true,
-    frame: false,
+    frame: !frameless,
     hasShadow: true,
     title: `NukeFire Client — ${panelWindowDefinition(panelId)?.label || 'Panel'}`,
     icon: APP_ICON_PATH,
@@ -568,6 +578,7 @@ function createPanelWindow(panelId, options = {}) {
     }
   });
 
+  panelWindow.__frameless = frameless;
   panelWindows.set(panelId, panelWindow);
   let boundsTimer = null;
   const queueBoundsNotification = () => {
@@ -587,8 +598,9 @@ function createPanelWindow(panelId, options = {}) {
   });
   panelWindow.on('closed', () => {
     clearTimeout(boundsTimer);
-    panelWindows.delete(panelId);
-    if (!isQuitting && mainWindow && !mainWindow.isDestroyed()) {
+    if (panelWindows.get(panelId) === panelWindow) panelWindows.delete(panelId);
+    if (!panelWindow.__suppressClosedNotification
+        && !isQuitting && mainWindow && !mainWindow.isDestroyed()) {
       sendToRenderer('panel:closed', { panelId, bounds: panelWindow.__lastBounds || bounds });
     }
   });
@@ -1563,7 +1575,8 @@ ipcMain.handle('panel:open', async (_event, request = {}) => {
   const panelId = String(request.panelId || '');
   const panelWindow = createPanelWindow(panelId, {
     bounds: request.bounds,
-    focus: request.focus !== false
+    focus: request.focus !== false,
+    frameless: request.frameless !== false
   });
   return { ok: true, panelId, bounds: panelWindowBounds(panelWindow) };
 });

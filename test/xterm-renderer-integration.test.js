@@ -229,12 +229,12 @@ test('xterm refits after the terminal host or window changes size', async () => 
   assert.ok(after > before);
 });
 
-test('terminal grid pins output to the flexible row and input to the bottom row', () => {
+test('terminal grid pins output to the flexible row and protects the bottom input boundary', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'renderer', 'styles.css'), 'utf8');
-  assert.match(css, /\.terminal-output-host\s*\{[^}]*grid-row:\s*3;/su);
+  assert.match(css, /\.terminal-output-host\s*\{[^}]*grid-row:\s*3;[^}]*contain:\s*paint;/su);
   assert.match(css, /\.docked-prompt-row\s*\{[^}]*grid-row:\s*4;/su);
-  assert.match(css, /\.input-bar\s*\{[^}]*grid-row:\s*5;/su);
-  assert.match(css, /\.xterm-output\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0 0 2px;/su);
+  assert.match(css, /\.input-bar\s*\{[^}]*grid-row:\s*5;[^}]*position:\s*relative;[^}]*z-index:\s*5;/su);
+  assert.match(css, /\.xterm-output\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0 0 var\(--terminal-bottom-guard, 24px\);/su);
 });
 
 
