@@ -71,16 +71,17 @@ test('Quiet Review keeps the live reader workflow ready but starts Self-Voice mu
 test('Reader Hotkey preset maps F5-F10 plus category navigation to local reader actions and fires while typing', () => {
   const records = presets.readerHotkeyRecords();
   assert.deepEqual(records.map((record) => record.code), [
-    'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F10',
+    'F5', 'F6', 'F7', 'F8', 'F8', 'F9', 'F10', 'F10',
     'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'End'
   ]);
   assert.deepEqual(records.map((record) => record.semantic), [
     { type: 'accessibility', id: 'read-vitals' },
     { type: 'accessibility', id: 'toggle-self-voice-mute' },
     { type: 'accessibility', id: 'stop-self-voice' },
-    { type: 'reader-history', id: 'previous' },
-    { type: 'reader-history', id: 'next' },
-    { type: 'reader-history', id: 'latest' },
+    { type: 'reader-review', id: 'previous' },
+    { type: 'reader-review', id: 'current' },
+    { type: 'reader-review', id: 'next' },
+    { type: 'reader-review', id: 'latest' },
     { type: 'communications-review', id: 'last-tell' },
     { type: 'reader-history', id: 'category-previous' },
     { type: 'reader-history', id: 'category-next' },
@@ -100,14 +101,14 @@ test('Reader Hotkey install preserves occupied keys instead of overwriting playe
     ]
   });
   const result = presets.installReaderHotkeyPreset(original, keybindings);
-  assert.equal(result.installed.length, 11);
+  assert.equal(result.installed.length, 12);
   assert.equal(result.skipped.length, 1);
   assert.equal(result.settings.bindings.find((record) => record.code === 'F6').id, 'my-f6');
   assert.equal(result.settings.bindings.find((record) => record.code === 'KeyH').id, 'my-h');
-  assert.equal(result.settings.bindings.filter((record) => record.preset === presets.READER_HOTKEY_PRESET_ID).length, 11);
+  assert.equal(result.settings.bindings.filter((record) => record.preset === presets.READER_HOTKEY_PRESET_ID).length, 12);
 
   const removed = presets.removeReaderHotkeyPreset(result.settings, keybindings);
-  assert.equal(removed.removed, 11);
+  assert.equal(removed.removed, 12);
   assert.deepEqual(removed.settings.bindings.map((record) => record.id), ['my-f6', 'my-h']);
 });
 

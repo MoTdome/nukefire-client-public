@@ -55,7 +55,7 @@ test('pager assistance preserves the existing repeat-last pagination contract', 
 });
 
 test('tutorial says F eight explicitly so speech does not pronounce F8 as fate', () => {
-  const older = TUTORIAL_STEPS.find((step) => step.id === 'older');
+  const older = TUTORIAL_STEPS.find((step) => step.id === 'line-previous');
   assert.ok(older);
   assert.match(older.text, /Press F eight/u);
   assert.doesNotMatch(older.text, /Press F8/u);

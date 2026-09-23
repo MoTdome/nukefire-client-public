@@ -70,15 +70,19 @@ test('client control bridge handles status, presets, review actions, and returns
   assert.match(renderer, /applyReaderSetupPreset\(presetId, \{ announceChange: false \}\)/u);
 });
 
-test('Reader review speaks content before cursor position and the default preset exposes Latest on F10', () => {
+test('Reader review keeps raw-line F10 separate from Reader History Alt+End', () => {
   const renderer = fs.readFileSync('renderer/renderer.js', 'utf8');
   const presets = fs.readFileSync('src/reader-presets.js', 'utf8');
   const html = fs.readFileSync('renderer/index.html', 'utf8');
   assert.match(renderer, /`\$\{result\.text\}\. Reader line \$\{result\.position\} of \$\{result\.count\}\.`/u);
-  assert.match(renderer, /Reader hotkeys installed: \$\{installed\} of 12/u);
-  assert.match(presets, /id: 'reader-latest-line', code: 'F10'[\s\S]*?type: 'reader-history', id: 'latest'/u);
+  assert.match(renderer, /Reader hotkeys installed: \$\{installed\} of 13/u);
+  assert.match(presets, /id: 'reader-previous-line', code: 'F8', label: 'F8', semantic: Object\.freeze\(\{ type: 'reader-review', id: 'previous' \}\)/u);
+  assert.match(presets, /id: 'reader-current-line', code: 'F8', label: 'Shift\+F8'[\s\S]*?shift: true[\s\S]*?type: 'reader-review', id: 'current'/u);
+  assert.match(presets, /id: 'reader-latest-line', code: 'F10', label: 'F10', semantic: Object\.freeze\(\{ type: 'reader-review', id: 'latest' \}\)/u);
+  assert.match(presets, /id: 'reader-history-latest', code: 'End', label: 'Alt\+End'[\s\S]*?type: 'reader-history', id: 'latest'/u);
   assert.match(presets, /id: 'reader-last-tell', code: 'F10', label: 'Shift\+F10'[\s\S]*?shift: true/u);
-  assert.match(html, /Default shortcut: F10 or Alt\+End\./u);
+  assert.match(html, /id="reader-workspace-line-latest"[^>]*Default shortcut: F10\./u);
+  assert.match(html, /id="reader-workspace-reader-latest"[^>]*Default shortcut: Alt\+End\./u);
   assert.match(html, /Default shortcut: Shift\+F10\./u);
 });
 

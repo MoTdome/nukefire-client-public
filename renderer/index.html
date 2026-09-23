@@ -87,8 +87,10 @@
 
   <div id="sr-announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="sr-interrupt-announcer" class="sr-only" role="status" aria-live="assertive" aria-atomic="true"></div>
+  <div id="sr-output-announcer" class="sr-only" role="log" aria-live="polite"
+    aria-relevant="additions" aria-atomic="false" aria-label="New NukeFire output"></div>
   <p id="output-help" class="sr-only">
-    NukeFire game output. Use Command Shift O to focus this region, Command Shift L to read the last complete line, and Command L to return to command input.
+    NukeFire game output. On Windows and Linux, Control Shift O focuses output, Control Shift L reads the last complete line, and Control L returns to command input. On macOS, use Command instead of Control. Reader hotkeys: F8 previous completed MUD line, Shift F8 current line, F9 next line, and F10 latest line.
   </p>
   <p id="command-help" class="sr-only">
     Enter a NukeFire command. Press Return to send. Use Up and Down Arrow to browse command history. Press Return on a blank line to advance paginated output.
@@ -950,18 +952,27 @@
         </p>
 
         <section class="reader-workspace-section" aria-labelledby="reader-workspace-output-heading">
-          <h3 id="reader-workspace-output-heading">Reader History</h3>
+          <h3 id="reader-workspace-output-heading">MUD Output</h3>
           <p class="reader-workspace-status">
-            Alt+Up/Down changes category. Alt+Left/Right moves through messages on Windows/Linux. F8/F9 always move through the selected category, F10 jumps to Latest, and Alt+End also jumps to Latest. macOS keeps Option+Left/Right for native word navigation.
+            Review completed terminal lines directly: F8 previous line, Shift+F8 current line, F9 next line, and F10 latest line. These work while the command input remains active.
+          </p>
+          <div class="reader-workspace-actions">
+            <button id="reader-workspace-line-previous" type="button" title="Previous completed MUD output line. Default shortcut: F8.">Previous Line</button>
+            <button id="reader-workspace-line-current" type="button" title="Current reviewed MUD output line. Default shortcut: Shift+F8.">Current Line</button>
+            <button id="reader-workspace-line-next" type="button" title="Next completed MUD output line. Default shortcut: F9.">Next Line</button>
+            <button id="reader-workspace-line-latest" type="button" title="Newest completed MUD output line. Default shortcut: F10.">Latest Line</button>
+          </div>
+          <h4>Reader History</h4>
+          <p class="reader-workspace-status">
+            Reader History is the second layer for rooms, combat, damage, and communications. Alt+Up/Down changes category. Alt+Left/Right moves through history on Windows/Linux, and Alt+End jumps to Latest. macOS keeps Option+Left/Right for native word navigation.
           </p>
           <div class="reader-workspace-actions">
             <button id="reader-workspace-history-category-previous" type="button" title="Previous Reader History category. Default shortcut: Alt+Up.">Previous Category</button>
             <button id="reader-workspace-history-category-next" type="button" title="Next Reader History category. Default shortcut: Alt+Down.">Next Category</button>
-            <button id="reader-workspace-reader-current" type="button">Current Message</button>
-            <button id="reader-workspace-reader-previous" type="button" title="Previous message in the selected Reader History category. Default shortcut: F8.">Previous Message</button>
-            <button id="reader-workspace-reader-next" type="button" title="Next message in the selected Reader History category. Default shortcut: F9.">Next Message</button>
-            <button id="reader-workspace-reader-latest" type="button" title="Jump to the newest message in the selected Reader History category. Default shortcut: F10 or Alt+End.">Latest Message</button>
-            <button id="reader-workspace-read-last" type="button">Read Last Raw Output Line</button>
+            <button id="reader-workspace-reader-current" type="button">Current History Message</button>
+            <button id="reader-workspace-reader-previous" type="button">Previous History Message</button>
+            <button id="reader-workspace-reader-next" type="button">Next History Message</button>
+            <button id="reader-workspace-reader-latest" type="button" title="Latest Reader History message. Default shortcut: Alt+End.">Latest History Message</button>
           </div>
         </section>
 
@@ -2169,6 +2180,8 @@
   <script src="../node_modules/@xterm/addon-serialize/lib/addon-serialize.js"></script>
   <script src="../node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js"></script>
   <script src="../src/osc8-links.js"></script>
+  <script src="../src/mslp-links.js"></script>
+  <script src="../src/tintin-find-pattern.js"></script>
   <script src="../src/ansi-parser.js"></script>
   <script src="../src/highlight-engine.js"></script>
   <script src="../src/substitute-engine.js"></script>

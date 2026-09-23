@@ -1,3 +1,19 @@
+## 0.3.1-beta.79 — Native Reader and TinTin Veteran Compatibility
+
+- Makes the completed-line Reader pipeline authoritative for Native Reader live output while preserving xterm's accessible row tree for deliberate browsing.
+- Makes raw MUD transcript review the primary F8 / Shift+F8 / F9 / F10 workflow while retaining Reader History categories.
+- Makes `CR TUTORIAL` and `CR LINES` local commands that work before connection and rewrites first-run guidance around raw MUD output.
+- Corrects Windows/Linux Control vs macOS Command wording and keeps retained commands visible but unselected in Native Reader mode.
+- Adds `CR LOAD MUSHSETTINGS NATIVE|CLIENT|STATUS` speech-path selection while keeping bare `CR LOAD MUSHSETTINGS` backward compatible.
+- Explicitly regression-tests repeated identical completed lines as separate Native Reader events.
+- Adds optional TinTin physical command-line keys: Ctrl-W word-left delete, Ctrl-U clear-left, and Ctrl-V next-key Macro capture; Ctrl-R reverse history search is reserved while the command field is focused.
+- Extends SHOW/SHOWME escape handling and the trailing `\}` no-linefeed prompt form without breaking SHOWME Action processing.
+- Adds LINE MSDP and bounded Action MULTISHOT compatibility while retaining LINE STRIP.
+- Adds TinTin wildcard forms such as `%*` to the visible terminal Find box.
+- Adds bounded MSLP SEND/MENU link translation through the existing protected terminal-link path and advertises the MSLP MTTS capability bit.
+- Adds Mapper view presets 7x7 / 9x9 / 11x11 / 11x7 plus local LANDMARK and ROOMSYMBOL annotations while preserving the numeric-only `MAP FIND` routing contract.
+- Expands EVENT help with the actual Event argument layout used by NukeFire.
+
 ## 0.3.1-beta.76 — Command-Line Audio and Control Coherence
 
 ### GPS pop-out caret stability

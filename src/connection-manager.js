@@ -223,6 +223,10 @@ class ConnectionManager {
     return this.parser?.sendGmcp(packageName, body) ?? false;
   }
 
+  sendMsdp(payload) {
+    return this.parser?.sendMsdp?.(payload) ?? false;
+  }
+
   initializeGmcp() {
     queueMicrotask(() => {
       if (!this.parser?.gmcpEnabled) return;

@@ -74,6 +74,7 @@ const dockedPromptRow = $('#docked-prompt-row');
 const dockedPromptContent = $('#docked-prompt-content');
 const announcer = $('#sr-announcer');
 const interruptAnnouncer = $('#sr-interrupt-announcer');
+const readerOutputAnnouncer = $('#sr-output-announcer');
 const appRoot = $('#app');
 const knowledgeOverlay = $('#knowledge-overlay');
 const knowledgeDialog = $('#knowledge-dialog');
@@ -125,6 +126,8 @@ const speechMarkersApi = window.NukeFireSpeechMarkers || {};
 const selfVoiceApi = window.NukeFireSelfVoice || {};
 const xtermApi = window.NukeFireXterm || {};
 const osc8LinksApi = window.NukeFireOsc8 || {};
+const mslpLinksApi = window.NukeFireMslpLinks || {};
+const tintinFindPatternApi = window.NukeFireTinTinFindPattern || {};
 const highlightApi = window.NukeFireHighlights || {};
 const substituteApi = window.NukeFireSubstitutes || {};
 const combatVitalsApi = window.NukeFireCombatVitals || {};
@@ -982,7 +985,9 @@ const state = {
   historyPrefix: '',
   draft: '',
   tintinCompletion: { key: '', prefix: '', original: '', candidates: [], index: -1 },
-  tintinHistorySearch: { query: '', index: null, draft: '' },
+  tintinHistorySearch: { query: '', index: null, draft: '', active: false, match: '' },
+  tintinDefaultKeys: false,
+  tintinKeyCapture: false,
   lines: 0,
   plainText: '',
   readerCarry: '',
@@ -1023,6 +1028,7 @@ const state = {
   promptDisplayMode: DEFAULT_PROMPT_DISPLAY_MODE,
   affectsDisplayMode: 'complete',
   paginationPending: false,
+  commandInputShowingLastSent: false,
   maxCharacters: 2_000_000,
   terminalRender: {
     pendingRuns: [],
@@ -1185,6 +1191,9 @@ const state = {
     hoverRoomId: '',
     statusMessage: '',
     renderDirty: false,
+    tintinView: '7x7',
+    tintinLandmarks: {},
+    tintinRoomSymbols: {},
     route: {
       active: false,
       targetId: '',
@@ -2820,9 +2829,9 @@ function installReaderAccessibilityBindings() {
     ? ` ${skipped} proposed key${skipped === 1 ? '' : 's'} already had a shortcut and were left unchanged.`
     : '';
   updateKeybindings(result.settings, {
-    announcement: `Reader hotkeys installed: ${installed} of 12.${conflictText}`
+    announcement: `Reader hotkeys installed: ${installed} of 13.${conflictText}`
   });
-  setReaderPresetStatus(`Reader hotkeys: ${installed} installed, ${skipped} existing assignment${skipped === 1 ? '' : 's'} preserved. F5 Vitals, F6 Mute, F7 Stop speech, F8/F9 Previous/Next history message, F10 Latest, Shift+F10 Last Tell, Alt+Up/Down categories, Alt+Left/Right messages, Alt+End Latest. macOS keeps Option+Left/Right for native word navigation; F8/F9 remain available there.`);
+  setReaderPresetStatus(`Reader hotkeys: ${installed} installed, ${skipped} existing assignment${skipped === 1 ? '' : 's'} preserved. F5 Vitals, F6 Mute, F7 Stop speech, F8 Previous MUD line, Shift+F8 Current line, F9 Next MUD line, F10 Latest MUD line, Shift+F10 Last Tell, Alt+Up/Down categories, Alt+Left/Right history messages, Alt+End Latest history. macOS keeps Option+Left/Right for native word navigation; F8/F9 remain available there.`);
   return true;
 }
 
@@ -3261,7 +3270,56 @@ function hideTerminalRecovery() {
   xtermOutput?.removeAttribute('aria-hidden');
 }
 
+function openMslpMenu(itemsValue = []) {
+  const items = Array.isArray(itemsValue) ? itemsValue.slice(0, 32) : [];
+  if (!items.length) return false;
+  document.querySelector('#nukefire-mslp-menu')?.remove?.();
+  const dialog = document.createElement('dialog');
+  dialog.id = 'nukefire-mslp-menu';
+  dialog.setAttribute('aria-label', 'MUD link menu');
+  const heading = document.createElement('h2');
+  heading.textContent = 'MUD Link Menu';
+  dialog.append(heading);
+  const list = document.createElement('div');
+  list.setAttribute('role', 'list');
+  for (const item of items) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = String(item.label || item.command || 'Command');
+    button.title = String(item.command || '');
+    button.addEventListener('click', () => {
+      const command = String(item.command || '').trim();
+      dialog.close?.();
+      dialog.remove();
+      if (command) void activateTerminalLink({ uri: `send:${encodeURIComponent(command)}` });
+    });
+    list.append(button);
+  }
+  dialog.append(list);
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => {
+    dialog.close?.();
+    dialog.remove();
+    focusCommand({ preserveSelection: true });
+  });
+  dialog.append(cancel);
+  dialog.addEventListener('cancel', () => {
+    dialog.remove();
+    focusCommand({ preserveSelection: true });
+  }, { once: true });
+  document.body.append(dialog);
+  if (typeof dialog.showModal === 'function') dialog.showModal();
+  else dialog.setAttribute('open', '');
+  list.querySelector('button')?.focus();
+  announce(`MSLP menu opened with ${items.length} choices.`, { force: true });
+  return true;
+}
+
 function resolveTerminalLink(uri) {
+  const mslp = typeof mslpLinksApi.resolveMslpUri === 'function' ? mslpLinksApi.resolveMslpUri(uri) : null;
+  if (mslp?.available) return mslp;
   if (typeof osc8LinksApi.resolveOsc8Uri !== 'function') {
     return { available: false, reason: 'OSC 8 links are unavailable in this client build.' };
   }
@@ -3275,6 +3333,14 @@ async function activateTerminalLink(payload = {}) {
     return false;
   }
 
+  if (resolved.kind === 'menu') {
+    const items = Array.isArray(resolved.items) ? resolved.items.slice(0, 32) : [];
+    if (!items.length) return false;
+    const choice = items.length === 1 ? items[0] : null;
+    if (choice) return activateTerminalLink({ uri: `send:${encodeURIComponent(choice.command)}` });
+    openMslpMenu(items);
+    return true;
+  }
   if (resolved.kind === 'external') {
     if (typeof window.nukefire.openExternalLink !== 'function') {
       announce('Opening external links is unavailable in this client build.', { force: true });
@@ -3742,6 +3808,7 @@ function captureActiveSessionState(options = {}) {
   record.historyPrefix = state.historyPrefix;
   record.draft = state.draft;
   record.commandDraft = commandInput.value;
+  record.commandDraftIsLastSentDisplay = state.commandInputShowingLastSent;
   record.lines = state.lines;
   record.plainText = state.plainText;
   record.readerCarry = state.readerCarry;
@@ -4144,6 +4211,8 @@ function restoreSessionState(record) {
   hostInput.value = record.host || 'tdome.nukefire.org';
   portInput.value = String(record.port || 4000);
   commandInput.value = record.commandDraft || '';
+  state.commandInputShowingLastSent = Boolean(record.commandDraftIsLastSentDisplay && commandInput.value);
+  if (state.accessibility.screenReaderMode && state.commandInputShowingLastSent) commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length);
   lastLuaCommandDraftSync = commandInput.value;
   syncLuaCommandDraft();
   renderSessionOutput(record);
@@ -4415,6 +4484,18 @@ function announce(message, options = {}) {
   queueMicrotask(() => {
     if (serial === state.announcementSerial) target.textContent = text;
   });
+}
+
+function announceNativeReaderOutputLine(value) {
+  if (!state.accessibility.screenReaderMode || state.accessibility.selfVoiceEnabled || !readerOutputAnnouncer) return false;
+  const text = String(value || '').replaceAll('\r', '').trimEnd();
+  if (!text.trim()) return false;
+  const line = document.createElement('div');
+  line.textContent = text;
+  while (readerOutputAnnouncer.children.length >= 8) readerOutputAnnouncer.firstElementChild?.remove();
+  readerOutputAnnouncer.append(line);
+  setTimeout(() => line.remove(), 5000);
+  return true;
 }
 
 
@@ -9877,6 +9958,14 @@ function clearCommunicationMessages(options = {}) {
 function updateCommandHistoryStatus() {
   const status = $('#command-history-status');
   if (!status) return;
+  if (state.tintinHistorySearch?.active) {
+    const query = String(state.tintinHistorySearch.query || '');
+    const match = String(state.tintinHistorySearch.match || '');
+    status.hidden = false;
+    status.textContent = `(reverse-i-search) '${query}': ${match || 'no match yet'}`;
+    status.title = 'Type to refine, Ctrl-R for the previous match, Backspace to edit, Enter to accept, Escape to cancel.';
+    return;
+  }
   if (state.remoteEcho || state.historyIndex === null || state.history.length === 0) {
     status.hidden = true;
     status.textContent = '';
@@ -10177,6 +10266,7 @@ function appendMudTextChunk(text, options = {}) {
         stripAnsi: window.NukeFireAnsi.stripAnsi,
         useTransformedPlainText: true,
         returnDetails: true,
+        onReaderLine: localDisplay ? undefined : (line) => announceNativeReaderOutputLine(line),
         transformRuns: (runs) => transformDisplayRuns(runs, record)
       })
     : null;
@@ -10243,6 +10333,17 @@ function highlightChunksForRecord(record, text) {
   return record.highlightLines.push(raw, enabled);
 }
 
+function mslpTranslatorForRecord(record) {
+  if (!record || typeof mslpLinksApi.MslpTranslator !== 'function') return null;
+  if (!record.mslpTranslator) record.mslpTranslator = new mslpLinksApi.MslpTranslator();
+  return record.mslpTranslator;
+}
+
+function translateMslpText(record, text, localDisplay = false) {
+  if (localDisplay) return String(text || '');
+  return mslpTranslatorForRecord(record)?.push?.(String(text || '')) ?? String(text || '');
+}
+
 function appendMudText(text, options = {}) {
   const monitorStartedAt = longSessionMonitor?.active ? performance.now() : 0;
   try {
@@ -10251,6 +10352,7 @@ function appendMudText(text, options = {}) {
   const routed = localDisplay
     ? { displayText: String(text || ''), speechText: '', filtered: false }
     : consumeSpeechMarkers(record, text);
+  routed.displayText = translateMslpText(record, routed.displayText, localDisplay);
 
   if (!localDisplay && routed.filtered) {
     /* Do not leave marker-filtered display text in the line-highlighting carry:
@@ -10292,6 +10394,11 @@ function flushActiveHighlightText(options = {}) {
 function appendLocalText(text) {
   terminateCurrentOutputLine();
   appendMudText(text, { localDisplay: true });
+}
+
+function appendLocalPromptText(text) {
+  terminateCurrentOutputLine();
+  appendMudText(String(text || ''), { localDisplay: true });
 }
 
 function updatePlainText(text) {
@@ -10523,19 +10630,27 @@ function announceReaderReview(result) {
 
 function reviewCurrentLine() {
   const review = activeSessionRecord()?.readerReview;
-  return announceReaderReview(review?.active ? review.current?.() : review?.latest?.());
+  const ok = announceReaderReview(review?.active ? review.current?.() : review?.latest?.());
+  if (ok) advanceReaderTutorialFor('line-current');
+  return ok;
 }
 
 function reviewPreviousLine() {
-  return announceReaderReview(activeSessionRecord()?.readerReview?.previous?.());
+  const ok = announceReaderReview(activeSessionRecord()?.readerReview?.previous?.());
+  if (ok) advanceReaderTutorialFor('line-previous');
+  return ok;
 }
 
 function reviewNextLine() {
-  return announceReaderReview(activeSessionRecord()?.readerReview?.next?.());
+  const ok = announceReaderReview(activeSessionRecord()?.readerReview?.next?.());
+  if (ok) advanceReaderTutorialFor('line-next');
+  return ok;
 }
 
 function reviewLatestLine() {
-  return announceReaderReview(activeSessionRecord()?.readerReview?.latest?.());
+  const ok = announceReaderReview(activeSessionRecord()?.readerReview?.latest?.());
+  if (ok) advanceReaderTutorialFor('line-latest');
+  return ok;
 }
 
 function recallReaderLine(n = 1) {
@@ -12557,6 +12672,15 @@ function ensureReaderAccessibilityBindingsQuietly() {
   let next = state.keybindings;
   let changed = false;
 
+  if ((next.bindings || []).some((record) => record.preset === hotkeyPresetId)
+      && typeof readerPresetsApi.migrateLegacyReaderHotkeyPreset === 'function') {
+    const migrated = readerPresetsApi.migrateLegacyReaderHotkeyPreset(next, keybindingApi);
+    if (migrated?.migrated) {
+      next = migrated.settings;
+      changed = true;
+    }
+  }
+
   if (!(next.bindings || []).some((record) => record.preset === hotkeyPresetId)) {
     const hotkeys = readerPresetsApi.installReaderHotkeyPreset(next, keybindingApi);
     next = hotkeys.settings;
@@ -12616,7 +12740,7 @@ function startReaderTutorial(options = {}) {
   const track = String(options.track || 'essentials').trim().toLowerCase() === 'audio' ? 'audio' : 'essentials';
   const step = readerTutorial.start({ mode, track });
   const label = track === 'audio' ? 'Audio and filtering tutorial' : 'Reader tutorial';
-  readerTutorialSpeak(`${label} started. ${step?.text || ''} Type C R tutorial stop at any time.`, { interrupt: true });
+  readerTutorialSpeak(`${label} started. ${step?.text || ''} Type CR TUTORIAL STOP at any time, with C and R together.`, { interrupt: true });
   return true;
 }
 
@@ -12716,11 +12840,12 @@ function bindingLabelForSemantic(type, id) {
 function readerKeysText() {
   if (state.keybindings.enabled === false) return 'Reader keys are currently disabled. Open Preferences, Keyboard, or use CR KEYS LINES, MOVEMENT, or MUSH to install official shortcuts.';
   const items = [
-    ['Latest', 'reader-history', 'latest'],
-    ['Previous message', 'reader-history', 'previous'],
-    ['Next message', 'reader-history', 'next'],
-    ['Previous category', 'reader-history', 'category-previous'],
-    ['Next category', 'reader-history', 'category-next'],
+    ['Previous MUD line', 'reader-review', 'previous'],
+    ['Current MUD line', 'reader-review', 'current'],
+    ['Next MUD line', 'reader-review', 'next'],
+    ['Latest MUD line', 'reader-review', 'latest'],
+    ['Previous history category', 'reader-history', 'category-previous'],
+    ['Next history category', 'reader-history', 'category-next'],
     ['Last Tell', 'communications-review', 'last-tell'],
     ['Vitals', 'accessibility', 'read-vitals'],
     ['Mute or unmute NukeFire Voice', 'accessibility', 'toggle-self-voice-mute'],
@@ -12783,9 +12908,9 @@ function mushSettingsConflictText(skipped = []) {
   const purposeByLabel = {
     'F5': 'Mute or Unmute Self-Voice',
     'F7': 'Stop Self-Voice',
-    'F8': 'Previous Reader History message',
-    'F9': 'Next Reader History message',
-    'F10': 'Latest Reader History message',
+    'F8': 'Previous completed MUD output line',
+    'F9': 'Next completed MUD output line',
+    'F10': 'Latest completed MUD output line',
     'Alt+T': 'Last Tell',
     'Alt+H': 'Read Vitals',
     'Alt+C': 'Copy Reviewed'
@@ -12837,7 +12962,7 @@ function applyReaderKeysCommand(value) {
     const installed = Array.isArray(result.installed) ? result.installed.length : 0;
     return {
       ok: true,
-      message: `Reader hotkeys installed: ${installed} of 12.${keyPresetConflictText(result.skipped)}`
+      message: `Reader hotkeys installed: ${installed} of 13.${keyPresetConflictText(result.skipped)}`
     };
   }
 
@@ -12904,13 +13029,71 @@ async function copyReviewedText() {
   }
 }
 
+let pendingMushSettingsSpeechPath = '';
+
+function normalizeMushSettingsSpeechPath(value = '') {
+  const mode = String(value || '').trim().toLowerCase();
+  if (!mode) return '';
+  if (['native', 'reader', 'screenreader', 'screen-reader'].includes(mode)) return 'native';
+  if (['client', 'voice', 'nukefire', 'nukefirevoice', 'nukefire-voice'].includes(mode)) return 'client';
+  if (['status', 'state', 'check'].includes(mode)) return 'status';
+  return 'invalid';
+}
+
+function mushSettingsShortcutCount() {
+  const ids = new Set([
+    String(readerPresetsApi.READER_LINE_RECALL_PRESET_ID || 'reader-line-recall'),
+    String(readerPresetsApi.READER_MUSH_MOVEMENT_PRESET_ID || 'reader-mush-movement'),
+    String(readerPresetsApi.READER_MUSH_SETTINGS_PRESET_ID || 'reader-mush-settings')
+  ]);
+  return (state.keybindings?.bindings || []).filter((record) => ids.has(String(record?.preset || ''))).length;
+}
+
+function mushSettingsSpeechPathStatus() {
+  const nativeOn = state.accessibility.screenReaderMode === true;
+  const voiceOn = state.accessibility.selfVoiceEnabled === true;
+  const voiceMuted = state.accessibility.selfVoiceMuted === true;
+  const workspaceOn = state.accessibility.readerWorkspaceEnabled === true;
+  const speechOwner = nativeOn && voiceOn
+    ? 'both speech paths are marked on'
+    : (nativeOn ? 'native screen reader' : (voiceOn ? 'NukeFire Voice' : 'no live speech path'));
+  return `Reader Workspace ${workspaceOn ? 'ON' : 'OFF'}. Native screen reader output ${nativeOn ? 'ON' : 'OFF'}. NukeFire Voice ${voiceOn ? (voiceMuted ? 'ON but MUTED' : 'ON') : 'OFF'}. Live speech owner: ${speechOwner}.`;
+}
+
 function applyMushSettingsPreset() {
+  const modeValue = arguments.length ? arguments[0] : pendingMushSettingsSpeechPath;
+  pendingMushSettingsSpeechPath = '';
   if (typeof readerPresetsApi.installMushSettingsPreset !== 'function') {
     return { ok: false, message: 'MUSH settings are unavailable in this client build.' };
   }
+
+  const mode = normalizeMushSettingsSpeechPath(modeValue);
+  if (mode === 'invalid') {
+    return { ok: false, message: 'CR LOAD MUSHSETTINGS expects NATIVE, CLIENT, STATUS, or no extra argument.' };
+  }
+  if (mode === 'status') {
+    return {
+      ok: true,
+      message: `MUSH settings status. Official shortcuts active: ${mushSettingsShortcutCount()} of 29. ${mushSettingsSpeechPathStatus()}`
+    };
+  }
+
   capturePreReaderSetup();
+
+  let requestedSpeechReady = true;
+  if (mode === 'native') {
+    requestedSpeechReady = applyReaderSetupPreset('native-reader', { announceChange: false }) === true;
+  } else if (mode === 'client') {
+    requestedSpeechReady = applyReaderSetupPreset('reader-live-voice', { announceChange: false }) === true;
+  }
+
+  /* Install MUSH keys after a speech preset so F8-F10 resolve to the MUSH-style
+   * raw-line layout rather than leaving the standalone Reader preset competing
+   * for the same keys. Existing player-defined conflicts are still preserved.
+   */
   const result = readerPresetsApi.installMushSettingsPreset(state.keybindings, keybindingApi);
   updateKeybindings(result.settings, { persist: true });
+
   const commandDraft = commandInput.value;
   const selectionStart = commandInput.selectionStart;
   const selectionEnd = commandInput.selectionEnd;
@@ -12926,11 +13109,13 @@ function applyMushSettingsPreset() {
   if (Number.isInteger(selectionStart) && Number.isInteger(selectionEnd)) {
     commandInput.setSelectionRange(selectionStart, selectionEnd, selectionDirection || 'none');
   }
+
   setSelfVoiceInterruptOnCommand(true, { announceChange: false });
   applyCommunicationCueSettings({
     ...(state.accessibility.communicationCues || {}),
     tell: true, auction: true, gossip: true, group: true, grats: true, shout: true, holler: true, skynet: true, ssf: true
   }, { persist: true, announceChange: false });
+
   const conflicts = [
     ...(result.lines?.skipped || []),
     ...(result.movement?.skipped || []),
@@ -12939,9 +13124,18 @@ function applyMushSettingsPreset() {
   const installed = (Array.isArray(result.lines?.installed) ? result.lines.installed.length : 0) +
     (Array.isArray(result.movement?.installed) ? result.movement.installed.length : 0) +
     (Array.isArray(result.controls?.installed) ? result.controls.installed.length : 0);
+  const requestedText = mode === 'native'
+    ? ' Native was requested: use NVDA, JAWS, VoiceOver, Orca, or another personal screen reader for live speech.'
+    : (mode === 'client'
+      ? ' Client was requested: NukeFire Voice owns live speech and native live announcements are off.'
+      : ' Speech mode was not changed.');
+  const fallbackText = mode === 'client' && !requestedSpeechReady
+    ? ' NukeFire Voice could not start, so the safe native-reader fallback was preserved.'
+    : '';
+
   return {
-    ok: true,
-    message: `MUSH settings applied. Official shortcuts active: ${installed} of 28. Command interruption and communication sounds are on. Repeat Last Command with Enter is on. Show Last Sent Command in Command Line is off. Combat sounds were not changed. Use CR OFF or SR OFF to restore your previous client setup.${mushSettingsConflictText(conflicts)}`
+    ok: requestedSpeechReady,
+    message: `MUSH settings applied. Official shortcuts active: ${installed} of 29.${requestedText}${fallbackText} ${mushSettingsSpeechPathStatus()} Command interruption and communication sounds are on. Repeat Last Command with Enter is on. Show Last Sent Command in Command Line is off. Combat sounds were not changed. Use CR LOAD MUSHSETTINGS STATUS to check this setup, or CR OFF / SR OFF to restore your previous client setup.${mushSettingsConflictText(conflicts)}`
   };
 }
 
@@ -13079,6 +13273,7 @@ function setScreenReaderMode(enabled, options = {}) {
   document.body.classList.toggle('screen-reader-mode', state.accessibility.screenReaderMode);
   xtermAdapter?.setScreenReaderMode?.(state.accessibility.screenReaderMode);
   $('#screen-reader-mode').checked = state.accessibility.screenReaderMode;
+  if (requested) ensureReaderAccessibilityBindingsQuietly();
   if (options.persist !== false) {
     localStorage.setItem('nukefire.screenReaderMode', String(state.accessibility.screenReaderMode));
     schedulePersistentSettingsSave();
@@ -15576,11 +15771,17 @@ function mapperRoomsForViewport(graph, character, current, selected, projection)
   // While NukeFire is publishing a local BIGMAP snapshot, draw only that
   // authoritative room set. The persistent explored map remains available for
   // routing/history, but it must not leak old rooms into the live local view.
+  const viewPreset = Object.hasOwn(TINTIN_MAPPER_VIEW_SIZES, state.mapper.tintinView) ? state.mapper.tintinView : '7x7';
+  const expandedView = viewPreset !== '7x7';
   const candidateIds = liveRooms.length > 0
     ? new Set(liveRooms.map((room) => room.id))
     : new Set(mapperVisitedSet(character));
+  if (expandedView) for (const id of mapperVisitedSet(character)) candidateIds.add(id);
   if (current?.id) candidateIds.add(current.id);
   if (selected?.id) candidateIds.add(selected.id);
+  const [viewWidth, viewHeight] = TINTIN_MAPPER_VIEW_SIZES[viewPreset];
+  const halfX = Math.floor(viewWidth / 2);
+  const halfY = Math.floor(viewHeight / 2);
 
   if (typeof graph.roomsInViewport === 'function') {
     return graph.roomsInViewport({
@@ -15588,7 +15789,7 @@ function mapperRoomsForViewport(graph, character, current, selected, projection)
       z: projection.viewZ,
       roomIds: candidateIds,
       maxRooms: 2500
-    });
+    }).filter((room) => !current || (Math.abs(room.x - current.x) <= halfX && Math.abs(room.y - current.y) <= halfY));
   }
   return [...candidateIds]
     .map((id) => graph.room(id))
@@ -15758,6 +15959,8 @@ function renderMapper() {
       liveRoom?.destination ? 'GPS destination' : ''
     ].filter(Boolean);
     const glyph = room.id === current?.id ? '@' : liveRoom?.destination ? 'X' : liveRoom?.route ? '*' : '';
+    const customGlyph = String(state.mapper.tintinRoomSymbols?.[room.id] || '');
+    const displayGlyph = glyph || customGlyph;
     const group = createSvgElement('g', {
       class: `mapper-room-node${room.id === current?.id ? ' current' : ''}${routeRoomIds.has(room.id) ? ' route' : ''}${destinationRoomIds.has(room.id) ? ' destination' : ''}${isVisited ? ' visited' : ' unvisited'}`,
       transform: `translate(${point.x} ${point.y})`,
@@ -15774,7 +15977,7 @@ function renderMapper() {
     const glyphElement = createSvgElement('text', {
       x: 0, y: 4, 'text-anchor': 'middle', class: 'mapper-room-glyph', 'aria-hidden': 'true'
     });
-    glyphElement.textContent = glyph;
+    glyphElement.textContent = displayGlyph;
     group.append(glyphElement);
 
     const verticalDirections = new Set(
@@ -15913,12 +16116,71 @@ function mapperRouteEventMessage(record, message, kind = '') {
   else appendSystemToInactiveSession(record, message, kind);
 }
 
+const TINTIN_MAPPER_VIEW_SIZES = Object.freeze({
+  '7x7': [7, 7], '9x9': [9, 9], '11x11': [11, 11], '11x7': [11, 7]
+});
+
+function saveTinTinMapperCompat() {
+  localStorage.setItem('nukefire.tintinMapperView', state.mapper.tintinView || '7x7');
+  localStorage.setItem('nukefire.tintinMapperLandmarks', JSON.stringify(state.mapper.tintinLandmarks || {}));
+  localStorage.setItem('nukefire.tintinMapperRoomSymbols', JSON.stringify(state.mapper.tintinRoomSymbols || {}));
+}
+
+function restoreTinTinMapperCompat() {
+  state.mapper.tintinView = Object.hasOwn(TINTIN_MAPPER_VIEW_SIZES, localStorage.getItem('nukefire.tintinMapperView'))
+    ? localStorage.getItem('nukefire.tintinMapperView') : '7x7';
+  try { state.mapper.tintinLandmarks = JSON.parse(localStorage.getItem('nukefire.tintinMapperLandmarks') || '{}') || {}; } catch { state.mapper.tintinLandmarks = {}; }
+  try { state.mapper.tintinRoomSymbols = JSON.parse(localStorage.getItem('nukefire.tintinMapperRoomSymbols') || '{}') || {}; } catch { state.mapper.tintinRoomSymbols = {}; }
+}
+
+function handleTinTinMapperCompatRequest(record, payload = {}, active = false) {
+  const operation = String(payload?.operation || '').trim().toLowerCase();
+  if (operation === 'view') {
+    const value = String(payload?.value || 'status').trim().toLowerCase();
+    if (value === 'status') {
+      mapperRouteEventMessage(record, `TinTin mapper view is ${state.mapper.tintinView || '7x7'}.`);
+      return;
+    }
+    if (!Object.hasOwn(TINTIN_MAPPER_VIEW_SIZES, value)) return;
+    state.mapper.tintinView = value;
+    saveTinTinMapperCompat();
+    if (active) {
+      const [width, height] = TINTIN_MAPPER_VIEW_SIZES[value];
+      const fitZoom = Math.max(0.45, Math.min(2.5, Math.min(520 / Math.max(6, width - 1), 340 / Math.max(6, height - 1)) / 48));
+      zoomMapper(0, { zoom: fitZoom });
+    }
+    mapperRouteEventMessage(record, `TinTin mapper view set to ${value}. Expanded views use already learned rooms beyond the live BIGMAP packet.`);
+    return;
+  }
+  if (operation === 'landmark') {
+    const name = String(payload?.name || '').normalize('NFKC').trim().slice(0, 80);
+    const roomId = typeof mapperApi.roomIdFrom === 'function' ? mapperApi.roomIdFrom(payload?.roomId) : String(payload?.roomId || '');
+    if (!name || !roomId) { mapperRouteEventMessage(record, 'MAP LANDMARK needs a name and valid room vnum.', 'error'); return; }
+    state.mapper.tintinLandmarks[name.toLowerCase()] = { name, roomId, description: String(payload?.description || '').slice(0, 240), size: String(payload?.size || '').slice(0, 32) };
+    saveTinTinMapperCompat();
+    mapperRouteEventMessage(record, `TinTin landmark ${name} -> room #${roomId} saved.`);
+    return;
+  }
+  if (operation === 'roomsymbol') {
+    const symbol = [...String(payload?.symbol || '').normalize('NFKC')].slice(0, 3).join('');
+    const currentId = String(state.mapper.liveSnapshot?.centerId || mapperCurrentCharacter()?.currentRoomId || '');
+    const roomId = typeof mapperApi.roomIdFrom === 'function' ? mapperApi.roomIdFrom(payload?.roomId || currentId) : String(payload?.roomId || currentId);
+    if (!symbol || !roomId) { mapperRouteEventMessage(record, 'MAP SET ROOMSYMBOL needs a one-to-three-character symbol and a known room.', 'error'); return; }
+    state.mapper.tintinRoomSymbols[roomId] = symbol;
+    saveTinTinMapperCompat();
+    if (active) renderMapper();
+    mapperRouteEventMessage(record, `TinTin room symbol for #${roomId} set to ${symbol}.`);
+  }
+}
+
 function handleTinTinMapperFindRequest(record, payload = {}, active = false) {
+  const requestedTarget = String(payload?.target || '').trim();
+  const landmark = state.mapper.tintinLandmarks?.[requestedTarget.toLowerCase()] || null;
   const targetId = typeof mapperApi.roomIdFrom === 'function'
-    ? mapperApi.roomIdFrom(payload?.target)
-    : String(payload?.target || '');
+    ? mapperApi.roomIdFrom(landmark?.roomId || requestedTarget)
+    : String(landmark?.roomId || requestedTarget);
   if (!targetId) {
-    mapperRouteEventMessage(record, 'TinTin #MAP FIND needs a valid numeric room vnum.', 'error');
+    mapperRouteEventMessage(record, 'TinTin #MAP FIND needs a valid room vnum or saved landmark name.', 'error');
     return;
   }
   if (!active) {
@@ -16747,7 +17009,48 @@ function handleLocalBufferCommand(commandValue) {
   return true;
 }
 
+function parseLocalReaderCommand(commandValue) {
+  const command = String(commandValue || '').trim();
+  const matched = command.match(/^cr(?:\s+(.+))?$/iu);
+  if (!matched) return null;
+  const body = String(matched[1] || '').trim();
+  const tutorial = body.match(/^tutorial(?:\s+(.*))?$/iu);
+  if (tutorial) return { kind: 'tutorial', action: String(tutorial[1] || 'start').trim().toLowerCase() || 'start' };
+  const lines = body.match(/^lines?(?:\s+(.+))?$/iu);
+  if (!lines) return null;
+  const action = String(lines[1] || 'latest').trim().toLowerCase();
+  if (/^(?:current|previous|prev|back|next|latest|last|bottom)$/u.test(action)) return { kind: 'lines', action };
+  if (/^(?:10|[1-9])$/u.test(action)) return { kind: 'lines', action: 'recall', amount: Number(action) };
+  return { kind: 'lines', action: 'invalid' };
+}
+
+function handleLocalReaderCommand(commandValue) {
+  const parsed = parseLocalReaderCommand(commandValue);
+  if (!parsed) return false;
+  if (parsed.kind === 'tutorial') {
+    const message = readerTutorialCommand(parsed.action);
+    if (parsed.action === 'status' || /expects|unavailable/iu.test(message)) announce(message, { force: true, interrupt: true });
+    return true;
+  }
+  const actions = {
+    current: reviewCurrentLine,
+    previous: reviewPreviousLine,
+    prev: reviewPreviousLine,
+    back: reviewPreviousLine,
+    next: reviewNextLine,
+    latest: reviewLatestLine,
+    last: reviewLatestLine,
+    bottom: reviewLatestLine
+  };
+  if (parsed.action === 'recall') { recallReaderLine(parsed.amount); return true; }
+  const action = actions[parsed.action];
+  if (typeof action === 'function') { action(); return true; }
+  announce('CR LINES expects CURRENT, PREVIOUS, NEXT, LATEST, or a number from 1 through 10.', { force: true, interrupt: true });
+  return true;
+}
+
 async function handleLocalRendererCommand(commandValue) {
+  if (handleLocalReaderCommand(commandValue)) return true;
   if (await handleLocalLinkCommand(commandValue)) return true;
   return handleLocalBufferCommand(commandValue);
 }
@@ -16819,11 +17122,14 @@ async function sendCommand(rawCommand, options = {}) {
     stopMapperRoute('Client route stopped because a manual command was entered.', { kind: 'error', output: true });
   }
   state.paginationPending = false;
+  const localReaderCommand = parseLocalReaderCommand(command);
   const commandLine = analyzeCommandLineText(command);
-  const hasServerCommands = !commandLine.errorCode && Boolean(commandLine.hasServerCommands);
-  const singleClientCommand = !commandLine.errorCode
+  const hasServerCommands = !localReaderCommand && !commandLine.errorCode && Boolean(commandLine.hasServerCommands);
+  const singleClientCommand = Boolean(localReaderCommand) || (
+    !commandLine.errorCode
     && commandLine.commands?.length === 1
-    && isClientCommandText(commandLine.commands[0]);
+    && isClientCommandText(commandLine.commands[0])
+  );
   // Standard Telnet clients locally advance past a prompt when Return is
   // pressed. NukeFire prompts do not carry their own newline, so terminate the
   // visible prompt before every line that contains a server-bound command.
@@ -16851,8 +17157,13 @@ async function sendCommand(rawCommand, options = {}) {
     state.historyPrefix = '';
     state.draft = '';
     commandInput.value = showSentCommand ? command : '';
-    if (showSentCommand) commandInput.select();
+    state.commandInputShowingLastSent = showSentCommand;
+    if (showSentCommand) {
+      if (state.accessibility.screenReaderMode) commandInput.setSelectionRange(commandInput.value.length, commandInput.value.length);
+      else commandInput.select();
+    }
     if (record) {
+      record.commandDraftIsLastSentDisplay = showSentCommand;
       record.history = state.history;
       record.historyIndex = null;
       record.historyPrefix = '';
@@ -16906,6 +17217,8 @@ function setRemoteEcho(enabled, options = {}) {
   updateCommandAvailability(statusBox?.dataset.connectionState || (state.connected ? 'connected' : 'disconnected'));
   if (options.clearInput !== false) {
     commandInput.value = '';
+    state.commandInputShowingLastSent = false;
+    if (record) record.commandDraftIsLastSentDisplay = false;
     resetHistoryNavigation();
   }
   if (options.focus !== false) commandInput.focus();
@@ -17040,6 +17353,118 @@ function tinTinHistorySearch() {
   return true;
 }
 
+function syncTinTinControlKeyCapture() {
+  void window.nukefire.setTinTinControlKeys?.({
+    enabled: state.tintinDefaultKeys === true,
+    focused: document.activeElement === commandInput
+  });
+}
+
+function setTinTinDefaultKeysEnabled(enabled, options = {}) {
+  state.tintinDefaultKeys = enabled === true;
+  if (options.persist !== false) localStorage.setItem('nukefire.tintinDefaultKeys', String(state.tintinDefaultKeys));
+  syncTinTinControlKeyCapture();
+  if (options.announceChange !== false) {
+    const text = state.tintinDefaultKeys
+      ? 'TinTin default keys enabled. Ctrl-A/E move home/end, Ctrl-B/F move by character, Ctrl-P/N move through history, Ctrl-W deletes word-left, Ctrl-U/K clear left/right, Ctrl-V captures the next macro key, and Ctrl-R searches history.'
+      : 'TinTin default keys disabled.';
+    appendSystemMessage(text);
+    announce(text, { force: true });
+  }
+  return state.tintinDefaultKeys;
+}
+
+function handleTinTinDefaultKeysRequest(payload = {}) {
+  const value = String(payload?.value || 'status').trim().toLowerCase();
+  if (value === 'on') setTinTinDefaultKeysEnabled(true);
+  else if (value === 'off') setTinTinDefaultKeysEnabled(false);
+  else {
+    const text = `TinTin default keys are ${state.tintinDefaultKeys ? 'ON' : 'OFF'}. Ctrl-A/E home/end; Ctrl-B/F back/forward; Ctrl-P/N history; Ctrl-W word-left delete; Ctrl-U/K clear left/right; Ctrl-V capture next key; Ctrl-R interactive reverse history search.`;
+    appendSystemMessage(text);
+    announce(text, { force: true });
+  }
+}
+
+function tintinMacroCaptureText(event = {}) {
+  const code = String(event.code || '');
+  const key = String(event.key || '');
+  const terminal = {
+    F1: '\\eOP', F2: '\\eOQ', F3: '\\eOR', F4: '\\eOS', F5: '\\e[15~', F6: '\\e[17~',
+    F7: '\\e[18~', F8: '\\e[19~', F9: '\\e[20~', F10: '\\e[21~', F11: '\\e[23~', F12: '\\e[24~',
+    ArrowUp: '\\e[A', ArrowDown: '\\e[B', ArrowRight: '\\e[C', ArrowLeft: '\\e[D', Home: '\\e[H', End: '\\e[F',
+    Insert: '\\e[2~', Delete: '\\e[3~', PageUp: '\\e[5~', PageDown: '\\e[6~'
+  };
+  if (terminal[code]) return terminal[code];
+  const modifiers = [];
+  if (event.ctrlKey) modifiers.push('Ctrl');
+  if (event.altKey) modifiers.push('Alt');
+  if (event.shiftKey) modifiers.push('Shift');
+  if (event.metaKey) modifiers.push('Command');
+  const keyName = code.startsWith('Key') ? code.slice(3) : (code.startsWith('Digit') ? code.slice(5) : key || code);
+  return keyName ? [...modifiers, keyName].join('+') : '';
+}
+
+function insertTinTinCapturedKey(event = {}) {
+  const value = tintinMacroCaptureText(event);
+  if (!value) return false;
+  const start = Number.isInteger(commandInput.selectionStart) ? commandInput.selectionStart : commandInput.value.length;
+  const end = Number.isInteger(commandInput.selectionEnd) ? commandInput.selectionEnd : start;
+  commandInput.setRangeText(value, start, end, 'end');
+  state.tintinKeyCapture = false;
+  updateCommandHistoryStatus();
+  announce(`Captured ${value} for the Macro definition.`, { force: true });
+  return true;
+}
+
+function interactiveTinTinHistorySearch(repeat = false) {
+  const history = state.history || [];
+  if (!history.length) { announce('Command history is empty.', { force: true }); return false; }
+  const search = state.tintinHistorySearch;
+  if (!search.active) {
+    search.active = true;
+    search.query = '';
+    search.index = history.length;
+    search.draft = commandInput.value;
+    search.match = '';
+  }
+  const query = String(search.query || '').toLowerCase();
+  let index = repeat ? Math.min(history.length - 1, Number(search.index ?? history.length) - 1) : history.length - 1;
+  for (; index >= 0; index -= 1) {
+    const candidate = String(history[index] || '');
+    if (!query || candidate.toLowerCase().includes(query)) {
+      search.index = index;
+      search.match = candidate;
+      commandInput.value = candidate;
+      commandInput.setSelectionRange(candidate.length, candidate.length);
+      updateCommandHistoryStatus();
+      return true;
+    }
+  }
+  updateCommandHistoryStatus();
+  return false;
+}
+
+function handleTinTinDefaultControlKey(payload = {}) {
+  if (document.activeElement !== commandInput) return false;
+  const key = String(payload?.key || '').toLowerCase();
+  if (key !== 'r' && !state.tintinDefaultKeys) return false;
+  if (state.tintinKeyCapture && key !== 'v') {
+    return insertTinTinCapturedKey({ key, code: payload?.code, ctrlKey: true, shiftKey: payload?.shift === true });
+  }
+  const cursorKeys = {
+    a: 'home', b: 'backward', d: 'delete', e: 'end', f: 'forward', h: 'backspace',
+    k: 'clear right', n: 'history next', p: 'history prev', u: 'clear left', w: 'delete word left'
+  };
+  if (cursorKeys[key]) return Boolean(handleTinTinCursorRequest({ operation: cursorKeys[key] }) ?? true);
+  if (key === 'v') {
+    state.tintinKeyCapture = true;
+    announce('Press the key to capture for the TinTin Macro.', { force: true });
+    return true;
+  }
+  if (key === 'r') return interactiveTinTinHistorySearch(state.tintinHistorySearch.active === true);
+  return false;
+}
+
 function handleTinTinCursorRequest(payload = {}) {
   if (state.remoteEcho) return;
   const operation = String(payload.operation || '').toLowerCase();
@@ -17110,6 +17535,9 @@ function nextHistoryIndex(startExclusive, prefix) {
 
 function historyUp() {
   if (state.remoteEcho || state.history.length === 0) return;
+  state.commandInputShowingLastSent = false;
+  const active = activeSessionRecord();
+  if (active) active.commandDraftIsLastSentDisplay = false;
   if (state.historyIndex === null) {
     state.draft = commandInput.value;
     const shouldSearch = typeof historyNavigationApi.shouldUsePrefixSearch === 'function'
@@ -17142,6 +17570,9 @@ function historyUp() {
 
 function historyDown() {
   if (state.remoteEcho || state.historyIndex === null) return;
+  state.commandInputShowingLastSent = false;
+  const active = activeSessionRecord();
+  if (active) active.commandDraftIsLastSentDisplay = false;
   const candidate = nextHistoryIndex(state.historyIndex, state.historyPrefix);
   if (candidate < 0) {
     const draft = state.tintinHistorySearch.index !== null ? state.tintinHistorySearch.draft : state.draft;
@@ -17180,7 +17611,10 @@ function applyPromptBoundary(boundary) {
     const playingPrompt = typeof promptDisplayApi.looksLikeNukeFirePlayingPrompt === 'function'
       ? promptDisplayApi.looksLikeNukeFirePlayingPrompt(boundaryText)
       : boundaryText.trimEnd().endsWith('>');
-    sessionRuntimeApi.commitBoundary?.(record, { rapidRecall: !playingPrompt });
+    sessionRuntimeApi.commitBoundary?.(record, {
+      rapidRecall: !playingPrompt,
+      onReaderLine: (line) => announceNativeReaderOutputLine(line)
+    });
   }
   resolveMapperMovementPrompt(state.mapper, { active: true });
   if (record?.mapper) {
@@ -17917,6 +18351,7 @@ async function handleNukeFireControlRequest(body) {
   }
 
   if (request.action === 'reader.load.mushsettings') {
+    pendingMushSettingsSpeechPath = String(request.args?.value || '');
     const result = applyMushSettingsPreset();
     announce(result.message, { force: true, interrupt: true });
     return sendNukeFireControlResult(request, result.ok === true, result.message);
@@ -18893,6 +19328,7 @@ function appendTextToInactiveSession(record, text, options = {}) {
   const routed = localDisplay
     ? { displayText: String(text || '') }
     : consumeSpeechMarkers(record, text);
+  routed.displayText = translateMslpText(record, routed.displayText, localDisplay);
   const raw = routed.displayText;
   if (localDisplay && options.preserveLine !== true) sessionRuntimeApi.terminateCurrentLine?.(record);
   for (const chunk of highlightChunksForRecord(record, raw)) {
@@ -21025,6 +21461,7 @@ function handleSessionEvent(event = {}) {
     switch (event.type) {
       case 'text': appendMudText(payload); break;
       case 'local-text': appendLocalText(payload); break;
+      case 'local-prompt': appendLocalPromptText(payload); break;
       case 'communication-text': captureCommunicationText(payload); break;
       case 'speedwalk-step': noteOutgoingCommand(sessionId, payload?.command); break;
       case 'lua-command-sent': noteOutgoingCommand(sessionId, payload?.command); break;
@@ -21086,6 +21523,8 @@ function handleSessionEvent(event = {}) {
       case 'review-find-request': handleTinTinReviewFindRequest(payload); break;
       case 'review-navigation-request': handleTinTinReviewNavigationRequest(payload); break;
       case 'input-cursor-request': handleTinTinCursorRequest(payload); break;
+      case 'tintin-default-keys-request': handleTinTinDefaultKeysRequest(payload); break;
+      case 'mapper-tintin-command': handleTinTinMapperCompatRequest(record, payload, true); break;
       case 'error': appendSystemMessage(payload, 'error'); break;
       default: break;
     }
@@ -21093,6 +21532,7 @@ function handleSessionEvent(event = {}) {
     switch (event.type) {
       case 'text': appendTextToInactiveSession(record, payload); break;
       case 'local-text': appendTextToInactiveSession(record, payload, { localDisplay: true }); break;
+      case 'local-prompt': appendTextToInactiveSession(record, payload, { localDisplay: true, preserveLine: true }); break;
       case 'communication-text': captureCommunicationTextForSession(record, payload); break;
       case 'speedwalk-step': noteOutgoingCommand(sessionId, payload?.command); break;
       case 'lua-command-sent': noteOutgoingCommand(sessionId, payload?.command); break;
@@ -21202,6 +21642,8 @@ function handleSessionEvent(event = {}) {
       case 'definition-manager-request': break;
       case 'mapper-route-run-request': void handleTinTinPathRunRequest(record, payload, false); break;
       case 'mapper-route-stop-request': handleTinTinPathStopRequest(record, false); break;
+      case 'tintin-default-keys-request': handleTinTinDefaultKeysRequest(payload); break;
+      case 'mapper-tintin-command': handleTinTinMapperCompatRequest(record, payload, false); break;
       case 'error': appendSystemToInactiveSession(record, payload, 'error'); break;
       default: break;
     }
@@ -21804,9 +22246,18 @@ function findInOutput(direction) {
     announce('Terminal search is unavailable until xterm.js is ready.', { force: true });
     return;
   }
+  const compiled = typeof tintinFindPatternApi.compileTinTinFindPattern === 'function'
+    ? tintinFindPatternApi.compileTinTinFindPattern(query)
+    : { ok: true, regex: query, caseSensitive: false, hasTinTinToken: false };
+  if (!compiled.ok) {
+    announce(compiled.error || 'That TinTin search pattern is invalid.', { force: true });
+    return;
+  }
+  const needle = compiled.hasTinTinToken ? compiled.regex : query;
+  const searchOptions = { caseSensitive: compiled.caseSensitive === true, incremental: false, regex: compiled.hasTinTinToken === true };
   const found = direction > 0
-    ? xtermAdapter.findNext(query, { caseSensitive: false, incremental: false })
-    : xtermAdapter.findPrevious(query, { caseSensitive: false, incremental: false });
+    ? xtermAdapter.findNext(needle, searchOptions)
+    : xtermAdapter.findPrevious(needle, searchOptions);
   if (!found) announce(`No match for ${query}.`, { force: true });
 }
 
@@ -21978,7 +22429,9 @@ function applyLuaCommandLine(record, payload = {}, active = false) {
   if (!record) return;
   const text = String(payload?.text || '').replace(/[\r\n\u0000]/gu, '').slice(0, 8192);
   record.commandDraft = text;
+  record.commandDraftIsLastSentDisplay = false;
   if (!active || state.remoteEcho) return;
+  state.commandInputShowingLastSent = false;
   commandInput.value = text;
   commandInput.setSelectionRange(text.length, text.length);
   lastLuaCommandDraftSync = text;
@@ -21986,13 +22439,53 @@ function applyLuaCommandLine(record, payload = {}, active = false) {
 }
 
 commandInput.addEventListener('input', () => {
+  state.commandInputShowingLastSent = false;
+  const active = activeSessionRecord();
+  if (active) active.commandDraftIsLastSentDisplay = false;
   syncLuaCommandDraft();
   resetTinTinCompletion();
   resetTinTinHistorySearch();
   if (state.historyIndex !== null || state.historyPrefix || state.draft) resetHistoryNavigation();
   updateCommandAvailability(statusBox?.dataset.connectionState || (state.connected ? 'connected' : 'disconnected'));
 });
+commandInput.addEventListener('focus', syncTinTinControlKeyCapture);
+commandInput.addEventListener('blur', syncTinTinControlKeyCapture);
 commandInput.addEventListener('keydown', (event) => {
+  if (state.tintinKeyCapture && !['Control','Shift','Alt','Meta'].includes(event.key)) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    insertTinTinCapturedKey(event);
+    return;
+  }
+  if (state.tintinHistorySearch?.active && !(event.ctrlKey && event.key.toLowerCase() === 'r')) {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      commandInput.value = state.tintinHistorySearch.draft || '';
+      state.tintinHistorySearch = { query: '', index: null, draft: '', active: false, match: '' };
+      updateCommandHistoryStatus();
+      return;
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      state.tintinHistorySearch = { query: '', index: null, draft: '', active: false, match: '' };
+      updateCommandHistoryStatus();
+      return;
+    }
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      state.tintinHistorySearch.query = String(state.tintinHistorySearch.query || '').slice(0, -1);
+      state.tintinHistorySearch.index = state.history.length;
+      interactiveTinTinHistorySearch(false);
+      return;
+    }
+    if (!event.ctrlKey && !event.metaKey && !event.altKey && event.key.length === 1) {
+      event.preventDefault();
+      state.tintinHistorySearch.query += event.key;
+      state.tintinHistorySearch.index = state.history.length;
+      interactiveTinTinHistorySearch(false);
+      return;
+    }
+  }
   if (handleTerminalPageNavigationKey(event)) return;
   if (event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey) {
     const preview = tinTinCompletionPreview('mixed');
@@ -22014,15 +22507,14 @@ commandInput.addEventListener('keydown', (event) => {
     event.preventDefault();
     const typedCommand = commandInput.value;
     const repeatLastOnEnter = !state.remoteEcho && $('#repeat-last-command-on-enter').checked;
-    const selectedDisplayedCommand = Boolean(
+    const displayedLastCommand = Boolean(
       typedCommand
       && !state.remoteEcho
       && $('#show-last-command-in-input').checked
+      && state.commandInputShowingLastSent
       && typedCommand === (state.history.at(-1) || '')
-      && commandInput.selectionStart === 0
-      && commandInput.selectionEnd === typedCommand.length
     );
-    if (state.paginationPending && selectedDisplayedCommand) {
+    if (state.paginationPending && displayedLastCommand) {
       /* The optional saved-command display is presentation, not fresh input.
        * When a pager is waiting, Return must advance the page rather than
        * accidentally re-run NEWS/HELP/etc. Preserve that displayed command
@@ -22482,7 +22974,10 @@ $('#reader-workspace-reader-current')?.addEventListener('click', readerHistoryCu
 $('#reader-workspace-reader-previous')?.addEventListener('click', readerHistoryPrevious);
 $('#reader-workspace-reader-next')?.addEventListener('click', readerHistoryNext);
 $('#reader-workspace-reader-latest')?.addEventListener('click', readerHistoryLatest);
-$('#reader-workspace-read-last')?.addEventListener('click', readLastLine);
+$('#reader-workspace-line-previous')?.addEventListener('click', reviewPreviousLine);
+$('#reader-workspace-line-current')?.addEventListener('click', reviewCurrentLine);
+$('#reader-workspace-line-next')?.addEventListener('click', reviewNextLine);
+$('#reader-workspace-line-latest')?.addEventListener('click', reviewLatestLine);
 $('#reader-workspace-comms-current')?.addEventListener('click', reviewCurrentCommunication);
 $('#reader-workspace-comms-older')?.addEventListener('click', reviewOlderCommunication);
 $('#reader-workspace-comms-newer')?.addEventListener('click', reviewNewerCommunication);
@@ -23178,6 +23673,7 @@ if (typeof window.nukefire.onSessionEventBatch === 'function') {
   window.nukefire.onWindowSize?.(applyWindowSize);
   window.nukefire.onError((message) => appendSystemMessage(message, 'error'));
 }
+window.nukefire.onTinTinControlKey?.(handleTinTinDefaultControlKey);
 window.nukefire.onMenuConnect(connect);
 window.nukefire.onMenuFind(showFind);
 window.nukefire.onMenuPreferences?.(openPreferences);
@@ -23202,6 +23698,8 @@ window.nukefire.onMenuCopy?.(() => { void copyCurrentSelection({ announceFailure
 window.nukefire.onPanelClosed?.(handlePanelClosed);
 window.nukefire.onPanelAction?.(handlePanelAction);
 
+restoreTinTinMapperCompat();
+setTinTinDefaultKeysEnabled(localStorage.getItem('nukefire.tintinDefaultKeys') === 'true', { persist: false, announceChange: false });
 hostInput.value = localStorage.getItem('nukefire.host') || 'tdome.nukefire.org';
 portInput.value = localStorage.getItem('nukefire.port') || '4000';
 const savedCompressionEnabled = localStorage.getItem('nukefire.compressionEnabled');

@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta78-public-followup-beta77",
-  "source_tag": null,
-  "source_commit": "211d04259e5044a6be53ad6ba3e2bde234837cdc",
-  "created_at": "2026-09-23T02:55:58+00:00",
+  "public_snapshot": "beta79-native-reader-tintin-veteran",
+  "source_tag": "v0.3.1-beta.79",
+  "source_commit": null,
+  "created_at": "2026-09-23T17:36:00+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,21 +46,27 @@
     }
   },
   "server_integration_examples_included": true,
-  "server_integration_status": "sanitized reference examples aligned to the exact 75-action Beta.76 client contract",
-  "source_branch": "milestone-1.9-client-development",
-  "package_version": "0.3.1-beta.78",
+  "server_integration_status": "sanitized references aligned to Beta.79 Reader/MUSH speech-path controls and the existing bounded NukeFire.Controls contract",
+  "source_branch": "main",
+  "package_version": "0.3.1-beta.79",
   "excluded_private_paths": [],
   "verification": {
-    "beta77_public_base": "99bf55c6065db13d64184d81cd84e4883d059887",
-    "public_candidate": "npm ci + focused Beta.78 tests + git diff --check + npm run verify: PASS before tag"
+    "beta78_public_base": "26f0d418a65ac72c6fb9c9b84efe7bb6b8163454",
+    "public_candidate": "git diff --check + npm run verify: PASS immediately before Beta.79 release commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.78",
-  "beta78_scope": [
-    "Terminal Wall and Classic/Persistent interface presets",
-    "independent main, docked, detached, frame, and HUD chrome controls",
-    "decoupled docked-pane header visibility",
-    "font-metric-aware xterm bottom safety reserve and paint containment",
-    "prompt-aware terminal geometry reconciliation",
-    "vertical group movement excluded from Group Say audio without direction-name enumeration"
+  "public_release_tag": "v0.3.1-beta.79",
+  "base_public_commit": "26f0d418a65ac72c6fb9c9b84efe7bb6b8163454",
+  "beta79_scope": [
+    "completed-line Native Reader live output with xterm hidden-live suppression",
+    "raw MUD output review on F8 Shift-F8 F9 F10",
+    "offline local CR TUTORIAL and CR LINES",
+    "MUSH settings NATIVE CLIENT STATUS speech-path selection with bare-command compatibility",
+    "repeated-identical-line Native Reader regression coverage",
+    "TinTin Ctrl-W Ctrl-U Ctrl-V command-line compatibility and Ctrl-R reverse history search",
+    "SHOW/SHOWME safe escape and no-linefeed prompt compatibility",
+    "LINE MSDP STRIP and bounded Action MULTISHOT compatibility",
+    "TinTin wildcard output search and protected MSLP link translation",
+    "mapper 7x7 9x9 11x11 11x7 views plus local landmark/roomsymbol annotations",
+    "expanded TinTin EVENT argument help"
   ]
 }

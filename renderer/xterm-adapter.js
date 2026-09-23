@@ -502,6 +502,7 @@
         }
       }
       this.terminal.open?.(this.container);
+      this.syncScreenReaderLiveRegion();
       this.scrollDisposable = this.terminal.onScroll?.(() => {
         this.onScroll?.(this.isAtLiveBottom());
       }) || null;
@@ -551,9 +552,23 @@
       this.fit();
     }
 
+    syncScreenReaderLiveRegion() {
+      const liveRegion = this.container?.querySelector?.('.xterm .live-region, .live-region') || null;
+      if (!liveRegion) return false;
+      if (this.screenReaderMode) {
+        liveRegion.setAttribute('aria-live', 'off');
+        liveRegion.setAttribute('aria-hidden', 'true');
+        liveRegion.textContent = '';
+      } else {
+        liveRegion.removeAttribute('aria-hidden');
+      }
+      return true;
+    }
+
     setScreenReaderMode(enabled) {
       this.screenReaderMode = Boolean(enabled);
       if (this.terminal) this.terminal.options.screenReaderMode = this.screenReaderMode;
+      this.syncScreenReaderLiveRegion();
     }
 
     fit() {

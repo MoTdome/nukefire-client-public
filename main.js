@@ -404,12 +404,23 @@ function scheduleAppFocusStatePublish() {
   }, 0);
 }
 
+let tintinDefaultKeyCapture = { enabled: false, focused: false };
+
 function installZoomShortcuts(window) {
   window.webContents.on('before-input-event', (event, input = {}) => {
     if (input.type && input.type !== 'keyDown') return;
-    if (!(input.control || input.meta) || input.alt) return;
 
     const key = String(input.key || '').toLowerCase();
+    const tintinControlKey = ['a','b','d','e','f','h','k','n','p','r','u','v','w'].includes(key);
+    const reserveTinTinKey = key === 'r' || tintinDefaultKeyCapture.enabled;
+    if (tintinDefaultKeyCapture.focused && reserveTinTinKey && input.control && !input.meta && !input.alt && tintinControlKey) {
+      event.preventDefault();
+      window.webContents.send('tintin:control-key', { key, code: String(input.code || ''), shift: Boolean(input.shift) });
+      return;
+    }
+
+    if (!(input.control || input.meta) || input.alt) return;
+
     const code = String(input.code || '');
     const zoomIn = key === '+' || key === '=' || code === 'NumpadAdd';
     const zoomOut = key === '-' || key === '_' || code === 'NumpadSubtract';
@@ -1065,6 +1076,10 @@ app.on('window-all-closed', () => {
 
 
 ipcMain.handle('app:is-focused', async () => appHasFocusedWindow());
+ipcMain.handle('tintin:control-keys', async (_event, value = {}) => {
+  tintinDefaultKeyCapture = { enabled: value?.enabled === true, focused: value?.focused === true };
+  return { ...tintinDefaultKeyCapture };
+});
 
 ipcMain.handle('links:open-external', async (_event, value) => {
   const url = normalizeExternalLink(value);

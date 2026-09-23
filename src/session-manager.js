@@ -159,12 +159,30 @@ const TINTIN_CLASS_SUBCOMMANDS = Object.freeze([
 ]);
 const TINTIN_LINE_SUBCOMMANDS = Object.freeze([
   ['gag', 'gag'], ['ignore', 'ignore'], ['json', 'json'], ['local', 'local'], ['log', 'log'], ['logverbatim', 'logverbatim'],
-  ['quiet', 'quiet'], ['strip', 'strip'], ['substitute', 'substitute'], ['verbatim', 'verbatim'], ['verbose', 'verbose']
+  ['msdp', 'msdp'], ['multishot', 'multishot'], ['quiet', 'quiet'], ['strip', 'strip'], ['substitute', 'substitute'], ['verbatim', 'verbatim'], ['verbose', 'verbose']
 ]);
 const TINTIN_LINE_SUBSTITUTIONS = Object.freeze([
   ['variables', 'variables'], ['functions', 'functions'], ['colors', 'colors'],
   ['escapes', 'escapes'], ['secure', 'secure'], ['eol', 'eol'], ['lnf', 'lnf']
 ]);
+
+
+function buildTinTinMsdpPayload(tokensValue = []) {
+  const tokens = Array.isArray(tokensValue) ? tokensValue : [];
+  const variable = String(tokens[1] || '').trim();
+  if (!variable || variable.length > 128 || /[\u0000-\u001f\u007f]/u.test(variable)) return null;
+  const values = tokens.slice(2)
+    .flatMap((value) => String(value ?? '').split(';'))
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .slice(0, 64);
+  const parts = [Buffer.from([1]), Buffer.from(variable, 'utf8')]; // MSDP_VAR
+  for (const value of values) {
+    if (value.length > 2048 || /[\u0000\u0001\u0002\u0003\u0004\u0005\u0006\u007f]/u.test(value)) return null;
+    parts.push(Buffer.from([2]), Buffer.from(value, 'utf8')); // MSDP_VAL
+  }
+  return Buffer.concat(parts);
+}
 const TINTIN_VISIBLE_LIST_FAMILIES = Object.freeze([
   ['actions', 'action'], ['aliases', 'alias'], ['classes', 'class'], ['configurations', 'config'],
   ['delays', 'delay'], ['events', 'event'], ['functions', 'function'], ['gags', 'gag'],
@@ -1699,13 +1717,24 @@ class SessionManager {
     return { queued: true, steps: steps.length, delayed: true };
   }
 
-  emitLocalDisplay(session, value) {
-    const text = normalizeLocalDisplayText(value);
+  emitLocalDisplay(session, value, options = {}) {
+    const raw = String(value ?? '');
+    const safeSgr = [];
+    const protectedText = raw.replace(/\x1b\[[0-9;]*m/gu, (match) => {
+      const token = `__NF_SGR_${safeSgr.length}__`;
+      safeSgr.push(match);
+      return token;
+    });
+    let text = normalizeLocalDisplayText(protectedText);
+    text = text.replace(/__NF_SGR_(\d+)__/gu, (_whole, index) => safeSgr[Number(index)] || '');
     if (!session || !text) return false;
-    const line = `${text}\n`;
-    this.appendLuaVisibleOutput(session, line);
-    this.emit(session.id, 'local-text', line);
-    if (!Number(session.lineIgnoreDepth || 0)) this.processActionsForText(session, line);
+    const lineFeed = options.lineFeed !== false;
+    const visible = lineFeed ? `${text}\n` : text;
+    this.appendLuaVisibleOutput(session, visible);
+    this.emit(session.id, lineFeed ? 'local-text' : 'local-prompt', visible);
+    // TinTin Actions see SHOW/SHOWME output as a completed logical line even
+    // when a trailing \\} deliberately leaves the display cursor as a prompt.
+    if (!Number(session.lineIgnoreDepth || 0)) this.processActionsForText(session, `${text}\n`);
     return true;
   }
 
@@ -1803,6 +1832,7 @@ class SessionManager {
       gagLines: new GagLineFilter(this.gagLineOptions),
       eventLines: new ActionLineBuffer(this.actionLineOptions),
       lineGagRemaining: 0,
+      lineActionShots: new Map(),
       lineIgnoreDepth: 0,
       pendingTinTinLineLog: null,
       tintinOutputHistory: [],
@@ -2778,7 +2808,10 @@ class SessionManager {
     const pattern = String(expanded.value || '').trim();
     const matches = this.actionEngine.list().filter((record) => tinTinDefinitionMatches(record.pattern, pattern));
     if (!matches.length) return [`Unknown action: ${pattern}.`];
-    for (const record of matches) this.actionEngine.delete(record.pattern);
+    for (const record of matches) {
+      this.actionEngine.delete(record.pattern);
+      source?.lineActionShots?.delete?.(record.pattern);
+    }
     return matches.length === 1
       ? [`Deleted action: ${matches[0].pattern}`]
       : [`Deleted ${matches.length} actions matching ${pattern}.`];
@@ -2877,6 +2910,12 @@ class SessionManager {
     const expanded = expandSelector(unescapeActionSemicolons(tokens[0]));
     if (expanded.error) return [expanded.error];
     const record = this.actionEngine.define(expanded.value, commandTokens.join(' '), priority, this.classManager.activeName);
+    if (record && source) {
+      source.lineActionShots ||= new Map();
+      const shots = Number(options.lineMultishot || (options.lineOneshot === true ? 1 : 0));
+      if (Number.isSafeInteger(shots) && shots > 0) source.lineActionShots.set(record.pattern, shots);
+      else source.lineActionShots.delete(record.pattern);
+    }
     return record
       ? [`Defined action at priority ${record.priority}: ${record.pattern}`]
       : [`Actions need a valid pattern and 1 through ${DEFAULT_MAX_ACTION_COMMANDS} semicolon-separated commands; priorities range from 1 through 9.`];
@@ -4087,6 +4126,15 @@ class SessionManager {
         deliveries,
         messages
       });
+      const remainingShots = Number(session.lineActionShots?.get(match.action.pattern) || 0);
+      if (remainingShots > 0) {
+        if (remainingShots <= 1) {
+          this.actionEngine.delete(match.action.pattern);
+          session.lineActionShots.delete(match.action.pattern);
+        } else {
+          session.lineActionShots.set(match.action.pattern, remainingShots - 1);
+        }
+      }
     }
   }
 
@@ -4308,6 +4356,26 @@ class SessionManager {
       return { deliveries: result.deliveries, messages: result.messages, activateSessionId: result.activateSessionId || '' };
     }
 
+    if (operation === 'msdp') {
+      const payload = buildTinTinMsdpPayload(tokens);
+      if (!payload) return { deliveries: [], messages: [this.usage('line msdp {variable} {value[;value...]}')], activateSessionId: '' };
+      const sent = source.connection?.sendMsdp?.(payload) === true;
+      return { deliveries: [], messages: [sent ? 'MSDP subnegotiation sent.' : 'MSDP is not negotiated on this connection.'], activateSessionId: '' };
+    }
+
+    if (operation === 'multishot') {
+      const amount = Number(tokens[1]);
+      if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1000 || tokens.length < 3) {
+        return { deliveries: [], messages: [this.usage('line multishot {1-1000} {command}')], activateSessionId: '' };
+      }
+      const raw = String(rawBodyValue || '').trim();
+      const first = splitTinTinLeadingArgument(raw);
+      const second = splitTinTinLeadingArgument(first.remainder);
+      const command = second.remainder ? unwrapTinTinSingleBracedArgument(second.remainder) : tokens.slice(2).join(' ').trim();
+      const result = this.dispatchCommand(source, command, { ...options, lineMultishot: amount });
+      return { deliveries: result.deliveries, messages: result.messages, activateSessionId: result.activateSessionId || '' };
+    }
+
     if (operation === 'gag') {
       if (tokens.length > 2) return { deliveries: [], messages: [this.usage('line gag [amount]')], activateSessionId: '' };
       const rawAmount = String(tokens[1] || '').trim();
@@ -4463,7 +4531,7 @@ class SessionManager {
 
     return {
       deliveries: [],
-      messages: ['NukeFire supports TinTin #LINE GAG, IGNORE, LOCAL, LOG, LOGVERBATIM, ONESHOT, STRIP, SUBSTITUTE, and VERBOSE compatibility forms.'],
+      messages: ['NukeFire supports TinTin #LINE GAG, IGNORE, LOCAL, LOG, LOGVERBATIM, MSDP, MULTISHOT, ONESHOT, STRIP, SUBSTITUTE, and VERBOSE compatibility forms.'],
       activateSessionId: ''
     };
   }
@@ -6917,9 +6985,7 @@ class SessionManager {
       }
     } else if (parsed.directive === 'map') {
       const operation = normalizeToken(tokens[0]);
-      if (operation !== 'find' || tokens.length !== 2) {
-        messages.push(this.usage('map find {room vnum}'));
-      } else {
+      if (operation === 'find' && tokens.length === 2) {
         const rawMapBody = String(parsed.body || '').trim();
         const rawTargetOffset = rawMapBody.search(/\s/u);
         let requestedToken = rawTargetOffset === -1
@@ -6943,6 +7009,21 @@ class SessionManager {
             this.emit(source.id, 'mapper-route-find-request', { target });
           }
         }
+      } else if (operation === 'view') {
+        const value = String(tokens[1] || 'status').trim().toLowerCase();
+        if (!['status','7x7','9x9','11x11','11x7'].includes(value)) messages.push(this.usage('map view {7x7|9x9|11x11|11x7|status}'));
+        else this.emit(source.id, 'mapper-tintin-command', { operation: 'view', value });
+      } else if (operation === 'landmark') {
+        if (tokens.length < 3 || tokens.length > 5) messages.push(this.usage('map landmark {name} {vnum} [description] [size]'));
+        else this.emit(source.id, 'mapper-tintin-command', {
+          operation: 'landmark', name: String(tokens[1] || ''), roomId: String(tokens[2] || ''),
+          description: String(tokens[3] || ''), size: String(tokens[4] || '')
+        });
+      } else if (operation === 'set' && String(tokens[1] || '').trim().toLowerCase() === 'roomsymbol') {
+        if (tokens.length < 3 || tokens.length > 4) messages.push(this.usage('map set roomsymbol {symbol} [vnum]'));
+        else this.emit(source.id, 'mapper-tintin-command', { operation: 'roomsymbol', symbol: String(tokens[2] || ''), roomId: String(tokens[3] || '') });
+      } else {
+        messages.push(this.usage('map {find {room vnum}|view {7x7|9x9|11x11|11x7}|landmark {name} {vnum}|set roomsymbol {symbol} [vnum]}'));
       }
     } else if (parsed.directive === 'path') {
       const path = this.handlePathCommand(tokens, source, options);
@@ -7228,18 +7309,24 @@ class SessionManager {
         if (payload) this.emit(source.id, 'accessibility-command', payload);
       }
     } else if (parsed.directive === 'showme' || parsed.directive === 'show') {
-      if (tokens.length < 1) {
+      const rawBody = String(parsed.body || '').trim();
+      const promptMatch = rawBody.match(/^\{([\s\S]*)\\\}$/u);
+      const ordinaryBraced = !promptMatch ? rawBody.match(/^\{([\s\S]*)\}$/u) : null;
+      let text = promptMatch ? promptMatch[1] : (ordinaryBraced ? ordinaryBraced[1] : tokens.join(' '));
+      const positional = !promptMatch && ordinaryBraced && tokens.length > 1
+        && tokens.slice(1).every((entry) => /^-?\d+$/u.test(String(entry || '').trim()));
+      if (positional) text = tokens[0];
+      if (!text) {
         messages.push(this.usage('showme {text}'));
       } else {
-        const bracedText = String(parsed.body || '').trimStart().startsWith('{');
-        const positional = bracedText && tokens.length > 1
-          && tokens.slice(1).every((entry) => /^-?\d+$/u.test(String(entry || '').trim()));
-        const text = positional ? tokens[0] : tokens.join(' ');
         const variables = options.variablesExpanded
           ? { value: text, error: '' }
           : this.expandFunctionAndVariables(text, source, options);
         if (variables.error) messages.push(variables.error);
-        else if (!this.emitLocalDisplay(source, variables.value)) messages.push(this.usage('showme {text}'));
+        else {
+          const displayText = applyTinTinLineSubstitutionTransforms(variables.value, new Set(['escapes']));
+          if (!this.emitLocalDisplay(source, displayText, { lineFeed: !promptMatch })) messages.push(this.usage('showme {text}'));
+        }
       }
     } else if (parsed.directive === 'echo') {
       if (tokens.length < 1) {
@@ -7346,9 +7433,17 @@ class SessionManager {
         }
       }
     } else if (parsed.directive === 'cursor') {
+      const requestedCursorFamily = String(tokens[0] || '').normalize('NFKC').trim().toLowerCase();
+      if (['default keys', 'default keybindings', 'tintin keys'].includes(requestedCursorFamily)) {
+        const value = String(tokens[1] || 'status').trim().toLowerCase();
+        if (!['on', 'off', 'status'].includes(value)) messages.push(this.usage('cursor {DEFAULT KEYS} {ON|OFF|STATUS}'));
+        else this.emit(source.id, 'tintin-default-keys-request', { value });
+      } else {
       const operation = resolveTinTinOrderedAbbreviation(tokens[0], TINTIN_CURSOR_OPERATIONS);
       if (!operation) {
         messages.push(`Cursor operations: ${TINTIN_CURSOR_OPERATIONS.map(([name]) => name.toUpperCase()).join(', ')}.`);
+        messages.push('TinTin default physical keys are optional: #CURSOR {DEFAULT KEYS} {ON}.');
+        messages.push('Defaults: Ctrl-A HOME; Ctrl-B BACKWARD; Ctrl-D DELETE; Ctrl-E END; Ctrl-F FORWARD; Ctrl-H BACKSPACE; Ctrl-K CLEAR RIGHT; Ctrl-N HISTORY NEXT; Ctrl-P HISTORY PREV; Ctrl-R HISTORY SEARCH; Ctrl-U CLEAR LEFT; Ctrl-V captures the next key for #MACRO; Ctrl-W DELETE WORD LEFT.');
       } else if (['echo on','echo off','convert meta','ctrl delete','insert','paste buffer','redraw input','exit','suspend','test'].includes(operation)) {
         messages.push(`${this.clientCommand(`cursor {${tokens[0]}}`)} accepted as a compatibility translation; NukeFire keeps browser input mode, clipboard, process, and accessibility policy native.`);
       } else {
@@ -7370,6 +7465,7 @@ class SessionManager {
           }
           this.emit(source.id, 'input-cursor-request', payload);
         }
+      }
       }
     } else if (parsed.directive === 'advertise') {
       messages.push(`${this.clientCommand('advertise')} ignored: the historical TinTin startup advertisement banner is omitted.`);

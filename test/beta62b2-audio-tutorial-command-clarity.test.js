@@ -22,17 +22,18 @@ function blockBetween(startNeedle, endNeedle) {
 }
 
 test('essential Reader tutorial stays short while pointing to the optional audio guide', () => {
-  assert.equal(TUTORIAL_STEPS.length, 4);
-  assert.match(TUTORIAL_STEPS.at(-1).text, /C R tutorial audio/iu);
+  assert.equal(TUTORIAL_STEPS.length, 5);
+  assert.match(TUTORIAL_STEPS.at(-1).text, /CR TUTORIAL AUDIO/iu);
+  assert.doesNotMatch(TUTORIAL_STEPS.map((step) => step.text).join(' '), /C R /u);
 });
 
 test('audio tutorial is a compact job-based MUSHclient and Mudlet migration guide', () => {
   assert.equal(AUDIO_TUTORIAL_STEPS.length, 7);
   const text = AUDIO_TUTORIAL_STEPS.map((step) => step.text).join('\n');
   for (const phrase of [
-    'C R VOICE', 'C R AUDIO', 'C R SPEECH', 'C R OUTPUT',
-    'C R SPEECH LAST OFF', 'C R OUTPUT LAST OFF',
-    'C R LINES', 'C R UNREAD', 'C R ALERTS ON'
+    'CR VOICE', 'CR AUDIO', 'CR SPEECH', 'CR OUTPUT',
+    'CR SPEECH LAST OFF', 'CR OUTPUT LAST OFF',
+    'CR LINES', 'CR UNREAD', 'CR ALERTS ON'
   ]) assert.match(text, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'iu'), phrase);
   assert.match(text, /If you only want less talking, use SPEECH, not OUTPUT/iu);
   assert.match(text, /text stays on screen and in Reader Review/iu);
@@ -100,8 +101,8 @@ test('audio tutorial completion reduces the system to four practical recovery co
   let result;
   for (let i = 0; i < AUDIO_TUTORIAL_STEPS.length; i += 1) result = tutorial.next();
   assert.equal(result.completed, true);
-  assert.match(result.text, /C R SPEECH LAST OFF/iu);
-  assert.match(result.text, /C R OUTPUT LAST OFF/iu);
-  assert.match(result.text, /C R LINES/iu);
-  assert.match(result.text, /C R UNREAD/iu);
+  assert.match(result.text, /CR SPEECH LAST OFF/iu);
+  assert.match(result.text, /CR OUTPUT LAST OFF/iu);
+  assert.match(result.text, /CR LINES/iu);
+  assert.match(result.text, /CR UNREAD/iu);
 });

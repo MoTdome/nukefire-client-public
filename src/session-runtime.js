@@ -61,6 +61,7 @@
       historyPrefix: '',
       draft: '',
       commandDraft: '',
+      commandDraftIsLastSentDisplay: false,
       lines: 0,
       plainText: '',
       readerCarry: '',
@@ -264,7 +265,7 @@
     return count;
   }
 
-  function updateReader(runtime, text) {
+  function updateReader(runtime, text, options = {}) {
     const input = String(text || '');
     const normalized = input.includes('\r') ? input.replaceAll('\r', '') : input;
     const source = runtime.readerCarry ? `${runtime.readerCarry}${normalized}` : normalized;
@@ -276,8 +277,9 @@
       const readable = source.slice(start, newline).trimEnd();
       if (readable.trim()) {
         runtime.lastCompleteLine = readable;
-        runtime.readerReview?.appendLine?.(readable);
+        const reviewLine = runtime.readerReview?.appendLine?.(readable) || null;
         runtime.readerHistory?.append?.('main', readable, { source: 'terminal', markRead: true });
+        if (typeof options.onReaderLine === 'function') options.onReaderLine(readable, reviewLine);
       }
       start = newline + 1;
       newline = source.indexOf('\n', start);
@@ -311,7 +313,7 @@
           : runs.map((run) => String(run?.text || '')).join(''))
       : sourcePlainText;
     runtime.plainText += plain;
-    runtime.lines += updateReader(runtime, plain);
+    runtime.lines += updateReader(runtime, plain, options);
     trimRuns(runtime);
     if (options.returnDetails === true) return { runs, plainText: plain, sourcePlainText };
     return runs;
@@ -339,13 +341,16 @@
 
   function commitBoundary(runtime, options = {}) {
     const readable = runtime.readerCarry.trimEnd();
+    let reviewLine = null;
     if (readable.trim()) {
       runtime.lastCompleteLine = readable;
-      runtime.readerReview?.appendLine?.(readable, {
+      reviewLine = runtime.readerReview?.appendLine?.(readable, {
         rapidRecall: options.rapidRecall !== false
-      });
+      }) || null;
+      if (typeof options.onReaderLine === 'function') options.onReaderLine(readable, reviewLine);
     }
     runtime.readerCarry = '';
+    return reviewLine;
   }
 
   function clearOutput(runtime) {

@@ -243,7 +243,7 @@ static void cr_help(struct char_data *ch)
         "  CR STATUS | OFF | DOCTOR | RECOVER | UNREAD | CONTEXT\r\n"
         "  CR SETUP NATIVE|LIVE|FAST|QUIET\r\n"
         "  CR WORKSPACE ON|OFF|TOGGLE\r\n"
-        "  CR LOAD MUSHSETTINGS\r\n"
+        "  CR LOAD MUSHSETTINGS [NATIVE|CLIENT|STATUS]\r\n"
         "  CR KEYS STATUS|LINES|MOVEMENT|MUSH\r\n"
         "  CR VOICE ... | AUDIO ... | SOUND ... | SOUNDPACK ...\r\n"
         "  CR LINES ... | CATEGORY ... | REVIEW ... | ALERTS ...\r\n");
@@ -315,19 +315,33 @@ void do_cr_reference(struct char_data *ch, const char *argument)
     }
 
     if (is_abbrev(sub, "load")) {
-        one_argument(rest, value);
+        char mode[256];
+        rest = one_argument(rest, value);
+        one_argument(rest, mode);
         if (!same_word(value, "mushsettings")) {
-            send_to_char(ch, "Use CR LOAD MUSHSETTINGS.\r\n");
+            send_to_char(ch, "Use CR LOAD MUSHSETTINGS [NATIVE|CLIENT|STATUS].\r\n");
+            return;
+        }
+        if (*mode && !same_word(mode, "native") && !same_word(mode, "client") &&
+            !same_word(mode, "status")) {
+            send_to_char(ch, "Use CR LOAD MUSHSETTINGS [NATIVE|CLIENT|STATUS].\r\n");
             return;
         }
         if (!require_controls(ch))
             return;
+        if (same_word(mode, "status")) {
+            (void)send_control(ch, "reader.load.mushsettings", "status",
+                               "Client MUSH settings status request could not be sent.");
+            return;
+        }
         if (!accessibility_send_control_request(ch, "reader.session.begin", NULL)) {
             send_to_char(ch,
                 "Current client setup could not be saved; MUSH settings were not applied.\r\n");
             return;
         }
-        (void)send_control(ch, "reader.load.mushsettings", NULL,
+        if (same_word(mode, "native") || same_word(mode, "client"))
+            sr_apply_setup_profile(ch, "balanced");
+        (void)send_control(ch, "reader.load.mushsettings", *mode ? mode : NULL,
                            "Client MUSH settings request could not be sent.");
         return;
     }

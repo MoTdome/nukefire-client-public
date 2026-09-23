@@ -276,8 +276,8 @@ test('cycles client name, terminal type, and MTTS', () => {
   assert.deepEqual(responses, [
     'NUKEFIRE-MAC',
     'XTERM-TRUECOLOR',
-    'MTTS 781',
-    'MTTS 781'
+    'MTTS 1805',
+    'MTTS 1805'
   ]);
 });
 
@@ -295,8 +295,8 @@ test('screen-reader preference changes the MTTS response', () => {
   h.parser.feed(request);
 
   const finalPayload = extractSubnegotiationPayload(h.sent[3]);
-  assert.equal(finalPayload.subarray(1).toString('ascii'), 'MTTS 845');
-  assert.equal(h.terminalTypes.at(-1).value, 'MTTS 845');
+  assert.equal(finalPayload.subarray(1).toString('ascii'), 'MTTS 1869');
+  assert.equal(h.terminalTypes.at(-1).value, 'MTTS 1869');
 });
 
 test('negotiates MNES and answers named standard and OSC hyperlink variables', () => {
@@ -320,7 +320,7 @@ test('negotiates MNES and answers named standard and OSC hyperlink variables', (
 
   assert.deepEqual(parseEnvironmentPayload(h.sent[1]), [
     { kind: TELNET.ENVIRON.VAR, name: 'CLIENT_NAME', value: 'NukeFire Client' },
-    { kind: TELNET.ENVIRON.VAR, name: 'MTTS', value: '781' },
+    { kind: TELNET.ENVIRON.VAR, name: 'MTTS', value: '1805' },
     { kind: TELNET.ENVIRON.USERVAR, name: 'OSC_HYPERLINKS', value: '1' },
     { kind: TELNET.ENVIRON.USERVAR, name: 'OSC_HYPERLINKS_SEND', value: '1' },
     { kind: TELNET.ENVIRON.USERVAR, name: 'OSC_HYPERLINKS_PROMPT', value: '1' }
@@ -333,7 +333,7 @@ test('updates the MNES MTTS variable when screen-reader capability changes', () 
   h.parser.setScreenReaderMode(true);
 
   assert.deepEqual(parseEnvironmentPayload(h.sent[1], TELNET.ENVIRON.INFO), [
-    { kind: TELNET.ENVIRON.VAR, name: 'MTTS', value: '845' }
+    { kind: TELNET.ENVIRON.VAR, name: 'MTTS', value: '1869' }
   ]);
 
   h.parser.setScreenReaderMode(true);

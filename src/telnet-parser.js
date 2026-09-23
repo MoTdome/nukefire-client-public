@@ -18,6 +18,7 @@ const OPT = Object.freeze({
   NAWS: 31,
   NEW_ENVIRON: 39,
   CHARSET: 42,
+  MSDP: 69,
   MCCP1: 85,
   MCCP2: 86,
   MCCPX: 88,
@@ -64,9 +65,9 @@ function clampDimension(value, fallback) {
 }
 
 function makeMttsBitvector(screenReader) {
-  // MTTS: ANSI (1), UTF-8 (4), 256 colors (8), truecolor (256), MNES (512).
+  // MTTS: ANSI (1), UTF-8 (4), 256 colors (8), truecolor (256), MNES (512), MSLP (1024).
   // Screen-reader mode additionally advertises bit 64.
-  return 781 + (screenReader ? 64 : 0);
+  return 1805 + (screenReader ? 64 : 0);
 }
 
 function makeTerminalTypes(screenReader) {
@@ -97,6 +98,7 @@ class TelnetParser {
 
     this.remoteEcho = false;
     this.gmcpEnabled = false;
+    this.msdpEnabled = false;
     this.endOfRecordEnabled = false;
     this.nawsEnabled = false;
     this.charsetEnabled = false;
@@ -409,6 +411,7 @@ class TelnetParser {
       OPT.END_OF_RECORD,
       OPT.MCCP2,
       OPT.MCCPX,
+      OPT.MSDP,
       OPT.GMCP
     ].includes(option);
   }
@@ -440,6 +443,7 @@ class TelnetParser {
         );
       }
     }
+    if (option === OPT.MSDP) this.msdpEnabled = enabled;
     if (option === OPT.GMCP) this.updateGmcpEnabled();
   }
 
@@ -806,6 +810,14 @@ class TelnetParser {
       this.handlers.onNewEnvironment?.({ enabled: true, updated: sent.map((record) => ({ ...record })) });
     }
     return this.screenReader;
+  }
+
+  sendMsdp(payload) {
+    if (!this.msdpEnabled || this.getOptionState('remote', OPT.MSDP) !== OPTION_STATE.YES) return false;
+    const bytes = Buffer.isBuffer(payload) ? payload : Buffer.from(payload || []);
+    if (!bytes.length || bytes.length > 65536) return false;
+    this.sendSubnegotiation(OPT.MSDP, bytes);
+    return true;
   }
 
   sendGmcp(packageName, body) {

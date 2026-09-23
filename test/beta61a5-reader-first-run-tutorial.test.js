@@ -12,14 +12,15 @@ const root = path.resolve(__dirname, '..');
 const renderer = fs.readFileSync(path.join(root, 'renderer', 'renderer.js'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'renderer', 'index.html'), 'utf8');
 
-test('Reader tutorial is short, deterministic, and action driven', () => {
-  assert.equal(TUTORIAL_STEPS.length, 4);
+test('Reader tutorial is short, deterministic, and teaches raw MUD output first', () => {
+  assert.equal(TUTORIAL_STEPS.length, 5);
   const tutorial = new ReaderTutorial();
-  assert.equal(tutorial.start({ mode: 'live' }).expectedAction, 'history-latest');
+  assert.equal(tutorial.start({ mode: 'live' }).expectedAction, 'line-latest');
   assert.equal(tutorial.accept('history-previous').matched, false);
-  assert.equal(tutorial.accept('history-latest').step.expectedAction, 'category-next');
-  assert.equal(tutorial.accept('category-next').step.expectedAction, 'history-previous');
-  assert.equal(tutorial.accept('history-previous').step.expectedAction, 'last-tell');
+  assert.equal(tutorial.accept('line-latest').step.expectedAction, 'line-previous');
+  assert.equal(tutorial.accept('line-previous').step.expectedAction, 'line-current');
+  assert.equal(tutorial.accept('line-current').step.expectedAction, 'line-next');
+  assert.equal(tutorial.accept('line-next').step.expectedAction, 'last-tell');
   const result = tutorial.accept('last-tell');
   assert.equal(result.completed, true);
   assert.equal(tutorial.status().active, false);
@@ -29,9 +30,9 @@ test('Reader tutorial is short, deterministic, and action driven', () => {
 test('Reader tutorial supports replay, manual navigation, and safe stop', () => {
   const tutorial = new ReaderTutorial();
   tutorial.start();
-  assert.equal(tutorial.next().id, 'category');
-  assert.equal(tutorial.back().id, 'latest');
-  assert.equal(tutorial.repeat().id, 'latest');
+  assert.equal(tutorial.next().id, 'line-previous');
+  assert.equal(tutorial.back().id, 'line-latest');
+  assert.equal(tutorial.repeat().id, 'line-latest');
   assert.match(tutorial.stop().text, /tutorial stopped/iu);
   assert.equal(tutorial.status().active, false);
 });
@@ -60,10 +61,11 @@ test('first-run Reader choices use existing safe Reader presets and keep safety 
   assert.match(renderer, /readerSetupLiveButton\?\.addEventListener[\s\S]*?reader-live-voice/u);
 });
 
-test('tutorial learns from real Reader actions while leaving the command line workflow intact', () => {
-  assert.match(renderer, /function readerHistoryLatest\(\)[\s\S]*?advanceReaderTutorialFor\('history-latest'\)/u);
-  assert.match(renderer, /function readerHistoryNextCategory\(\)[\s\S]*?advanceReaderTutorialFor\('category-next'\)/u);
-  assert.match(renderer, /function readerHistoryPrevious\(\)[\s\S]*?advanceReaderTutorialFor\('history-previous'\)/u);
+test('tutorial learns from raw Reader Review actions while leaving the command line workflow intact', () => {
+  assert.match(renderer, /function reviewLatestLine\(\)[\s\S]*?advanceReaderTutorialFor\('line-latest'\)/u);
+  assert.match(renderer, /function reviewPreviousLine\(\)[\s\S]*?advanceReaderTutorialFor\('line-previous'\)/u);
+  assert.match(renderer, /function reviewCurrentLine\(\)[\s\S]*?advanceReaderTutorialFor\('line-current'\)/u);
+  assert.match(renderer, /function reviewNextLine\(\)[\s\S]*?advanceReaderTutorialFor\('line-next'\)/u);
   assert.match(renderer, /function recallLastTell\(\)[\s\S]*?advanceReaderTutorialFor\('last-tell'\)/u);
   assert.match(renderer, /setReaderWorkspaceEnabled\(true, \{ announceChange: false, focus: true \}\)/u);
 });

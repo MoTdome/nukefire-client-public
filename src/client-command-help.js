@@ -319,12 +319,13 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
   Object.freeze({
     name: 'map',
     aliases: Object.freeze([]),
-    summary: 'Find a numeric room vnum through NukeFire’s native Mapper without enabling TinTin’s terminal mapper UI.',
-    usages: Object.freeze(['map find {room vnum}']),
+    summary: 'Bridge veteran TinTin map conveniences onto NukeFire’s native persistent Mapper.',
+    usages: Object.freeze(['map find {room vnum}', 'map view {7x7|9x9|11x11|11x7|status}', 'map landmark {name} {vnum} [description] [size]', 'map set roomsymbol {symbol} [vnum]']),
     details: Object.freeze([
       'MAP FIND accepts a positive numeric NukeFire room vnum after normal Alias, Function, Variable, and delayed-command expansion.',
-      'The target is private to the issuing session. The active session checks the existing native Mapper graph and reports whether a safe route is currently known.',
-      'This bridge does not import TinTin map files, coordinates, room creation, map drawing, or a second pathfinding system.'
+      'MAP VIEW selects 7x7, 9x9, 11x11, or 11x7. Expanded views may fill beyond the live BIGMAP packet with already learned rooms; they never invent unexplored topology.',
+      'MAP LANDMARK stores a bounded local name-to-room annotation. MAP SET ROOMSYMBOL stores a one-to-three-character local glyph for a room; omit vnum to use the current room.',
+      'The native Mapper remains authoritative for coordinates, verified exits, routing, and persistence. This bridge does not import TinTin map files, create TinTin coordinates, or create a second pathfinding database.'
     ])
   }),
   Object.freeze({
@@ -353,7 +354,7 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     usages: Object.freeze(['event {SESSION CONNECTED} {commands}', 'event {RECEIVED LINE} {commands}', 'event {IAC SB MSDP VAR %1 VAL %2 IAC SE} {commands}', 'event {SECOND} {commands}', 'unevent {event name}']),
     details: Object.freeze([
       'Supported runtime events include session lifecycle, received input/line/output/prompt, send output, SCREEN RESIZE, END OF PATH, PROGRAM START/TERMINATION, SECOND/MINUTE/HOUR/DAY/WEEK/MONTH/YEAR, DATE/TIME patterns, IAC WILL GMCP, and bounded IAC/VARIABLE UPDATE pattern families.',
-      'Event arguments support both NukeFire’s historical %0 form and TinTin’s veteran %1/%2 forms. Old MSDP VAR data events are synthesized from authoritative GMCP values so retained scripts can migrate without turning MSDP back on.',
+      'Event arguments support both NukeFire’s historical %0 form and TinTin’s veteran %1/%2 forms; %* joins all Event arguments. RECEIVED LINE supplies raw line as argument 0/1 and stripped line next; RECEIVED OUTPUT supplies the raw chunk; RECEIVED PROMPT supplies prompt text; SEND OUTPUT supplies the sent command; SCREEN RESIZE supplies width then height; session connect/disconnect events supply session name, host, an empty compatibility field, then port (plus disconnect message when present). Old MSDP VAR data events remain synthesized from authoritative GMCP values; #LINE MSDP separately permits explicit outbound MSDP when option 69 is negotiated.',
       'Events are private per session, inherited through the startup template, persisted with profiles, and execute through the normal bounded NukeFire command pipeline.',
       'VARIABLE UPDATE fires before the variable is written, so the Event may inspect the old value while its Event arguments carry the proposed update.',
       'RECEIVED LINE exposes the raw line and a terminal-stripped line. SEND OUTPUT fires only after the underlying send succeeds; failed sends do not synthesize the Event.',
@@ -377,11 +378,11 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     name: 'cursor',
     aliases: Object.freeze([]),
     summary: 'Apply TinTin cursor/history/completion operations to NukeFire’s native command input.',
-    usages: Object.freeze(['cursor {HISTORY PREV}', 'cursor {HISTORY NEXT}', 'cursor {HISTORY SEARCH}', 'cursor {MIXED TAB FORWARD}', 'cursor {HOME|END|PREV WORD|NEXT WORD}', 'cursor {CLEAR LEFT|CLEAR RIGHT|CLEAR LINE}', 'cursor {DELETE WORD LEFT|DELETE WORD RIGHT}', 'cursor {SET} {text}', 'cursor {GET} {variable}']),
+    usages: Object.freeze(['cursor', 'cursor {DEFAULT KEYS} {ON|OFF|STATUS}', 'cursor {HISTORY PREV}', 'cursor {HISTORY NEXT}', 'cursor {HISTORY SEARCH}', 'cursor {MIXED TAB FORWARD}', 'cursor {HOME|END|PREV WORD|NEXT WORD}', 'cursor {CLEAR LEFT|CLEAR RIGHT|CLEAR LINE}', 'cursor {DELETE WORD LEFT|DELETE WORD RIGHT}', 'cursor {SET} {text}', 'cursor {GET} {variable}']),
     details: Object.freeze([
       'History Prev/Next use TinTin-style prefix filtering. Ctrl+R while the command field is focused cycles backward through commands containing the current search text.',
       'TAB/AUTO TAB/MIXED TAB operations share the same completion cycle used by the physical Tab and Shift+Tab keys.',
-      'Editing operations act on the real accessible HTML command field; NukeFire does not emulate TinTin terminal insert mode or replace protected operating-system shortcuts.',
+      'Editing operations act on the real accessible HTML command field. Optional DEFAULT KEYS mode installs veteran command-line behavior while that field is focused: Ctrl-A/E move to home/end, Ctrl-B/F move by character, Ctrl-P/N browse history, Ctrl-H/D backspace/delete, Ctrl-U/K clear left/right, Ctrl-W deletes the word left, Ctrl-V captures the next physical key for a Macro definition, and Ctrl-R opens interactive reverse history search. The mode is off by default.',
       'CURSOR GET copies the current command line into a private TinTin variable. ECHO/INSERT/clipboard/process-oriented cursor operations remain translated to native browser/client behavior.'
     ])
   }),
@@ -405,7 +406,7 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     details: Object.freeze([
       "The search runs against the session's retained incoming-line buffer after terminal escape sequences are removed.",
       'Positive GREP pages select from the newest edge but display each selected page in original chronological order; negative pages begin at the oldest edge. Page size follows the current terminal height.',
-      'Search expressions are bounded regular expressions and never evaluate host code.'
+      'Search expressions are bounded regular expressions and never evaluate host code. The visible terminal Find box also accepts TinTin wildcard forms such as %*, %+, %?, %d, %s, %w, and numbered %1-%99 captures.'
     ])
   }),
   Object.freeze({
@@ -834,12 +835,12 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     name: 'line',
     aliases: Object.freeze([]),
     summary: 'Apply TinTin line-local execution, filtering, substitution, and confined logging modifiers.',
-    usages: Object.freeze(['line oneshot {command}', 'line gag [amount]', 'line ignore {command}', 'line json {variable} {command}', 'line local {command}', 'line quiet {command}', 'line strip {command}', 'line verbatim {command}', 'line verbose {command}', 'line substitute {variables|functions} {command}', 'line log {filename} [text]', 'line logverbatim {filename} {text}']),
+    usages: Object.freeze(['line oneshot {command}', 'line multishot {count} {command}', 'line msdp {variable} {value[;value...]}', 'line gag [amount]', 'line ignore {command}', 'line json {variable} {command}', 'line local {command}', 'line quiet {command}', 'line strip {command}', 'line verbatim {command}', 'line verbose {command}', 'line substitute {variables|functions} {command}', 'line log {filename} [text]', 'line logverbatim {filename} {text}']),
     details: Object.freeze([
       'IGNORE runs nested local output without feeding that output back through Actions. LOCAL allows client-side work but blocks nested server-bound sends. QUIET suppresses nested command feedback, while VERBATIM deliberately skips variable/function substitution.',
       'JSON serializes one bounded scalar or nested TinTin variable/table and exposes the JSON text as &0 to the nested command.',
       'LOG and LOGVERBATIM redirect veteran absolute filenames by basename into NukeFire’s confined Logs folder; arbitrary host paths are never reopened. LINE LOG with only a filename arms a one-shot capture of the next completed incoming MUD line, matching TinTin source behavior.',
-      'ONESHOT, bounded GAG, STRIP, VERBOSE, and variable/function substitution use the normal private session pipeline.'
+      'ONESHOT and MULTISHOT apply bounded fire counts to newly defined Actions; STRIP removes terminal controls before running its nested command. MSDP emits a real Telnet MSDP subnegotiation only when the server negotiated option 69; it never bypasses the connection boundary.'
     ])
   }),
   Object.freeze({

@@ -21,7 +21,8 @@ test('beta.20 locally terminates prompts and preserves repeatable commands', () 
   assert.match(renderer, /if \(hasServerCommands\) \{\s*terminateCurrentOutputLine\(\)/u);
   assert.match(renderer, /const showSentCommand = !preserveInput && repeatableCommand && \$\('#show-last-command-in-input'\)\.checked/u);
   assert.match(renderer, /commandInput\.value = showSentCommand \? command : ''/u);
-  assert.match(renderer, /if \(showSentCommand\) commandInput\.select\(\)/u);
+  assert.match(renderer, /state\.commandInputShowingLastSent = showSentCommand/u);
+  assert.match(renderer, /if \(showSentCommand\) \{[\s\S]*?state\.accessibility\.screenReaderMode[\s\S]*?setSelectionRange\(commandInput\.value\.length, commandInput\.value\.length\)[\s\S]*?else commandInput\.select\(\)/u);
 });
 
 test('beta.20 uses a branded disconnect dialog and reports disconnects in terminal output', () => {

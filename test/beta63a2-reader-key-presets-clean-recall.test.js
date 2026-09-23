@@ -102,10 +102,14 @@ test('MUSH settings install familiar review controls without overwriting custom 
   const byId = new Map(result.settings.bindings.map((record) => [record.id, record]));
   assert.equal(result.lines.installed.length, 9);
   assert.equal(result.movement.installed.length, 6);
-  assert.equal(result.controls.installed.length, 12);
+  assert.equal(result.controls.installed.length, 13);
   assert.equal(result.controls.skipped.length, 1);
   assert.ok(byId.has('custom-alt-c'));
   assert.deepEqual(byId.get('reader-mush-mute').semantic, { type: 'accessibility', id: 'toggle-self-voice-mute' });
+  assert.deepEqual(byId.get('reader-mush-previous').semantic, { type: 'reader-review', id: 'previous' });
+  assert.deepEqual(byId.get('reader-mush-current').semantic, { type: 'reader-review', id: 'current' });
+  assert.deepEqual(byId.get('reader-mush-next').semantic, { type: 'reader-review', id: 'next' });
+  assert.deepEqual(byId.get('reader-mush-latest').semantic, { type: 'reader-review', id: 'latest' });
   assert.deepEqual(byId.get('reader-mush-last-tell').semantic, { type: 'communications-review', id: 'last-tell' });
   assert.deepEqual(byId.get('reader-mush-vitals').semantic, { type: 'accessibility', id: 'read-vitals' });
   assert.deepEqual(byId.get('reader-mush-category-previous').semantic, { type: 'reader-history', id: 'category-previous' });
@@ -151,10 +155,10 @@ test('renderer keeps CR KEYS bounded and marks gameplay prompt boundaries non-ra
   assert.match(renderer, /text === 'mush'/u);
   assert.match(renderer, /\^remove\\s\+\(lines\?\|movement\|move\|mush\)\$/u);
   assert.match(renderer, /request\.action === 'reader\.keys'[\s\S]*?applyReaderKeysCommand\(request\.args\?\.value \|\| 'status'\)/u);
-  assert.match(renderer, /looksLikeNukeFirePlayingPrompt\(boundaryText\)[\s\S]*?commitBoundary\?\.\(record, \{ rapidRecall: !playingPrompt \}\)/u);
+  assert.match(renderer, /looksLikeNukeFirePlayingPrompt\(boundaryText\)[\s\S]*?commitBoundary\?\.\(record, \{[\s\S]*?rapidRecall: !playingPrompt[\s\S]*?onReaderLine/u);
   assert.match(renderer, /type === 'reader-review'[\s\S]*?recallReaderLine\(Number\(recallMatch\[1\]\)\)/u);
   assert.match(renderer, /request\.action === 'reader\.load\.mushsettings'[\s\S]*?applyMushSettingsPreset\(\)/u);
-  assert.match(renderer, /Official shortcuts active: \$\{installed\} of 28/u);
+  assert.match(renderer, /Official shortcuts active: \$\{installed\} of 29/u);
   assert.match(renderer, /Alt\+C': 'Copy Reviewed'/u);
   assert.match(renderer, /applyMushSettingsPreset\(\);[\s\S]*?announce\(result\.message, \{ force: true, interrupt: true \}\)/u);
 });

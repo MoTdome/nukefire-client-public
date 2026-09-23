@@ -35,9 +35,10 @@
   const READER_MUSH_SETTINGS_PRESET = Object.freeze([
     Object.freeze({ id: 'reader-mush-mute', code: 'F5', label: 'F5', semantic: Object.freeze({ type: 'accessibility', id: 'toggle-self-voice-mute' }) }),
     Object.freeze({ id: 'reader-mush-stop-speech', code: 'F7', label: 'F7', semantic: Object.freeze({ type: 'accessibility', id: 'stop-self-voice' }) }),
-    Object.freeze({ id: 'reader-mush-previous', code: 'F8', label: 'F8', semantic: Object.freeze({ type: 'reader-history', id: 'previous' }) }),
-    Object.freeze({ id: 'reader-mush-next', code: 'F9', label: 'F9', semantic: Object.freeze({ type: 'reader-history', id: 'next' }) }),
-    Object.freeze({ id: 'reader-mush-latest', code: 'F10', label: 'F10', semantic: Object.freeze({ type: 'reader-history', id: 'latest' }) }),
+    Object.freeze({ id: 'reader-mush-previous', code: 'F8', label: 'F8', semantic: Object.freeze({ type: 'reader-review', id: 'previous' }) }),
+    Object.freeze({ id: 'reader-mush-current', code: 'F8', label: 'Shift+F8', modifiers: Object.freeze({ shift: true }), semantic: Object.freeze({ type: 'reader-review', id: 'current' }) }),
+    Object.freeze({ id: 'reader-mush-next', code: 'F9', label: 'F9', semantic: Object.freeze({ type: 'reader-review', id: 'next' }) }),
+    Object.freeze({ id: 'reader-mush-latest', code: 'F10', label: 'F10', semantic: Object.freeze({ type: 'reader-review', id: 'latest' }) }),
     Object.freeze({ id: 'reader-mush-last-tell', code: 'KeyT', label: 'Alt+T', modifiers: Object.freeze({ alt: true }), semantic: Object.freeze({ type: 'communications-review', id: 'last-tell' }) }),
     Object.freeze({ id: 'reader-mush-vitals', code: 'KeyH', label: 'Alt+H', modifiers: Object.freeze({ alt: true }), semantic: Object.freeze({ type: 'accessibility', id: 'read-vitals' }) }),
     Object.freeze({ id: 'reader-mush-copy-reviewed', code: 'KeyC', label: 'Alt+C', modifiers: Object.freeze({ alt: true }), semantic: Object.freeze({ type: 'accessibility', id: 'copy-reviewed' }) }),
@@ -121,9 +122,10 @@
     Object.freeze({ id: 'reader-vitals', code: 'F5', label: 'F5', semantic: Object.freeze({ type: 'accessibility', id: 'read-vitals' }) }),
     Object.freeze({ id: 'reader-mute', code: 'F6', label: 'F6', semantic: Object.freeze({ type: 'accessibility', id: 'toggle-self-voice-mute' }) }),
     Object.freeze({ id: 'reader-stop-speech', code: 'F7', label: 'F7', semantic: Object.freeze({ type: 'accessibility', id: 'stop-self-voice' }) }),
-    Object.freeze({ id: 'reader-previous-line', code: 'F8', label: 'F8', semantic: Object.freeze({ type: 'reader-history', id: 'previous' }) }),
-    Object.freeze({ id: 'reader-next-line', code: 'F9', label: 'F9', semantic: Object.freeze({ type: 'reader-history', id: 'next' }) }),
-    Object.freeze({ id: 'reader-latest-line', code: 'F10', label: 'F10', semantic: Object.freeze({ type: 'reader-history', id: 'latest' }) }),
+    Object.freeze({ id: 'reader-previous-line', code: 'F8', label: 'F8', semantic: Object.freeze({ type: 'reader-review', id: 'previous' }) }),
+    Object.freeze({ id: 'reader-current-line', code: 'F8', label: 'Shift+F8', modifiers: Object.freeze({ shift: true }), semantic: Object.freeze({ type: 'reader-review', id: 'current' }) }),
+    Object.freeze({ id: 'reader-next-line', code: 'F9', label: 'F9', semantic: Object.freeze({ type: 'reader-review', id: 'next' }) }),
+    Object.freeze({ id: 'reader-latest-line', code: 'F10', label: 'F10', semantic: Object.freeze({ type: 'reader-review', id: 'latest' }) }),
     Object.freeze({ id: 'reader-last-tell', code: 'F10', label: 'Shift+F10', modifiers: Object.freeze({ shift: true }), semantic: Object.freeze({ type: 'communications-review', id: 'last-tell' }) }),
     Object.freeze({ id: 'reader-history-category-previous', code: 'ArrowUp', label: 'Alt+Up', modifiers: Object.freeze({ alt: true }), semantic: Object.freeze({ type: 'reader-history', id: 'category-previous' }) }),
     Object.freeze({ id: 'reader-history-category-next', code: 'ArrowDown', label: 'Alt+Down', modifiers: Object.freeze({ alt: true }), semantic: Object.freeze({ type: 'reader-history', id: 'category-next' }) }),
@@ -374,10 +376,11 @@
     const current = keybindingApi.normalizeKeybindingSettings(input);
     const presetRecords = current.bindings.filter((record) => record.preset === READER_HOTKEY_PRESET_ID);
     if (!presetRecords.length) return Object.freeze({ settings: current, migrated: false, reason: 'not-installed' });
-    if (presetRecords.some((record) => !LEGACY_READER_HOTKEY_IDS.has(record.id))) {
+    if (presetRecords.some((record) => record.id === 'reader-current-line')) {
       return Object.freeze({ settings: current, migrated: false, reason: 'already-current-or-customized' });
     }
-    const expectedLegacy = {
+
+    const expectedRawLegacy = {
       'reader-vitals': ['F5', 'accessibility', 'read-vitals'],
       'reader-mute': ['F6', 'accessibility', 'toggle-self-voice-mute'],
       'reader-stop-speech': ['F7', 'accessibility', 'stop-self-voice'],
@@ -386,13 +389,35 @@
       'reader-latest-line': ['F10', 'reader-review', 'latest'],
       'reader-last-tell': ['F10', 'communications-review', 'last-tell']
     };
-    const untouchedLegacy = presetRecords.every((record) => {
-      const expected = expectedLegacy[record.id];
-      return expected && record.code === expected[0] && String(record.semantic?.type || '') === expected[1] && String(record.semantic?.id || '') === expected[2];
-    });
-    if (!untouchedLegacy) return Object.freeze({ settings: current, migrated: false, reason: 'customized' });
+    const expectedBeta78 = {
+      'reader-vitals': ['F5', 'accessibility', 'read-vitals'],
+      'reader-mute': ['F6', 'accessibility', 'toggle-self-voice-mute'],
+      'reader-stop-speech': ['F7', 'accessibility', 'stop-self-voice'],
+      'reader-previous-line': ['F8', 'reader-history', 'previous'],
+      'reader-next-line': ['F9', 'reader-history', 'next'],
+      'reader-latest-line': ['F10', 'reader-history', 'latest'],
+      'reader-last-tell': ['F10', 'communications-review', 'last-tell'],
+      'reader-history-category-previous': ['ArrowUp', 'reader-history', 'category-previous'],
+      'reader-history-category-next': ['ArrowDown', 'reader-history', 'category-next'],
+      'reader-history-message-previous': ['ArrowLeft', 'reader-history', 'previous'],
+      'reader-history-message-next': ['ArrowRight', 'reader-history', 'next'],
+      'reader-history-latest': ['End', 'reader-history', 'latest']
+    };
+    const matchesExpected = (expected) => {
+      const ids = Object.keys(expected);
+      if (presetRecords.length !== ids.length) return false;
+      return presetRecords.every((record) => {
+        const wanted = expected[record.id];
+        return wanted && record.code === wanted[0]
+          && String(record.semantic?.type || '') === wanted[1]
+          && String(record.semantic?.id || '') === wanted[2];
+      });
+    };
+    const rawLegacy = matchesExpected(expectedRawLegacy);
+    const beta78 = matchesExpected(expectedBeta78);
+    if (!rawLegacy && !beta78) return Object.freeze({ settings: current, migrated: false, reason: 'customized' });
     const result = installReaderHotkeyPreset(current, keybindingApi);
-    return Object.freeze({ ...result, migrated: true, reason: 'legacy-defaults' });
+    return Object.freeze({ ...result, migrated: true, reason: beta78 ? 'beta78-category-defaults' : 'legacy-defaults' });
   }
 
   function removeReaderHotkeyPreset(input = {}, keybindingApi = {}) {

@@ -1,2 +1,2 @@
-NukeFire Client 0.3.1-beta.78
-Interface Choice and Terminal Geometry
+NukeFire Client 0.3.1-beta.79
+Native Reader and TinTin Veteran Compatibility

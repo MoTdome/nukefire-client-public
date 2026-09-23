@@ -80,7 +80,7 @@ Repeated setup calls do **not** overwrite the original pre-Reader snapshot. That
 
 ## MUSH-style setup
 
-`CR LOAD MUSHSETTINGS` first requests `reader.session.begin`. Only after that succeeds does the server request `reader.load.mushsettings`. The client preserves the current command draft and selection while changing the intended Reader keybindings/input behavior.
+`CR LOAD MUSHSETTINGS` remains the backward-compatible key/settings-only form. `CR LOAD MUSHSETTINGS NATIVE` and `CLIENT` first request `reader.session.begin`, apply balanced server SR presentation, then send `reader.load.mushsettings` with `args.value` set to `native` or `client`. `CR LOAD MUSHSETTINGS STATUS` is read-only and sends `status` without taking a new snapshot. The client preserves the current command draft and selection while applying MUSH input behavior.
 
 ## Exact Beta.76 control action allowlist (75)
 

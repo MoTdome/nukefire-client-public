@@ -21,13 +21,11 @@ This guide is written for screen-reader, braille, keyboard-first, and NukeFire V
 ### Native screen reader
 
 ```text
-sr setup balanced
-cr setup native
-cr load mushsettings
-cr status
+cr load mushsettings native
+cr load mushsettings status
 ```
 
-This enables balanced server presentation, selects the official client’s native-screen-reader preset, installs conflict-safe MUSH-style Reader controls, and reports the resulting state.
+This is the shortest MUSH-familiar setup for the official client. It enables balanced server presentation, selects the native-screen-reader path, turns NukeFire Voice off, installs conflict-safe MUSH-style Reader controls, and reports the resulting state.
 
 ### NukeFire Voice instead of a native reader
 
@@ -364,9 +362,20 @@ All official shortcut installers are conflict-safe: they preserve bindings they 
 
 ```text
 cr load mushsettings
+cr load mushsettings native
+cr load mushsettings client
+cr load mushsettings status
 ```
 
-The server first requests a pre-Reader snapshot. If that snapshot cannot be established, the client preset is not applied blindly.
+Bare `CR LOAD MUSHSETTINGS` remains backward compatible: it installs the familiar MUSH-style keys, input behavior, and communication cues without changing the player's current speech path.
+
+`NATIVE` is the one-command starting point for NVDA, JAWS, VoiceOver, Orca, or another personal screen reader. The server applies the balanced SR presentation, the client enables Native Screen Reader mode and Reader Workspace, and NukeFire Voice is turned off.
+
+`CLIENT` applies the same MUSH-style controls and balanced server presentation but makes NukeFire Voice the live speech owner. Native live announcements are turned off so the two speech paths do not talk over one another.
+
+`STATUS` is read-only. It reports MUSH shortcut coverage, Reader Workspace state, Native Screen Reader state, and NukeFire Voice state.
+
+The server first requests a pre-Reader snapshot before a mutating MUSH setup. If that snapshot cannot be established, the client preset is not applied blindly.
 
 ---
 
@@ -628,7 +637,7 @@ See `../server-integration/accessibility/` for sanitized reference code and port
 The public Beta.76 source contains the complete client-side half of CR. The most useful files for implementors are:
 
 - `src/semantic-controls.js` — request allowlist, schema validation, text bounds, server-control snapshot normalization, and semantic binding resolution;
-- `src/reader-presets.js` — native/live/fast/quiet Reader presets plus the 12-key Reader and 28-key MUSH-style shortcut definitions;
+- `src/reader-presets.js` — native/live/fast/quiet Reader presets plus the 13-key Reader and 29-key MUSH-style shortcut definitions;
 - `renderer/renderer.js` — receives `NukeFire.Controls.Request`, performs the local Reader action, snapshots/restores pre-Reader settings, and emits `NukeFire.Controls.Result`.
 
 The client accepts **75 explicit control action IDs** in Beta.76. A request is ignored unless `schema` is exactly `1`, `id` is a positive safe integer, `action` is in that allowlist, and `args` is an object. Only a bounded normalized `args.value` string is exposed to the action dispatcher.

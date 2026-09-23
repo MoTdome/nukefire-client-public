@@ -99,12 +99,13 @@ test('session runtime feeds completed terminal lines into Main Output Reader His
   assert.deepEqual(runtime.readerHistory.snapshot('main').map((entry) => entry.text), ['first line', 'second line']);
 });
 
-test('Reader preset promotes F8-F10 to selected-category history and adds category navigation', () => {
+test('Reader preset makes raw MUD line review primary while retaining category navigation', () => {
   const records = readerPresets.readerHotkeyRecords();
-  assert.equal(records.length, 12);
-  assert.deepEqual(records.find((entry) => entry.code === 'F8').semantic, { type: 'reader-history', id: 'previous' });
-  assert.deepEqual(records.find((entry) => entry.code === 'F9').semantic, { type: 'reader-history', id: 'next' });
-  assert.deepEqual(records.find((entry) => entry.code === 'F10' && !entry.modifiers?.shift).semantic, { type: 'reader-history', id: 'latest' });
+  assert.equal(records.length, 13);
+  assert.deepEqual(records.find((entry) => entry.code === 'F8' && !entry.modifiers?.shift).semantic, { type: 'reader-review', id: 'previous' });
+  assert.deepEqual(records.find((entry) => entry.code === 'F8' && entry.modifiers?.shift).semantic, { type: 'reader-review', id: 'current' });
+  assert.deepEqual(records.find((entry) => entry.code === 'F9').semantic, { type: 'reader-review', id: 'next' });
+  assert.deepEqual(records.find((entry) => entry.code === 'F10' && !entry.modifiers?.shift).semantic, { type: 'reader-review', id: 'latest' });
   assert.deepEqual(records.find((entry) => entry.label === 'Alt+Up').semantic, { type: 'reader-history', id: 'category-previous' });
   assert.deepEqual(records.find((entry) => entry.label === 'Alt+Down').semantic, { type: 'reader-history', id: 'category-next' });
   assert.deepEqual(records.find((entry) => entry.label === 'Alt+Left').semantic, { type: 'reader-history', id: 'previous' });
@@ -119,8 +120,8 @@ test('untouched legacy F5-F10 Reader preset migrates without rewriting unrelated
   const result = readerPresets.migrateLegacyReaderHotkeyPreset(legacy, keybindings);
   assert.equal(result.migrated, true);
   assert.equal(result.settings.bindings.find((entry) => entry.id === 'mine').command, 'heal');
-  assert.equal(result.settings.bindings.filter((entry) => entry.preset === readerPresets.READER_HOTKEY_PRESET_ID).length, 12);
-  assert.deepEqual(result.settings.bindings.find((entry) => entry.id === 'reader-previous-line').semantic, { type: 'reader-history', id: 'previous' });
+  assert.equal(result.settings.bindings.filter((entry) => entry.preset === readerPresets.READER_HOTKEY_PRESET_ID).length, 13);
+  assert.deepEqual(result.settings.bindings.find((entry) => entry.id === 'reader-previous-line').semantic, { type: 'reader-review', id: 'previous' });
 });
 
 test('customized legacy Reader preset is left alone instead of being silently replaced', () => {

@@ -74,6 +74,8 @@ contextBridge.exposeInMainWorld('nukefire', {
   saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
   getSettingsInfo: () => ipcRenderer.invoke('settings:get-info'),
   isAppFocused: () => ipcRenderer.invoke('app:is-focused'),
+  setTinTinControlKeys: (value) => ipcRenderer.invoke('tintin:control-keys', value),
+  onTinTinControlKey: (callback) => subscribe('tintin:control-key', callback),
   readTinTinScript: (requested) => ipcRenderer.invoke('scripts:read', requested),
   writeTinTinScript: (requested, content) => ipcRenderer.invoke('scripts:write', requested, content),
   getTinTinScriptsInfo: () => ipcRenderer.invoke('scripts:get-info'),
