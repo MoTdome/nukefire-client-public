@@ -1156,6 +1156,7 @@ test('normalizes and persists repeat-last-command input preference', async (t) =
     repeatLastCommandOnEnter: true,
     showLastCommandInInput: false,
     brightCommandInputFocus: false,
+    echoSentCommands: false,
     commandPrefix: '#'
   });
 

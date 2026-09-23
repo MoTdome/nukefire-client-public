@@ -661,6 +661,15 @@
 
 # Changelog
 
+## 0.3.1-beta.77 — Popout Reliability, Terminal Tiles, and UI Cohesion
+
+- Adds terminal-only connected play mode and true frameless detached panel tiles with top-edge reveal/drag controls.
+- Removes decorative HUD corner/rivet hardware and lets docked pane titlebars auto-hide during play while preserving functional tab navigation.
+- Fixes detached native dropdowns, Group-movement/Group-Say misclassification, and resize/fullscreen terminal geometry.
+- Adds content-first popout chrome, optional docked header auto-hide, compact Loot History controls, adjustable Communications text, Session Vitals remorts, and true sent-command echo.
+- Preserves accessibility, GMCP authority, soundpack behavior, multi-session routing, and existing workspace persistence.
+
+
 ## Milestone 2.1a — NukeFire Knowledge Console
 
 - Added the negotiated `NukeFire.Knowledge 1` GMCP family.

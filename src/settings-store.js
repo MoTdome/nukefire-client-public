@@ -345,12 +345,16 @@ const DEFAULT_SETTINGS = Object.freeze({
     repeatLastCommandOnEnter: false,
     showLastCommandInInput: true,
     brightCommandInputFocus: false,
+    echoSentCommands: false,
     commandPrefix: DEFAULT_CLIENT_COMMAND_PREFIX
   }),
   display: Object.freeze({
     followOutput: true,
     compactOutput: false,
     fontSize: 16,
+    communicationsFontSize: 12,
+    panelChromeAutoHide: false,
+    playChromeAutoHide: true,
     uiFont: 'system',
     terminalFont: 'menlo',
     interfaceBrightness: 'brighter',
@@ -1358,6 +1362,10 @@ function normalizeSettings(input = {}, now = new Date().toISOString()) {
         inputPreferences.brightCommandInputFocus,
         DEFAULT_SETTINGS.input.brightCommandInputFocus
       ),
+      echoSentCommands: booleanValue(
+        inputPreferences.echoSentCommands,
+        DEFAULT_SETTINGS.input.echoSentCommands
+      ),
       commandPrefix: normalizeClientCommandPrefix(
         inputPreferences.commandPrefix,
         DEFAULT_SETTINGS.input.commandPrefix
@@ -1377,6 +1385,20 @@ function normalizeSettings(input = {}, now = new Date().toISOString()) {
         12,
         28,
         DEFAULT_SETTINGS.display.fontSize
+      ),
+      communicationsFontSize: boundedInteger(
+        display.communicationsFontSize,
+        10,
+        24,
+        DEFAULT_SETTINGS.display.communicationsFontSize
+      ),
+      panelChromeAutoHide: booleanValue(
+        display.panelChromeAutoHide,
+        DEFAULT_SETTINGS.display.panelChromeAutoHide
+      ),
+      playChromeAutoHide: booleanValue(
+        display.playChromeAutoHide,
+        DEFAULT_SETTINGS.display.playChromeAutoHide
       ),
       uiFont: normalizeFontId(display.uiFont, UI_FONT_IDS, DEFAULT_SETTINGS.display.uiFont),
       terminalFont: normalizeFontId(display.terminalFont, TERMINAL_FONT_IDS, DEFAULT_SETTINGS.display.terminalFont),
@@ -1525,6 +1547,7 @@ function settingsFromLegacy(legacy = {}) {
       repeatLastCommandOnEnter: legacy.repeatLastCommandOnEnter,
       showLastCommandInInput: legacy.showLastCommandInInput,
       brightCommandInputFocus: legacy.brightCommandInputFocus,
+      echoSentCommands: legacy.echoSentCommands,
       commandPrefix: legacy.commandPrefix
     },
     keybindings: legacy.keybindings,
@@ -1532,6 +1555,9 @@ function settingsFromLegacy(legacy = {}) {
       followOutput: legacy.followOutput,
       compactOutput: legacy.compactOutput,
       fontSize: legacy.fontSize,
+      communicationsFontSize: legacy.communicationsFontSize,
+      panelChromeAutoHide: legacy.panelChromeAutoHide,
+      playChromeAutoHide: legacy.playChromeAutoHide,
       uiFont: legacy.uiFont,
       terminalFont: legacy.terminalFont,
       interfaceBrightness: legacy.interfaceBrightness,

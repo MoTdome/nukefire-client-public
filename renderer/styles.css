@@ -15,6 +15,7 @@
   --ui-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --terminal-font-family: Menlo, Monaco, "Courier New", monospace;
   --terminal-font-size: 16px;
+  --communications-font-size: 12px;
   --terminal-line-height: 1.25;
   --terminal-foreground: #d3d7dc;
   --terminal-background: #050607;
@@ -684,6 +685,34 @@ body.panel-dragging .panel-drag-dock-overlay {
 }
 body.screen-reader-mode .panel-menu-button,
 body[data-interface-brightness="high-contrast"] .panel-menu-button { opacity: 1; }
+
+body[data-panel-chrome-auto-hide="true"]:not(.screen-reader-mode) .panel > .panel-titlebar {
+  position: absolute;
+  z-index: 30;
+  top: 2px;
+  left: 5px;
+  right: 5px;
+  margin: 0;
+  padding: 4px 5px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: rgb(12 16 18 / 94%);
+  opacity: 0;
+  transform: translateY(calc(-100% + 4px));
+  pointer-events: none;
+  transition: opacity 110ms linear, transform 110ms ease;
+}
+body[data-panel-chrome-auto-hide="true"]:not(.screen-reader-mode) .panel:hover > .panel-titlebar,
+body[data-panel-chrome-auto-hide="true"]:not(.screen-reader-mode) .panel:focus-within > .panel-titlebar,
+body[data-panel-chrome-auto-hide="true"]:not(.screen-reader-mode) .panel > .panel-titlebar:focus-within {
+  border-color: #46515d;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+body[data-panel-chrome-auto-hide="true"]:not(.screen-reader-mode) .panel > .panel-titlebar .panel-menu-button {
+  opacity: 1;
+}
 @media (hover: none) {
   .panel-menu-button { opacity: 1; }
 }
@@ -762,6 +791,16 @@ body[data-interface-brightness="high-contrast"] .panel-menu-button { opacity: 1;
   color: var(--text);
   font-size: 12px;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-vital-remorts {
+  flex: 0 0 5ch;
+  color: #c9d36a;
+  font-family: var(--terminal-font-family);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
   white-space: nowrap;
 }
 .session-vital-values {
@@ -1057,6 +1096,9 @@ body[data-interface-brightness="high-contrast"] .panel-menu-button { opacity: 1;
   position: absolute;
   inset: 0 0 2px;
   box-sizing: border-box;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
   padding: 8px 10px 10px;
   background: var(--terminal-background);
   outline: none;
@@ -1671,7 +1713,7 @@ body.screen-reader-mode .panel::before { display: none; }
   margin: 0;
   color: var(--terminal-foreground);
   font-family: var(--terminal-font-family);
-  font-size: 12px;
+  font-size: var(--communications-font-size, 12px);
   line-height: 1.38;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -3897,7 +3939,8 @@ body.close-session-open #app { filter: saturate(.7) brightness(.72); }
 
 
 /* Session Loot History */
-.loot-history-toolbar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:0 0 8px; }
+.loot-history-toolbar { display:flex; flex-wrap:wrap; gap:3px; align-items:center; margin:0 0 8px; }
+.loot-history-toolbar button { min-width:0; padding:5px 8px; font-size:11px; }
 .loot-history-toolbar button[aria-pressed="true"] { font-weight:700; }
 .loot-history-status,.loot-history-empty { margin:6px 0; opacity:.78; }
 .loot-history-list { display:grid; gap:2px; }
@@ -3931,4 +3974,137 @@ body.screen-reader-mode .mob-inspector-content { overflow: visible; }
 #mob-inspector-affects summary::-webkit-details-marker,
 #mob-inspector-affects-overflow summary::-webkit-details-marker {
   display: none !important;
+}
+
+/* Beta.77 terminal tiles: connection/session chrome becomes an overlay in play. */
+.play-chrome-reveal { display: none; }
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #app {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #workspace {
+  grid-row: 1;
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .play-chrome-reveal {
+  position: absolute;
+  z-index: 952;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 6px;
+  min-height: 0;
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, rgb(213 234 69 / 30%), rgb(213 234 69 / 4%));
+  box-shadow: none;
+  opacity: .22;
+  cursor: default;
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .play-chrome-reveal:hover,
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .play-chrome-reveal:focus-visible {
+  opacity: .85;
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #connection-bar,
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #session-area {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 950;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-140px);
+  transition: transform 140ms ease, opacity 100ms linear;
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #connection-bar {
+  top: 0;
+  height: var(--connection-bar-height);
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #session-area {
+  top: var(--connection-bar-height);
+  z-index: 949;
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #app:has(
+  .play-chrome-reveal:hover,
+  .play-chrome-reveal:focus-visible,
+  #connection-bar:hover,
+  #connection-bar:focus-within,
+  #session-area:hover,
+  #session-area:focus-within,
+  #session-create-drawer:not([hidden])
+) #connection-bar,
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #app:has(
+  .play-chrome-reveal:hover,
+  .play-chrome-reveal:focus-visible,
+  #connection-bar:hover,
+  #connection-bar:focus-within,
+  #session-area:hover,
+  #session-area:focus-within,
+  #session-create-drawer:not([hidden])
+) #session-area {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #connection-bar {
+  box-shadow: 0 12px 30px rgb(0 0 0 / 48%), inset 0 -1px 0 rgb(255 255 255 / 4%);
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) #session-area {
+  box-shadow: 0 14px 32px rgb(0 0 0 / 42%);
+}
+
+/* Beta.77 terminal-wall polish: content first, decorative HUD hardware removed. */
+#app::before,
+#app::after,
+.panel::before {
+  display: none !important;
+}
+
+/*
+ * Terminal-only play mode also applies to docked pane titlebars. The titlebar
+ * is out of normal flow while playing, so Vitals/Comms/Mapper/etc. gain the
+ * same content-first look as the main terminal. Actual tab strips remain
+ * visible because they are navigation rather than decorative chrome.
+ */
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .panel > .panel-titlebar {
+  position: absolute;
+  z-index: 30;
+  top: 2px;
+  left: 5px;
+  right: 5px;
+  margin: 0;
+  padding: 4px 5px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: rgb(12 16 18 / 94%);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 38%);
+  opacity: 0;
+  transform: translateY(calc(-100% + 4px));
+  pointer-events: none;
+  transition: opacity 110ms linear, transform 110ms ease;
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .panel:hover > .panel-titlebar,
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .panel:focus-within > .panel-titlebar,
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .panel > .panel-titlebar:focus-within {
+  border-color: #46515d;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+body[data-play-chrome-auto-hide="true"][data-connection-state="connected"]:not(.screen-reader-mode) .panel > .panel-titlebar .panel-menu-button {
+  opacity: 1;
 }

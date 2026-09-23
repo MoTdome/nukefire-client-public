@@ -169,8 +169,18 @@
     return /\x1b\[[0-?]*[ -/]*m/u.test(String(value || ''));
   }
 
+  function isNukeFireGroupMovementLine(text) {
+    const value = String(text || '');
+    const direction = '(?:north|south|east|west|up|down|northeast|northwest|southeast|southwest)';
+    if (!/^\s*\[\s*group\s*\](?:\s|$)/iu.test(value)) return false;
+    const arrival = new RegExp(`\\sarrive\\s+behind\\s+.+\\s+from\\s+(?:the\\s+)?${direction}\\.?\\s*$`, 'iu');
+    const departure = new RegExp(`\\sfollow(?:s)?\\s+.+\\s+${direction}\\.?\\s*$`, 'iu');
+    return arrival.test(value) || departure.test(value);
+  }
+
   function classifyNormalizedText(text) {
     if (!text || !COMMUNICATION_HINT_RE.test(text)) return '';
+    if (isNukeFireGroupMovementLine(text)) return '';
 
     const rules = [
       ['tell', [

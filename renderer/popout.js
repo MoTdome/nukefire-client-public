@@ -25,7 +25,9 @@ const state = {
   messageOrder: 'newest-top',
   followLiveEdge: true,
   revision: 0,
-  bounds: null
+  bounds: null,
+  mirrorSelectOpen: false,
+  pendingGenericSnapshot: null
 };
 
 function announce(message) {
@@ -100,6 +102,7 @@ function applyTheme(snapshot = {}) {
   document.documentElement.style.setProperty('--ui-font-family', ui.uiFontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif');
   document.documentElement.style.setProperty('--terminal-font-family', ui.terminalFontFamily || 'Menlo, Monaco, "Courier New", monospace');
   document.documentElement.style.setProperty('--terminal-font-size', `${Number(ui.fontSize) || 16}px`);
+  document.documentElement.style.setProperty('--communications-font-size', `${Math.max(10, Math.min(24, Number(ui.communicationFontSize) || 12))}px`);
   const brightness = ['dark', 'brighter', 'high-contrast'].includes(String(ui.interfaceBrightness || ''))
     ? String(ui.interfaceBrightness)
     : 'brighter';
@@ -434,7 +437,19 @@ function restoreMirrorState(previous = {}) {
   }
 }
 
+function releaseMirrorSelectHold() {
+  if (!state.mirrorSelectOpen) return;
+  state.mirrorSelectOpen = false;
+  const pending = state.pendingGenericSnapshot;
+  state.pendingGenericSnapshot = null;
+  if (pending) applyGenericSnapshot(pending);
+}
+
 function applyGenericSnapshot(snapshot = {}) {
+  if (state.mirrorSelectOpen) {
+    state.pendingGenericSnapshot = snapshot;
+    return;
+  }
   const renderStartedAt = snapshot.monitorActive ? performance.now() : 0;
   const revision = Number(snapshot.revision) || 0;
   if (revision && revision < state.revision) return;
@@ -494,6 +509,15 @@ function relayControl(element, kind, event = {}) {
   return true;
 }
 
+$('#panel-mirror').addEventListener('pointerdown', (event) => {
+  const select = event.target.closest?.('select[data-popout-control]');
+  if (select && !select.disabled) state.mirrorSelectOpen = true;
+}, true);
+$('#panel-mirror').addEventListener('focusout', (event) => {
+  if (!event.target.matches?.('select[data-popout-control]')) return;
+  setTimeout(releaseMirrorSelectHold, 0);
+}, true);
+
 $('#panel-mirror').addEventListener('click', (event) => {
   const control = event.target.closest?.('[data-popout-control]');
   if (!control || control.disabled) return;
@@ -511,10 +535,17 @@ $('#panel-mirror').addEventListener('input', (event) => {
 $('#panel-mirror').addEventListener('change', (event) => {
   const control = event.target.closest?.('[data-popout-control]');
   relayControl(control, 'change', event);
+  if (control?.matches?.('select[data-popout-control]')) {
+    setTimeout(releaseMirrorSelectHold, 0);
+  }
 });
 $('#panel-mirror').addEventListener('keydown', (event) => {
   const control = event.target.closest?.('[data-popout-control]');
   if (!control) return;
+  if (control.matches?.('select[data-popout-control]')) {
+    if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) state.mirrorSelectOpen = true;
+    if (event.key === 'Escape') setTimeout(releaseMirrorSelectHold, 0);
+  }
   if (relayControl(control, 'keydown', event) && control.id === 'mapper-canvas') {
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', '+', '-', '=', 'c', 'C'].includes(event.key)) {
       event.preventDefault();

@@ -418,6 +418,9 @@ const TERMINAL_FONT_FAMILIES = Object.freeze({
 const TERMINAL_FONT_SIZE_MIN = 12;
 const TERMINAL_FONT_SIZE_MAX = 28;
 const TERMINAL_FONT_SIZE_DEFAULT = 16;
+const COMMUNICATION_FONT_SIZE_MIN = 10;
+const COMMUNICATION_FONT_SIZE_MAX = 24;
+const COMMUNICATION_FONT_SIZE_DEFAULT = 12;
 const DEFAULT_DISPLAY_COMPONENTS = Object.freeze({
   groupVitals: true,
   mapperExits: true,
@@ -1344,6 +1347,50 @@ function applyTerminalFontSize(value, options = {}) {
   return size;
 }
 
+function normalizeCommunicationFontSize(value, fallback = COMMUNICATION_FONT_SIZE_DEFAULT) {
+  const numeric = Math.round(Number(value));
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(COMMUNICATION_FONT_SIZE_MIN, Math.min(COMMUNICATION_FONT_SIZE_MAX, numeric));
+}
+
+function applyCommunicationFontSize(value, options = {}) {
+  const size = normalizeCommunicationFontSize(value);
+  document.documentElement.style.setProperty('--communications-font-size', `${size}px`);
+  const control = $('#communications-font-size');
+  if (control && document.activeElement !== control) control.value = String(size);
+  if (options.persist !== false) {
+    localStorage.setItem('nukefire.communicationsFontSize', String(size));
+    schedulePersistentSettingsSave();
+  }
+  publishCommunicationsPopoutState();
+  return size;
+}
+
+function applyPanelChromeAutoHide(value, options = {}) {
+  const enabled = value === true || value === 'true';
+  document.body.dataset.panelChromeAutoHide = String(enabled);
+  const control = $('#panel-chrome-auto-hide');
+  if (control) control.checked = enabled;
+  if (options.persist !== false) {
+    localStorage.setItem('nukefire.panelChromeAutoHide', String(enabled));
+    schedulePersistentSettingsSave();
+  }
+  return enabled;
+}
+
+function applyPlayChromeAutoHide(value, options = {}) {
+  const enabled = value === true || value === 'true';
+  document.body.dataset.playChromeAutoHide = String(enabled);
+  const control = $('#play-chrome-auto-hide');
+  if (control) control.checked = enabled;
+  if (options.persist !== false) {
+    localStorage.setItem('nukefire.playChromeAutoHide', String(enabled));
+    schedulePersistentSettingsSave();
+  }
+  scheduleTerminalSizeUpdate();
+  return enabled;
+}
+
 function normalizeInterfaceBrightness(value) {
   const clean = String(value || '').trim().toLowerCase();
   return INTERFACE_BRIGHTNESS_MODES.includes(clean) ? clean : DEFAULT_INTERFACE_BRIGHTNESS;
@@ -1505,6 +1552,7 @@ function sessionVitalRowParts(row) {
   if (row._nukeFireSessionVitalParts) return row._nukeFireSessionVitalParts;
   const parts = {
     name: row.querySelector('.session-vital-name'),
+    remorts: row.querySelector('.session-vital-remorts'),
     hp: row.querySelector('.session-vital-health'),
     mana: row.querySelector('.session-vital-mana'),
     move: row.querySelector('.session-vital-move')
@@ -1522,6 +1570,10 @@ function createSessionVitalRow() {
   name.className = 'session-vital-name';
   name.setAttribute('aria-hidden', 'true');
 
+  const remorts = document.createElement('span');
+  remorts.className = 'session-vital-remorts';
+  remorts.setAttribute('aria-hidden', 'true');
+
   const values = document.createElement('span');
   values.className = 'session-vital-values';
   values.setAttribute('aria-hidden', 'true');
@@ -1536,8 +1588,8 @@ function createSessionVitalRow() {
   move.className = 'session-vital-value session-vital-move';
 
   values.append(hp, mana, move);
-  row.append(name, values);
-  row._nukeFireSessionVitalParts = { name, hp, mana, move };
+  row.append(name, remorts, values);
+  row._nukeFireSessionVitalParts = { name, remorts, hp, mana, move };
   return row;
 }
 
@@ -1557,6 +1609,7 @@ function updateSessionVitalRow(row, entry) {
   }
   changed = setAttributeIfChanged(row, 'aria-label', entry.accessibleText) || changed;
   changed = setTextIfChanged(parts?.name, entry.name) || changed;
+  changed = setTextIfChanged(parts?.remorts, entry.remorts === null || entry.remorts === undefined ? 'R—' : `R${entry.remorts}`) || changed;
   changed = setTextIfChanged(parts?.hp, `${entry.hp}H`) || changed;
   changed = setTextIfChanged(parts?.mana, `${entry.mana}M`) || changed;
   changed = setTextIfChanged(parts?.move, `${entry.move}V`) || changed;
@@ -4314,7 +4367,8 @@ function legacySettingsSnapshot() {
     announceImportant: localStorage.getItem('nukefire.announceImportant'),
     repeatLastCommandOnEnter: localStorage.getItem('nukefire.repeatLastCommandOnEnter'),
     showLastCommandInInput: localStorage.getItem('nukefire.showLastCommandInInput'),
-    brightCommandInputFocus: localStorage.getItem('nukefire.brightCommandInputFocus')
+    brightCommandInputFocus: localStorage.getItem('nukefire.brightCommandInputFocus'),
+    playChromeAutoHide: localStorage.getItem('nukefire.playChromeAutoHide')
   };
 }
 
@@ -6206,7 +6260,8 @@ function panelPopoutUiSnapshot() {
     interfaceBrightness: state.interfaceBrightness,
     uiFontFamily: UI_FONT_FAMILIES[state.uiFont] || UI_FONT_FAMILIES.system,
     terminalFontFamily: TERMINAL_FONT_FAMILIES[state.terminalFont] || TERMINAL_FONT_FAMILIES.menlo,
-    fontSize: Number($('#font-size')?.value) || 16
+    fontSize: Number($('#font-size')?.value) || 16,
+    communicationFontSize: normalizeCommunicationFontSize($('#communications-font-size')?.value)
   };
 }
 
@@ -7296,12 +7351,16 @@ function collectPersistentSettings() {
       repeatLastCommandOnEnter: $('#repeat-last-command-on-enter').checked,
       showLastCommandInInput: $('#show-last-command-in-input').checked,
       brightCommandInputFocus: $('#bright-command-input-focus').checked,
+      echoSentCommands: $('#echo-sent-commands')?.checked === true,
       commandPrefix: normalizeClientCommandPrefix(state.sessions.commandPrefix)
     },
     display: {
       followOutput: $('#follow-output').checked,
       compactOutput: $('#compact-output').checked,
       fontSize: Number($('#font-size').value) || 16,
+      communicationsFontSize: normalizeCommunicationFontSize($('#communications-font-size')?.value),
+      panelChromeAutoHide: document.body.dataset.panelChromeAutoHide === 'true',
+      playChromeAutoHide: document.body.dataset.playChromeAutoHide !== 'false',
       uiFont: state.uiFont,
       terminalFont: state.terminalFont,
       interfaceBrightness: state.interfaceBrightness,
@@ -7388,11 +7447,15 @@ function mirrorPersistentSettings(settings) {
   localStorage.setItem('nukefire.repeatLastCommandOnEnter', String(Boolean(input.repeatLastCommandOnEnter)));
   localStorage.setItem('nukefire.showLastCommandInInput', String(input.showLastCommandInInput !== false));
   localStorage.setItem('nukefire.brightCommandInputFocus', String(Boolean(input.brightCommandInputFocus)));
+  localStorage.setItem('nukefire.echoSentCommands', String(Boolean(input.echoSentCommands)));
   localStorage.setItem('nukefire.commandPrefix', normalizeClientCommandPrefix(input.commandPrefix));
   localStorage.removeItem('nukefire.terminalEngine');
   localStorage.setItem('nukefire.followOutput', String(display.followOutput !== false));
   localStorage.setItem('nukefire.compactOutput', String(Boolean(display.compactOutput)));
   localStorage.setItem('nukefire.fontSize', String(display.fontSize || 16));
+  localStorage.setItem('nukefire.communicationsFontSize', String(normalizeCommunicationFontSize(display.communicationsFontSize)));
+  localStorage.setItem('nukefire.panelChromeAutoHide', String(Boolean(display.panelChromeAutoHide)));
+  localStorage.setItem('nukefire.playChromeAutoHide', String(display.playChromeAutoHide !== false));
   localStorage.setItem('nukefire.uiFont', String(display.uiFont || 'system'));
   localStorage.setItem('nukefire.terminalFont', String(display.terminalFont || 'menlo'));
   localStorage.setItem('nukefire.interfaceBrightness', normalizeInterfaceBrightness(display.interfaceBrightness));
@@ -7561,6 +7624,7 @@ function applyPersistentSettings(settings) {
   $('#repeat-last-command-on-enter').checked = Boolean(input.repeatLastCommandOnEnter);
   $('#show-last-command-in-input').checked = input.showLastCommandInInput !== false;
   $('#bright-command-input-focus').checked = Boolean(input.brightCommandInputFocus);
+  $('#echo-sent-commands').checked = Boolean(input.echoSentCommands);
   document.body.dataset.brightCommandInputFocus = String(Boolean(input.brightCommandInputFocus));
   $('#follow-output').checked = display.followOutput !== false;
   $('#compact-output').checked = Boolean(display.compactOutput);
@@ -7568,6 +7632,9 @@ function applyPersistentSettings(settings) {
 
   const fontSize = Number(display.fontSize) || 16;
   applyTerminalFontSize(fontSize, { persist: false, refit: false });
+  applyCommunicationFontSize(display.communicationsFontSize, { persist: false });
+  applyPanelChromeAutoHide(Boolean(display.panelChromeAutoHide), { persist: false });
+  applyPlayChromeAutoHide(display.playChromeAutoHide !== false, { persist: false });
   applyFontPreferences(display.uiFont || 'system', display.terminalFont || 'menlo', { persist: false });
   applyInterfaceBrightness(display.interfaceBrightness, { persist: false });
   setAffectsDisplayMode(display.affectsMode, { persist: false, rerender: false });
@@ -16556,9 +16623,20 @@ async function handleLocalRendererCommand(commandValue) {
   return handleLocalBufferCommand(commandValue);
 }
 
+function echoSentCommandToOutput(record, command) {
+  if (!record || !$('#echo-sent-commands')?.checked || state.remoteEcho) return false;
+  const text = String(command ?? '').replace(/[\r\n]+/gu, ' ').trim();
+  if (!text) return false;
+  const line = `> ${text}\n`;
+  if (record.id === state.sessions.activeId) appendMudText(line, { localDisplay: true });
+  else appendTextToInactiveSession(record, line, { localDisplay: true, preserveLine: true });
+  return true;
+}
+
 function noteOutgoingCommand(sessionId, command) {
   const record = state.sessions.records[sessionId];
   if (!record) return;
+  echoSentCommandToOutput(record, command);
   const movementDirection = typeof mapperApi.normalizeDirection === 'function'
     ? mapperApi.normalizeDirection(command)
     : '';
@@ -21478,14 +21556,29 @@ async function syncTerminalSize() {
   return size;
 }
 
+let terminalSettledFitTimer = null;
+
 function scheduleTerminalSizeUpdate() {
   if (state.terminalSizeFrame !== null) cancelFrame(state.terminalSizeFrame);
   state.terminalSizeFrame = scheduleFrame(() => {
     state.terminalSizeFrame = null;
-    // FitAddon must run after the active dock layout has settled. Without this,
-    // xterm can keep the tiny fallback grid calculated while its host was hidden.
+    // First fit follows the current layout frame immediately.
     void syncTerminalSize();
   });
+
+  // Native window edge-dragging and Electron fullscreen can settle the outer
+  // window and CSS grid in separate layout passes. A quiet trailing fit keeps
+  // xterm's row count aligned with the final output-host height so its newest
+  // rows cannot be clipped behind the docked prompt/command rows.
+  if (terminalSettledFitTimer !== null) clearTimeout(terminalSettledFitTimer);
+  terminalSettledFitTimer = setTimeout(() => {
+    terminalSettledFitTimer = null;
+    if (state.terminalSizeFrame !== null) cancelFrame(state.terminalSizeFrame);
+    state.terminalSizeFrame = scheduleFrame(() => {
+      state.terminalSizeFrame = null;
+      void syncTerminalSize();
+    });
+  }, 90);
 }
 
 async function syncClientPreferences() {
@@ -22020,6 +22113,10 @@ $('#keybinding-form')?.addEventListener('submit', (event) => {
 $('#client-command-prefix').addEventListener('change', (event) => {
   setClientCommandPrefix(event.target.value);
 });
+$('#echo-sent-commands')?.addEventListener('change', (event) => {
+  localStorage.setItem('nukefire.echoSentCommands', String(event.target.checked));
+  schedulePersistentSettingsSave();
+});
 
 $('#follow-output').addEventListener('change', (event) => {
   localStorage.setItem('nukefire.followOutput', String(event.target.checked));
@@ -22052,6 +22149,10 @@ $('#font-size')?.addEventListener('input', (event) => {
 });
 $('#font-size')?.addEventListener('change', (event) => applyTerminalFontSize(event.target.value, { announceChange: true }));
 $('#font-size-reset')?.addEventListener('click', () => applyTerminalFontSize(TERMINAL_FONT_SIZE_DEFAULT, { announceChange: true }));
+$('#communications-font-size')?.addEventListener('input', (event) => applyCommunicationFontSize(event.target.value));
+$('#communications-font-size')?.addEventListener('change', (event) => applyCommunicationFontSize(event.target.value));
+$('#panel-chrome-auto-hide')?.addEventListener('change', (event) => applyPanelChromeAutoHide(event.target.checked));
+$('#play-chrome-auto-hide')?.addEventListener('change', (event) => applyPlayChromeAutoHide(event.target.checked));
 $('#ui-font').addEventListener('change', (event) => {
   applyFontPreferences(event.target.value, state.terminalFont, { announceChange: true });
 });
@@ -22968,6 +23069,7 @@ $('#show-last-command-in-input').checked = savedShowLastCommandInInput === null
   : savedShowLastCommandInInput !== 'false';
 const savedBrightCommandInputFocus = localStorage.getItem('nukefire.brightCommandInputFocus') === 'true';
 $('#bright-command-input-focus').checked = savedBrightCommandInputFocus;
+$('#echo-sent-commands').checked = localStorage.getItem('nukefire.echoSentCommands') === 'true';
 document.body.dataset.brightCommandInputFocus = String(savedBrightCommandInputFocus);
 setClientCommandPrefix(localStorage.getItem('nukefire.commandPrefix'), {
   persist: false,
@@ -22982,6 +23084,9 @@ const savedCompactOutput = localStorage.getItem('nukefire.compactOutput') === 't
 $('#compact-output').checked = savedCompactOutput;
 const savedFontSize = localStorage.getItem('nukefire.fontSize') || '16';
 applyTerminalFontSize(savedFontSize, { persist: false, refit: false });
+applyCommunicationFontSize(localStorage.getItem('nukefire.communicationsFontSize') || COMMUNICATION_FONT_SIZE_DEFAULT, { persist: false });
+applyPanelChromeAutoHide(localStorage.getItem('nukefire.panelChromeAutoHide') === 'true', { persist: false });
+applyPlayChromeAutoHide(localStorage.getItem('nukefire.playChromeAutoHide') !== 'false', { persist: false });
 applyFontPreferences(
   localStorage.getItem('nukefire.uiFont') || 'system',
   localStorage.getItem('nukefire.terminalFont') || 'menlo',
@@ -23091,7 +23196,15 @@ startLayoutGalleryRotation();
 
 if (typeof ResizeObserver === 'function') {
   const terminalResizeObserver = new ResizeObserver(scheduleTerminalSizeUpdate);
-  terminalResizeObserver.observe(terminalOutputHost || xtermOutput);
+  for (const element of [
+    terminalOutputHost || xtermOutput,
+    document.querySelector('.terminal-shell'),
+    document.querySelector('.input-bar'),
+    dockedPromptRow,
+    document.querySelector('main.workspace-grid')
+  ]) {
+    if (element) terminalResizeObserver.observe(element);
+  }
 }
 terminalOutputHost?.addEventListener('keydown', (event) => {
   handleTerminalPageNavigationKey(event);

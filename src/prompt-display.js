@@ -118,6 +118,23 @@
     return record?.connected === true;
   }
 
+  function sessionRemorts(record) {
+    const status = record?.gmcp?.char?.status || {};
+    const candidates = [
+      status.remorts,
+      status.remort,
+      status.lifetime_remorts,
+      status.lifetimeRemorts,
+      status.remort_level,
+      status.remortLevel
+    ];
+    for (const value of candidates) {
+      const normalized = finiteVital(value);
+      if (normalized !== null) return normalized;
+    }
+    return null;
+  }
+
   function normalizedServerHost(value) {
     return String(value || '').trim().toLowerCase();
   }
@@ -144,17 +161,20 @@
       const move = finiteVital(record.vitals?.move);
       if (!name || hp === null || mana === null || move === null) return [];
 
+      const remorts = sessionRemorts(record);
       const maxHp = finiteVital(record.vitals?.maxHp);
       const lowHealth = maxHp !== null && maxHp > 0 && hp / maxHp < LOW_HEALTH_THRESHOLD;
+      const remortText = remorts === null ? 'R—' : `R${remorts}`;
       return [{
         id: String(record.id || id),
         name,
+        remorts,
         hp,
         mana,
         move,
         lowHealth,
-        plainText: `< ${hp}H ${mana}M ${move}V ${name} >`,
-        accessibleText: `Companion session ${name}${lowHealth ? ', low health' : ''}: ${hp} health, ${mana} mana, ${move} movement.`
+        plainText: `< ${remortText} ${hp}H ${mana}M ${move}V ${name} >`,
+        accessibleText: `Companion session ${name}${lowHealth ? ', low health' : ''}: ${remorts === null ? 'remorts unavailable' : `${remorts} remorts`}, ${hp} health, ${mana} mana, ${move} movement.`
       }];
     });
   }

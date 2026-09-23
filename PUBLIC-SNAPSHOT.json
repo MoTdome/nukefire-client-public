@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta76-release-2b563de",
+  "public_snapshot": "beta77-release-211d042",
   "source_tag": null,
-  "source_commit": "2b563de91a757205525836363aa249bc952c664b",
-  "created_at": "2026-09-10T20:37:55+00:00",
+  "source_commit": "211d04259e5044a6be53ad6ba3e2bde234837cdc",
+  "created_at": "2026-09-23T00:47:07+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -48,20 +48,21 @@
   "server_integration_examples_included": true,
   "server_integration_status": "sanitized reference examples aligned to the exact 75-action Beta.76 client contract",
   "source_branch": "milestone-1.9-client-development",
-  "package_version": "0.3.1-beta.76",
+  "package_version": "0.3.1-beta.77",
   "excluded_private_paths": [],
   "verification": {
-    "private_source": "1795 tests; 1793 pass; 0 fail; 2 skipped immediately before private push",
+    "private_source": "npm run verify: PASS immediately before the private Beta.77 release commit",
     "public_candidate": "npm ci + git diff --check + npm run verify: PASS before public commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.76",
-  "beta76_scope": [
-    "general audio independent of Reader features",
-    "command-line custom-sound creation and editing through protected shared operations",
-    "manual SOUND Reader announcements",
-    "2500 bounded Personal Sounds allocations",
-    "exact 75-action server/client control parity",
-    "TELNET GA/EOR prompt Action compatibility",
-    "detached GPS caret stability"
+  "public_release_tag": "v0.3.1-beta.77",
+  "beta77_scope": [
+    "group movement excluded from Group Say communications/audio",
+    "stable native selects in detached mirrored panels",
+    "terminal-only connected play mode and frameless terminal tiles",
+    "docked pane titlebar auto-hide and decorative HUD cleanup",
+    "settled terminal geometry after resize/fullscreen",
+    "independent Communications font sizing and compact Loot controls",
+    "authoritative Session Vitals remort display",
+    "optional final sent-command echo with secure-input protection"
   ]
 }

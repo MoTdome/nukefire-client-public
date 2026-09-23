@@ -554,6 +554,8 @@ function createPanelWindow(panelId, options = {}) {
     resizable: true,
     maximizable: true,
     fullscreenable: true,
+    frame: false,
+    hasShadow: true,
     title: `NukeFire Client — ${panelWindowDefinition(panelId)?.label || 'Panel'}`,
     icon: APP_ICON_PATH,
     backgroundColor: '#090b0d',

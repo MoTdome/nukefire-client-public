@@ -80,10 +80,10 @@ test('builds ordered same-server companion prompt lines with accessible low-heal
   );
 
   assert.deepEqual(entries.map((entry) => entry.id), ['healer', 'exact']);
-  assert.equal(entries[0].plainText, '< 24H 500M 700V Shai >');
+  assert.equal(entries[0].plainText, '< R— 24H 500M 700V Shai >');
   assert.equal(entries[0].lowHealth, true);
   assert.match(entries[0].accessibleText, /Shai, low health/u);
-  assert.equal(entries[1].plainText, '< 25H 10157M 9667V Rambo >');
+  assert.equal(entries[1].plainText, '< R— 25H 10157M 9667V Rambo >');
   assert.equal(entries[1].lowHealth, false, 'exactly 25 percent is not low health');
   assert.doesNotMatch(entries[1].accessibleText, /low health/u);
 });

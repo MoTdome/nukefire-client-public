@@ -1,28 +1,28 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client **Beta.76** milestone from private source commit `2b563de`.
+Public source snapshot of the NukeFire Client **Beta.77** milestone from private source commit `211d042`.
 
 NukeFire Client is the cross-platform Electron client developed for the [NukeFire mud](https://nukefire.org) and released here so other mud developers, client authors, accessibility testers, and protocol implementors can inspect, test, adapt, and discuss the ideas used by the client.
 
 ## This snapshot
 
-This repository is a deliberately reviewed and sanitized public snapshot of the Beta.76 development milestone at private source commit `2b563de91a757205525836363aa249bc952c664b`. The public package version for this release is `0.3.1-beta.76`.
+This repository is a deliberately reviewed and sanitized public snapshot of the Beta.77 development milestone at private source commit `211d04259e5044a6be53ad6ba3e2bde234837cdc`. The public package version for this release is `0.3.1-beta.77`.
 
-Beta.76 makes audio and common client controls easier to operate without broadening client authority:
+Beta.77 focuses on pop-out reliability and a content-first terminal workspace:
 
-- a command-line-first custom-sound workflow using the existing protected chooser, Soundpack Store, and `.nfsp` format;
-- ADD, ASSIGN, SHOW, TEST, CLEAR, and DELETE operations beside the existing SOUND LIST / SEARCH / SHOW contracts;
-- general audio and soundpacks that work independently of Reader Workspace, native screen readers, and Self-Voice;
-- manually entered SOUND results announced through the existing Reader path while automated failures remain quiet;
-- 2,500 bounded Personal Sounds allocations and 4,096 bounded archive entries;
-- one communication-sound enable authority and an exact 75-action server/client control contract;
-- prompt-completed Actions/Lua triggers restored at TELNET GA/EOR boundaries;
-- stable caret position while typing in a detached GPS search field;
-- the existing filesystem, process, network, DOM, raw-terminal, and render-veto safety boundaries remain in place.
+- prevents grouped follower movement summaries from being misclassified as Group Say or playing Group communication audio;
+- keeps native select controls usable in generic detached panels such as GPS and GroupAssist;
+- adds terminal-only connected play mode and frameless detached panel tiles with top-edge reveal/drag controls;
+- removes decorative HUD corner/rivet hardware and lets docked pane titlebars auto-hide during play while preserving functional tab navigation;
+- hardens xterm sizing after vertical resize and fullscreen transitions;
+- adds compact Loot History controls and independently adjustable Communications message text;
+- adds authoritative remort display to Session Vitals, showing `R—` when remort data is not supplied;
+- adds an optional echo of commands actually sent to NukeFire after alias/trigger/routing/Lua/macro expansion, while never echoing secure/password input;
+- preserves the existing filesystem, process, network, DOM, raw-terminal, accessibility, soundpack, multi-session, and server-authority boundaries.
 
-The complete private source is verified immediately before private publication, and this public candidate is independently verified before its commit and tag are pushed.
+The complete private source was verified before the private Beta.77 commit. This public candidate is independently installed and verified again before its public commit and tag are pushed.
 
-See `RELEASE-NOTES-beta76.md` and the included `docs/BETA76-*.md` references for the detailed Beta.76 scope.
+See `RELEASE-NOTES-beta77.md` for the detailed Beta.77 scope. The existing Beta.76 audio/control and server-integration references remain applicable because Beta.77 does not broaden those server contracts.
 
 ## Test soundpacks
 
@@ -33,13 +33,12 @@ and test material for the semantic sound-event system.
 ## Server integration
 
 The client is only half of some NukeFire features. A separate
-[`server-integration/`](server-integration/) area is reserved for focused,
-portable examples of the server-side GMCP packages and commands that accompany
-the client.
+[`server-integration/`](server-integration/) area contains focused, portable
+examples of the server-side GMCP packages and commands that accompany the client.
 
 The intent is **not** to publish the entire NukeFire game source. Instead, the
-integration examples will isolate the useful protocol/command ideas so another
-MUD implementor can understand and adapt them.
+integration examples isolate useful protocol/command ideas so another MUD
+implementor can understand and adapt them.
 
 Included examples cover relevant pieces of:
 
@@ -75,7 +74,7 @@ Platform distribution scripts are defined in `package.json`.
 
 ## Security / public-history note
 
-This public repository contains sanitized public snapshots rather than the private development history. Beta.76 is reconciled from private source commit `2b563de91a757205525836363aa249bc952c664b` only after review and verification. Private Git history, backup trees, local distribution outputs, credentials, private checkout paths, game-server paths, and build-machine metadata are intentionally excluded.
+This public repository contains sanitized public snapshots rather than the private development history. Beta.77 is reconciled from private source commit `211d04259e5044a6be53ad6ba3e2bde234837cdc` only after review and verification. Private Git history, backup trees, local distribution outputs, credentials, private checkout paths, game-server paths, and build-machine metadata are intentionally excluded.
 
 ## License
 
