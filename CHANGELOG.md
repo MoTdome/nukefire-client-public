@@ -1,3 +1,11 @@
+## 0.3.1-beta.81 — MSLP Underline Fail-Open Hotfix
+
+- Fixes a Beta.80 regression where ordinary ANSI-underlined MUD text could cause later input/output to appear frozen when the underline ended with a general SGR reset such as `ESC[0m` instead of the exact MSLP `ESC[24m` delimiter.
+- Makes non-MSLP underline/reset sequences fail open into the normal ANSI pipeline instead of allowing the MSLP translator to buffer the rest of the session.
+- Adds newline and bounded-length escape hatches so malformed or unterminated simple-link candidates cannot consume an unbounded line or session.
+- Preserves valid exact MSLP simple links and complex SEND/PROMPT/MENU behavior.
+- Adds a regression reproducing the reported `M 51. a bad mechanic - [27113] A hallway` underline/reset pattern and verifies subsequent output continues normally.
+
 ## 0.3.1-beta.80 — QC and Compatibility Hotfix
 
 - Expands the exposed move/reveal shelf on auto-hidden frameless detached panes from 6px to 16px across the full header width.

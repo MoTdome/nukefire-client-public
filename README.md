@@ -1,30 +1,28 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client **Beta.80** milestone.
+Public source snapshot of the NukeFire Client **Beta.81** milestone.
 
 ## This snapshot
 
 This repository is the reviewed and sanitized public snapshot of the
-**Beta.80** milestone. Beta.80 is built directly on the public Beta.79 release
-commit `72535ee9b855065b961ddaadb51160d127802c6e` and is independently verified again before the public
+**Beta.81** milestone. Beta.81 is built directly on the public Beta.80 release
+commit `99dab434e80ca1eada45c8d1302f5a4f8964ac2a` and is independently verified again before the public
 release commit and tag.
 
-Beta.80 is intentionally a narrow QC hotfix:
+Beta.81 is intentionally a single-purpose emergency hotfix:
 
-- detached Terminal Wall popouts get a practical 16px full-width grab/reveal
-  shelf with a short hide grace while preserving Reader/touch/persistent-header
-  behavior;
-- visible terminal Find is brought back into alignment with the shared bounded
-  TinTin wildcard semantics;
-- MSLP PROMPT/MENU handling is tightened and secure/unsupported OSC 68 forms are
-  prevented from falling through into executable simple links.
+- ordinary ANSI underline/reset text can no longer wedge the Beta.80 MSLP
+  translator and hide all later game output;
+- malformed or unterminated simple-link candidates fail open at safe boundaries;
+- valid MSLP simple links and the Beta.80 SEND/PROMPT/MENU protections remain
+  intact.
 
-The release preserves the broader Beta.79 Reader, TinTin, mapper, filesystem,
-process, network, DOM, raw-terminal, accessibility, soundpack, multi-session,
-and server-authority boundaries.
+The broader Beta.80 detached-pane, TinTin Find, MSLP hardening, Beta.79 Reader,
+TinTin, mapper, filesystem, process, network, accessibility, soundpack,
+multi-session, and server-authority behavior is otherwise unchanged.
 
-See `RELEASE-NOTES-beta80.md` for the complete Beta.80 scope. The Beta.79 release
-notes remain useful background for the larger Reader and TinTin veteran pass.
+See `RELEASE-NOTES-beta81.md` for the complete Beta.81 scope. Beta.80 release
+notes remain the reference for the immediately preceding QC release.
 
 ## Test soundpacks
 
@@ -77,8 +75,8 @@ Platform distribution scripts are defined in `package.json`.
 ## Security / public-history note
 
 This public repository contains sanitized public snapshots rather than the
-private development history. Beta.80 is reconciled on the public Beta.79 release
-commit `72535ee9b855065b961ddaadb51160d127802c6e`, reviewed, and independently verified before its public
+private development history. Beta.81 is reconciled on the public Beta.80 release
+commit `99dab434e80ca1eada45c8d1302f5a4f8964ac2a`, reviewed, and independently verified before its public
 commit and tag are pushed. Private Git history, backup trees, local distribution
 outputs, credentials, private checkout paths, game-server paths, and
 build-machine metadata are intentionally excluded.

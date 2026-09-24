@@ -118,15 +118,25 @@
       return fallback ? encodeUri('send', fallback) : '';
     }
 
-    closeUnderline() {
-      const uri = this.linkUri();
-      const text = `${this.underlineOpen}${this.underlineText}${ESC}[24m`;
-      const output = uri ? `${ESC}]8;;${uri}${ESC}\\${text}${ESC}]8;;${ESC}\\` : text;
+    clearUnderlineState() {
       this.underline = false;
       this.underlineOpen = '';
       this.underlineText = '';
       this.active = null;
       this.suppressCurrentUnderlineLink = false;
+    }
+
+    abortUnderline() {
+      const text = `${this.underlineOpen}${this.underlineText}`;
+      this.clearUnderlineState();
+      return text;
+    }
+
+    closeUnderline() {
+      const uri = this.linkUri();
+      const text = `${this.underlineOpen}${this.underlineText}${ESC}[24m`;
+      const output = uri ? `${ESC}]8;;${uri}${ESC}\\${text}${ESC}]8;;${ESC}\\` : text;
+      this.clearUnderlineState();
       return output;
     }
 
@@ -173,6 +183,32 @@
         if (this.underline && source.startsWith(`${ESC}[24m`, index)) {
           output += this.closeUnderline();
           index += 5;
+          continue;
+        }
+
+        if (this.underline && source.charCodeAt(index) === 0x1b) {
+          const exactClose = `${ESC}[24m`;
+          const remaining = source.slice(index);
+          if (remaining.length < exactClose.length && exactClose.startsWith(remaining)) {
+            this.pending = remaining;
+            break;
+          }
+
+          /* MSLP simple links are delimited by the exact ESC[4m / ESC[24m
+           * pair. Any other escape sequence means this was ordinary terminal
+           * styling (or a malformed link), so fail open and let the normal ANSI
+           * pipeline process the control sequence instead of buffering the
+           * session forever.
+           */
+          output += this.abortUnderline();
+          continue;
+        }
+
+        if (this.underline && (source[index] === '\r' || source[index] === '\n' || this.underlineText.length >= MAX_COMMAND)) {
+          /* A simple link may not consume an unbounded line/session. Newline
+           * and the command-length ceiling are fail-open boundaries.
+           */
+          output += this.abortUnderline();
           continue;
         }
 

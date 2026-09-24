@@ -1,2 +1,2 @@
-NukeFire Client 0.3.1-beta.80
-QC and Compatibility Hotfix
+NukeFire Client 0.3.1-beta.81
+MSLP Underline Fail-Open Hotfix

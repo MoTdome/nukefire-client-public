@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta80-qc-compatibility-hotfix",
-  "source_tag": "v0.3.1-beta.80",
+  "public_snapshot": "beta81-mslp-underline-failopen-hotfix",
+  "source_tag": "v0.3.1-beta.81",
   "source_commit": null,
-  "created_at": "2026-09-24T20:14:49+00:00",
+  "created_at": "2026-09-24T22:33:08+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,23 +46,22 @@
     }
   },
   "server_integration_examples_included": true,
-  "server_integration_status": "unchanged from Beta.79; Beta.80 contains client-side QC fixes only",
+  "server_integration_status": "unchanged from Beta.80; Beta.81 is a client-side MSLP/ANSI fail-open hotfix",
   "source_branch": "main",
-  "package_version": "0.3.1-beta.80",
+  "package_version": "0.3.1-beta.81",
   "excluded_private_paths": [],
   "verification": {
-    "beta79_public_base": "72535ee9b855065b961ddaadb51160d127802c6e",
-    "beta80_candidate": "focused Beta.77-Beta.80 regressions + git diff --check + npm run verify: PASS immediately before Beta.80 release commit/tag"
+    "beta80_public_base": "99dab434e80ca1eada45c8d1302f5a4f8964ac2a",
+    "beta81_candidate": "dedicated underline-freeze regression + Beta.80/Beta.79 MSLP regressions + ANSI/xterm gates + git diff --check + npm run verify: PASS immediately before Beta.81 release commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.80",
-  "base_public_commit": "72535ee9b855065b961ddaadb51160d127802c6e",
-  "beta80_scope": [
-    "16px detached Terminal Wall popout grab/reveal shelf with 320ms hide grace",
-    "Reader Mode touch/no-hover and persistent detached-header behavior preserved",
-    "visible Find aligned to shared TinTin wildcard token bodies",
-    "explicit optional-one-character percent-question regression coverage",
-    "protected MSLP PROMPT support",
-    "strict MSLP MENU brace/backslash parsing and malformed-payload rejection",
-    "secure unsupported and stale OSC 68 complex-link fallthrough prevention"
+  "public_release_tag": "v0.3.1-beta.81",
+  "base_public_commit": "99dab434e80ca1eada45c8d1302f5a4f8964ac2a",
+  "beta81_scope": [
+    "ordinary ANSI underline reset sequences fail open instead of wedging MSLP translation",
+    "split reset sequences preserve continued output",
+    "newline and command-length fail-open boundaries for malformed simple-link candidates",
+    "exact simple MSLP links preserved",
+    "complex SEND PROMPT and MENU behavior preserved",
+    "live-reported where-bad underline regression coverage"
   ]
 }
