@@ -1,31 +1,30 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client **Beta.79** milestone.
+Public source snapshot of the NukeFire Client **Beta.80** milestone.
 
 ## This snapshot
 
 This repository is the reviewed and sanitized public snapshot of the
-**Beta.79** milestone. Beta.79 is built on the public Beta.78 base commit
-`26f0d418a65ac72c6fb9c9b84efe7bb6b8163454` and was independently verified
-again before the public release commit and tag.
+**Beta.80** milestone. Beta.80 is built directly on the public Beta.79 release
+commit `72535ee9b855065b961ddaadb51160d127802c6e` and is independently verified again before the public
+release commit and tag.
 
-Beta.79 focuses on two related compatibility/accessibility goals:
+Beta.80 is intentionally a narrow QC hotfix:
 
-- a native screen-reader path driven by completed NukeFire Reader lines, with
-  raw MUD-output review and MUSH-style Reader setup that can explicitly choose
-  Native Screen Reader or NukeFire Voice;
-- a final TinTin veteran compatibility pass covering command-line editing keys,
-  reverse history search, SHOW/SHOWME behavior, LINE compatibility, wildcard
-  output search, MSLP links, richer Event help, and larger/local Mapper
-  annotations.
+- detached Terminal Wall popouts get a practical 16px full-width grab/reveal
+  shelf with a short hide grace while preserving Reader/touch/persistent-header
+  behavior;
+- visible terminal Find is brought back into alignment with the shared bounded
+  TinTin wildcard semantics;
+- MSLP PROMPT/MENU handling is tightened and secure/unsupported OSC 68 forms are
+  prevented from falling through into executable simple links.
 
-The release preserves the existing filesystem, process, network, DOM,
-raw-terminal, accessibility, soundpack, multi-session, and server-authority
-boundaries.
+The release preserves the broader Beta.79 Reader, TinTin, mapper, filesystem,
+process, network, DOM, raw-terminal, accessibility, soundpack, multi-session,
+and server-authority boundaries.
 
-See `RELEASE-NOTES-beta79.md` for the complete Beta.79 scope. The existing
-Beta.78 terminal/customization notes and Beta.76 audio/control references remain
-useful background for unchanged systems.
+See `RELEASE-NOTES-beta80.md` for the complete Beta.80 scope. The Beta.79 release
+notes remain useful background for the larger Reader and TinTin veteran pass.
 
 ## Test soundpacks
 
@@ -78,11 +77,11 @@ Platform distribution scripts are defined in `package.json`.
 ## Security / public-history note
 
 This public repository contains sanitized public snapshots rather than the
-private development history. Beta.79 is reconciled on the public Beta.78 base
-commit `26f0d418a65ac72c6fb9c9b84efe7bb6b8163454`, reviewed, and independently
-verified before its public commit and tag are pushed. Private Git history,
-backup trees, local distribution outputs, credentials, private checkout paths,
-game-server paths, and build-machine metadata are intentionally excluded.
+private development history. Beta.80 is reconciled on the public Beta.79 release
+commit `72535ee9b855065b961ddaadb51160d127802c6e`, reviewed, and independently verified before its public
+commit and tag are pushed. Private Git history, backup trees, local distribution
+outputs, credentials, private checkout paths, game-server paths, and
+build-machine metadata are intentionally excluded.
 
 ## License
 

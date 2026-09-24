@@ -87,6 +87,22 @@ textarea:focus-visible,
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Beta.80 QC: make Terminal Wall detached panes practical to reveal and move
+ * without restoring a permanent title bar.  The bottom padding is inherited
+ * from the header's native drag region, producing a full-width grab shelf.
+ * Reveal is immediate; hiding gets a short grace period for pointer travel.
+ */
+body[data-popout-chrome-auto-hide="true"]:not(.screen-reader-mode) .popout-header {
+  padding-bottom: 16px;
+  transform: translateY(calc(-100% + 16px));
+  transition: opacity 120ms linear 320ms, transform 140ms ease 320ms;
+}
+body[data-popout-chrome-auto-hide="true"]:not(.screen-reader-mode) .popout-header:hover,
+body[data-popout-chrome-auto-hide="true"]:not(.screen-reader-mode) .popout-header:focus-within {
+  transition-delay: 0ms;
+}
+
 /* Frameless detached panel: the revealed header is the move handle. */
 body[data-frameless-popouts="true"] .popout-header {
   -webkit-app-region: drag;

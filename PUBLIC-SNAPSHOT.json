@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta79-native-reader-tintin-veteran",
-  "source_tag": "v0.3.1-beta.79",
+  "public_snapshot": "beta80-qc-compatibility-hotfix",
+  "source_tag": "v0.3.1-beta.80",
   "source_commit": null,
-  "created_at": "2026-09-23T17:36:00+00:00",
+  "created_at": "2026-09-24T20:14:49+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,27 +46,23 @@
     }
   },
   "server_integration_examples_included": true,
-  "server_integration_status": "sanitized references aligned to Beta.79 Reader/MUSH speech-path controls and the existing bounded NukeFire.Controls contract",
+  "server_integration_status": "unchanged from Beta.79; Beta.80 contains client-side QC fixes only",
   "source_branch": "main",
-  "package_version": "0.3.1-beta.79",
+  "package_version": "0.3.1-beta.80",
   "excluded_private_paths": [],
   "verification": {
-    "beta78_public_base": "26f0d418a65ac72c6fb9c9b84efe7bb6b8163454",
-    "public_candidate": "git diff --check + npm run verify: PASS immediately before Beta.79 release commit/tag"
+    "beta79_public_base": "72535ee9b855065b961ddaadb51160d127802c6e",
+    "beta80_candidate": "focused Beta.77-Beta.80 regressions + git diff --check + npm run verify: PASS immediately before Beta.80 release commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.79",
-  "base_public_commit": "26f0d418a65ac72c6fb9c9b84efe7bb6b8163454",
-  "beta79_scope": [
-    "completed-line Native Reader live output with xterm hidden-live suppression",
-    "raw MUD output review on F8 Shift-F8 F9 F10",
-    "offline local CR TUTORIAL and CR LINES",
-    "MUSH settings NATIVE CLIENT STATUS speech-path selection with bare-command compatibility",
-    "repeated-identical-line Native Reader regression coverage",
-    "TinTin Ctrl-W Ctrl-U Ctrl-V command-line compatibility and Ctrl-R reverse history search",
-    "SHOW/SHOWME safe escape and no-linefeed prompt compatibility",
-    "LINE MSDP STRIP and bounded Action MULTISHOT compatibility",
-    "TinTin wildcard output search and protected MSLP link translation",
-    "mapper 7x7 9x9 11x11 11x7 views plus local landmark/roomsymbol annotations",
-    "expanded TinTin EVENT argument help"
+  "public_release_tag": "v0.3.1-beta.80",
+  "base_public_commit": "72535ee9b855065b961ddaadb51160d127802c6e",
+  "beta80_scope": [
+    "16px detached Terminal Wall popout grab/reveal shelf with 320ms hide grace",
+    "Reader Mode touch/no-hover and persistent detached-header behavior preserved",
+    "visible Find aligned to shared TinTin wildcard token bodies",
+    "explicit optional-one-character percent-question regression coverage",
+    "protected MSLP PROMPT support",
+    "strict MSLP MENU brace/backslash parsing and malformed-payload rejection",
+    "secure unsupported and stale OSC 68 complex-link fallthrough prevention"
   ]
 }

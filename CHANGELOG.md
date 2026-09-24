@@ -1,3 +1,14 @@
+## 0.3.1-beta.80 — QC and Compatibility Hotfix
+
+- Expands the exposed move/reveal shelf on auto-hidden frameless detached panes from 6px to 16px across the full header width.
+- Reveals detached headers immediately and adds a short 320ms hide grace so the pointer can move into header controls without the header disappearing.
+- Preserves always-visible detached headers for Reader Mode, touch/no-hover environments, and users who disable detached-header auto-hide; docked panes are unchanged.
+- Aligns visible terminal Find with the shared TinTin wildcard token bodies, including `%D`, `%S`, `%W`, `%.`, optional-one-character `%?`, and letters-only `%w` semantics.
+- Adds regression coverage for zero-, one-, and two-character `%?` cases plus TinTin case-mode behavior.
+- Adds protected MSLP `PROMPT` link support alongside existing SEND/MENU handling.
+- Tightens MSLP MENU parsing to the protocol's brace/backslash rules and rejects malformed or partial menu payloads.
+- Prevents secure/unsupported OSC 68 links, or stale complex-link state separated by visible text, from falling through into executable simple SEND links.
+
 ## 0.3.1-beta.79 — Native Reader and TinTin Veteran Compatibility
 
 - Makes the completed-line Reader pipeline authoritative for Native Reader live output while preserving xterm's accessible row tree for deliberate browsing.
