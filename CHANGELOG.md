@@ -1,3 +1,12 @@
+## 0.3.1-beta.82 — Native Reader Reliability
+
+- Uses the browser's `ariaNotify()` path first for Native Reader completed-line announcements when available, while retaining the established polite live-region path as a compatibility fallback.
+- Removes the hidden output region's `aria-label="New NukeFire output"` so NVDA does not repeatedly announce that label between gameplay lines.
+- Suppresses a gameplay prompt consisting only of `>` from Native Reader live speech and Reader Review, including ANSI-styled forms, while preserving richer prompts and ordinary game lines.
+- Adds a Reader-line inclusion hook in the shared session runtime so newline-completed output and GA/EOR prompt boundaries use the same suppression rule.
+- Preserves repeated identical lines as separate Reader events and leaves NukeFire Self-Voice, xterm browsing, Reader Review keys, and the wider accessibility pipeline unchanged.
+- Adds direct regression coverage for ordered `ariaNotify()` calls, element fallback, bare-prompt suppression, session review filtering, and the retained legacy live-region fallback.
+
 ## 0.3.1-beta.81 — MSLP Underline Fail-Open Hotfix
 
 - Fixes a Beta.80 regression where ordinary ANSI-underlined MUD text could cause later input/output to appear frozen when the underline ended with a general SGR reset such as `ESC[0m` instead of the exact MSLP `ESC[24m` delimiter.

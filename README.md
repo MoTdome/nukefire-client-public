@@ -1,28 +1,29 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client **Beta.81** milestone.
+Public source snapshot of the NukeFire Client **Beta.82** milestone.
 
 ## This snapshot
 
 This repository is the reviewed and sanitized public snapshot of the
-**Beta.81** milestone. Beta.81 is built directly on the public Beta.80 release
-commit `99dab434e80ca1eada45c8d1302f5a4f8964ac2a` and is independently verified again before the public
+**Beta.82** milestone. Beta.82 is built directly on the public Beta.81 release
+commit `414d45ce746bd0b44c49bf133c600ac866adfe08` and is independently verified again before the public
 release commit and tag.
 
-Beta.81 is intentionally a single-purpose emergency hotfix:
+Beta.82 is a focused Native Reader reliability release:
 
-- ordinary ANSI underline/reset text can no longer wedge the Beta.80 MSLP
-  translator and hide all later game output;
-- malformed or unterminated simple-link candidates fail open at safe boundaries;
-- valid MSLP simple links and the Beta.80 SEND/PROMPT/MENU protections remain
-  intact.
+- completed-line Native Reader output prefers `ariaNotify()` where supported and
+  retains the polite live region as a compatibility fallback;
+- the hidden output region no longer causes repeated "New NukeFire output"
+  announcements;
+- a gameplay prompt consisting only of `>` is kept out of Native Reader live
+  speech and Reader Review while richer prompts remain available.
 
-The broader Beta.80 detached-pane, TinTin Find, MSLP hardening, Beta.79 Reader,
-TinTin, mapper, filesystem, process, network, accessibility, soundpack,
+The broader Beta.81 MSLP fail-open correction, Beta.80 QC work, Beta.79 Reader
+and TinTin systems, mapper, filesystem, process, network, soundpack,
 multi-session, and server-authority behavior is otherwise unchanged.
 
-See `RELEASE-NOTES-beta81.md` for the complete Beta.81 scope. Beta.80 release
-notes remain the reference for the immediately preceding QC release.
+See `RELEASE-NOTES-beta82.md` for the complete Beta.82 scope. Beta.81 release
+notes remain the reference for the immediately preceding emergency hotfix.
 
 ## Test soundpacks
 
@@ -75,8 +76,8 @@ Platform distribution scripts are defined in `package.json`.
 ## Security / public-history note
 
 This public repository contains sanitized public snapshots rather than the
-private development history. Beta.81 is reconciled on the public Beta.80 release
-commit `99dab434e80ca1eada45c8d1302f5a4f8964ac2a`, reviewed, and independently verified before its public
+private development history. Beta.82 is reconciled on the public Beta.81 release
+commit `414d45ce746bd0b44c49bf133c600ac866adfe08`, reviewed, and independently verified before its public
 commit and tag are pushed. Private Git history, backup trees, local distribution
 outputs, credentials, private checkout paths, game-server paths, and
 build-machine metadata are intentionally excluded.

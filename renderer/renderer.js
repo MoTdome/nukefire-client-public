@@ -120,6 +120,7 @@ const knowledgeApi = window.NukeFireKnowledge || {};
 const readerReviewApi = window.NukeFireReaderReview || {};
 const readerHistoryApi = window.NukeFireReaderHistory || {};
 const accessibilityRouterApi = window.NukeFireAccessibilityRouter || {};
+const nativeReaderOutputApi = window.NukeFireNativeReaderOutput || {};
 const readerSafetyApi = window.NukeFireReaderSafety || {};
 const readerOnboardingApi = window.NukeFireReaderOnboarding || {};
 const speechMarkersApi = window.NukeFireSpeechMarkers || {};
@@ -4486,10 +4487,33 @@ function announce(message, options = {}) {
   });
 }
 
+function shouldIncludeNativeReaderLine(value) {
+  if (!state.accessibility.screenReaderMode || state.accessibility.selfVoiceEnabled) return true;
+  if (typeof nativeReaderOutputApi.isBarePrompt === 'function') {
+    return !nativeReaderOutputApi.isBarePrompt(value);
+  }
+  return String(value || '').replaceAll('\r', '').trim() !== '>';
+}
+
 function announceNativeReaderOutputLine(value) {
-  if (!state.accessibility.screenReaderMode || state.accessibility.selfVoiceEnabled || !readerOutputAnnouncer) return false;
+  if (!state.accessibility.screenReaderMode || state.accessibility.selfVoiceEnabled) return false;
   const text = String(value || '').replaceAll('\r', '').trimEnd();
-  if (!text.trim()) return false;
+  if (!text.trim() || !shouldIncludeNativeReaderLine(text)) return false;
+
+  const result = typeof nativeReaderOutputApi.notifyNativeReaderOutput === 'function'
+    ? nativeReaderOutputApi.notifyNativeReaderOutput(text, {
+        documentRef: document,
+        elementRef: readerOutputAnnouncer,
+        priority: 'normal'
+      })
+    : null;
+  if (result?.announced) return true;
+
+  /* Progressive fallback for assistive-technology/browser combinations that
+   * do not expose ariaNotify. Keep this path as a traditional polite live
+   * region rather than duplicating native notifications.
+   */
+  if (!readerOutputAnnouncer) return false;
   const line = document.createElement('div');
   line.textContent = text;
   while (readerOutputAnnouncer.children.length >= 8) readerOutputAnnouncer.firstElementChild?.remove();
@@ -10267,6 +10291,7 @@ function appendMudTextChunk(text, options = {}) {
         useTransformedPlainText: true,
         returnDetails: true,
         onReaderLine: localDisplay ? undefined : (line) => announceNativeReaderOutputLine(line),
+        shouldIncludeReaderLine: localDisplay ? undefined : (line) => shouldIncludeNativeReaderLine(line),
         transformRuns: (runs) => transformDisplayRuns(runs, record)
       })
     : null;
@@ -17613,6 +17638,7 @@ function applyPromptBoundary(boundary) {
       : boundaryText.trimEnd().endsWith('>');
     sessionRuntimeApi.commitBoundary?.(record, {
       rapidRecall: !playingPrompt,
+      shouldIncludeReaderLine: (line) => shouldIncludeNativeReaderLine(line),
       onReaderLine: (line) => announceNativeReaderOutputLine(line)
     });
   }

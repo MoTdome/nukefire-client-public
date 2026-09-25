@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta81-mslp-underline-failopen-hotfix",
-  "source_tag": "v0.3.1-beta.81",
+  "public_snapshot": "beta82-native-reader-reliability",
+  "source_tag": "v0.3.1-beta.82",
   "source_commit": null,
-  "created_at": "2026-09-24T22:33:08+00:00",
+  "created_at": "2026-09-25T18:14:31+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,22 +46,22 @@
     }
   },
   "server_integration_examples_included": true,
-  "server_integration_status": "unchanged from Beta.80; Beta.81 is a client-side MSLP/ANSI fail-open hotfix",
+  "server_integration_status": "unchanged from Beta.81; Beta.82 contains client-side Native Reader reliability changes",
   "source_branch": "main",
-  "package_version": "0.3.1-beta.81",
+  "package_version": "0.3.1-beta.82",
   "excluded_private_paths": [],
   "verification": {
-    "beta80_public_base": "99dab434e80ca1eada45c8d1302f5a4f8964ac2a",
-    "beta81_candidate": "dedicated underline-freeze regression + Beta.80/Beta.79 MSLP regressions + ANSI/xterm gates + git diff --check + npm run verify: PASS immediately before Beta.81 release commit/tag"
+    "beta81_public_base": "414d45ce746bd0b44c49bf133c600ac866adfe08",
+    "beta82_candidate": "dedicated Native Reader reliability regressions + Beta.79 Native Reader/MUSH regressions + session/prompt/xterm gates + git diff --check + npm run verify: PASS immediately before Beta.82 release commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.81",
-  "base_public_commit": "99dab434e80ca1eada45c8d1302f5a4f8964ac2a",
-  "beta81_scope": [
-    "ordinary ANSI underline reset sequences fail open instead of wedging MSLP translation",
-    "split reset sequences preserve continued output",
-    "newline and command-length fail-open boundaries for malformed simple-link candidates",
-    "exact simple MSLP links preserved",
-    "complex SEND PROMPT and MENU behavior preserved",
-    "live-reported where-bad underline regression coverage"
+  "public_release_tag": "v0.3.1-beta.82",
+  "base_public_commit": "414d45ce746bd0b44c49bf133c600ac866adfe08",
+  "beta82_scope": [
+    "ariaNotify-first completed-line Native Reader delivery with live-region fallback",
+    "removed noisy New NukeFire output accessible label",
+    "bare greater-than gameplay prompt suppressed from Native Reader live speech",
+    "bare greater-than gameplay prompt suppressed from Reader Review",
+    "shared Reader-line filter applied to newline and GA/EOR completion",
+    "repeated identical lines remain distinct Reader events"
   ]
 }

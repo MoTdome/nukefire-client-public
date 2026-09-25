@@ -275,7 +275,11 @@
     while (newline !== -1) {
       lineCount += 1;
       const readable = source.slice(start, newline).trimEnd();
-      if (readable.trim()) {
+      const includeReaderLine = Boolean(readable.trim()) && (
+        typeof options.shouldIncludeReaderLine !== 'function'
+        || options.shouldIncludeReaderLine(readable) !== false
+      );
+      if (includeReaderLine) {
         runtime.lastCompleteLine = readable;
         const reviewLine = runtime.readerReview?.appendLine?.(readable) || null;
         runtime.readerHistory?.append?.('main', readable, { source: 'terminal', markRead: true });
@@ -342,7 +346,11 @@
   function commitBoundary(runtime, options = {}) {
     const readable = runtime.readerCarry.trimEnd();
     let reviewLine = null;
-    if (readable.trim()) {
+    const includeReaderLine = Boolean(readable.trim()) && (
+      typeof options.shouldIncludeReaderLine !== 'function'
+      || options.shouldIncludeReaderLine(readable) !== false
+    );
+    if (includeReaderLine) {
       runtime.lastCompleteLine = readable;
       reviewLine = runtime.readerReview?.appendLine?.(readable, {
         rapidRecall: options.rapidRecall !== false

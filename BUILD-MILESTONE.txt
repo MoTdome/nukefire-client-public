@@ -1,2 +1,2 @@
-NukeFire Client 0.3.1-beta.81
-MSLP Underline Fail-Open Hotfix
+NukeFire Client 0.3.1-beta.82
+Native Reader Reliability
