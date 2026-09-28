@@ -82,7 +82,8 @@ class NativeReaderBridge {
     this.state = {
       available: false, backend: '', features: '', transport: 'prism-helper',
       reason: this.platform === 'win32' ? 'not-started' : 'unsupported-platform',
-      pid: 0, restarts: 0
+      pid: 0, restarts: 0, reconnects: 0,
+      lastFailure: '', lastConnectedAt: 0
     };
   }
 
@@ -117,14 +118,23 @@ class NativeReaderBridge {
     this.state = { ...this.state, available: false, reason: 'starting', pid: Number(child.pid) || 0 };
     child.stdout?.on?.('data', (chunk) => this._onStdout(chunk));
     child.stderr?.on?.('data', () => {});
-    child.on?.('error', (error) => this._onChildFailure(error?.message || 'helper-error'));
-    child.on?.('exit', (code, signal) => this._onChildFailure(`helper-exit:${code ?? 'null'}:${signal || ''}`));
+    child.on?.('error', (error) => this._onChildFailure(child, error?.message || 'helper-error'));
+    child.on?.('exit', (code, signal) => this._onChildFailure(child, `helper-exit:${code ?? 'null'}:${signal || ''}`));
     const response = await this._requestRaw('HELLO');
     if (!response.ok) {
-      this._onChildFailure(response.error || response.code || 'backend-unavailable');
+      this._onChildFailure(child, response.error || response.code || 'backend-unavailable');
       return this.snapshot();
     }
-    this.state = { ...this.state, available: true, backend: response.backend || 'Unknown', features: response.features || '', reason: '', pid: Number(child.pid) || 0 };
+    this.state = {
+      ...this.state,
+      available: true,
+      backend: response.backend || 'Unknown',
+      features: response.features || '',
+      reason: '',
+      lastFailure: '',
+      lastConnectedAt: Date.now(),
+      pid: Number(child.pid) || 0
+    };
     return this.snapshot();
   }
   _onStdout(chunk) {
@@ -143,22 +153,35 @@ class NativeReaderBridge {
       pending.resolve(response);
     }
   }
-  _onChildFailure(reason) {
-    const hadChild = Boolean(this.child);
-    this._disposeChild();
-    if (hadChild) this.state.restarts = Number(this.state.restarts || 0) + 1;
-    this.state = { ...this.state, available: false, backend: '', features: '', reason: String(reason || 'helper-unavailable'), pid: 0 };
-    this.retryAfter = Date.now() + RETRY_DELAY_MS;
+  _failPending(code, error) {
     for (const [id, pending] of this.pending) {
       clearTimeout(pending.timer);
-      pending.resolve({ ok: false, id, code: 'helper-unavailable', error: this.state.reason });
+      pending.resolve({ ok: false, id, code, error });
     }
     this.pending.clear();
   }
-  _disposeChild() {
-    const child = this.child;
-    this.child = null;
+  _onChildFailure(sourceChild, reason) {
+    if (sourceChild && sourceChild !== this.child) return;
+    const hadChild = Boolean(this.child);
+    this._disposeChild(sourceChild || this.child);
+    if (hadChild) this.state.restarts = Number(this.state.restarts || 0) + 1;
+    const failure = String(reason || 'helper-unavailable');
+    this.state = {
+      ...this.state,
+      available: false,
+      backend: '',
+      features: '',
+      reason: failure,
+      lastFailure: failure,
+      pid: 0
+    };
+    this.retryAfter = Date.now() + RETRY_DELAY_MS;
+    this._failPending('helper-unavailable', failure);
+  }
+  _disposeChild(sourceChild = this.child) {
+    const child = sourceChild;
     if (!child) return;
+    if (child === this.child) this.child = null;
     try { child.stdin?.end?.(); } catch {}
     try { child.kill?.(); } catch {}
   }
@@ -189,7 +212,9 @@ class NativeReaderBridge {
     if (!status.available) return { ok: false, available: false, backend: '', error: status.reason, status };
     const response = await this._requestRaw(op, options);
     if (!response.ok) {
-      if (response.code === 'backend-failed' || response.code === 'helper-unavailable') this._onChildFailure(response.error || response.code);
+      if (['backend-failed', 'helper-unavailable', 'timeout', 'write-failed'].includes(response.code)) {
+        this._onChildFailure(this.child, response.error || response.code);
+      }
       return { ...response, available: false, backend: this.state.backend, status: this.snapshot() };
     }
     if (response.backend) {
@@ -208,16 +233,38 @@ class NativeReaderBridge {
     if (response.ok) {
       this.state.backend = response.backend || this.state.backend;
       this.state.features = response.features || this.state.features;
+      this.state.reason = '';
+      this.state.lastFailure = '';
+      return this.snapshot();
+    }
+    if (['backend-failed', 'helper-unavailable', 'timeout', 'write-failed'].includes(response.code)) {
+      this._onChildFailure(this.child, response.error || response.code);
     }
     return this.snapshot();
   }
+  async reconnect() {
+    if (this.platform !== 'win32') return this.snapshot();
+    if (this.starting) {
+      try { await this.starting; } catch {}
+    }
+    const oldChild = this.child;
+    if (oldChild) this._disposeChild(oldChild);
+    this._failPending('reconnecting', 'Native Reader bridge is reconnecting.');
+    this.retryAfter = 0;
+    this.state = {
+      ...this.state,
+      available: false,
+      backend: '',
+      features: '',
+      reason: 'reconnecting',
+      pid: 0,
+      reconnects: Number(this.state.reconnects || 0) + 1
+    };
+    return this.start();
+  }
   close() {
     this._disposeChild();
-    for (const [id, pending] of this.pending) {
-      clearTimeout(pending.timer);
-      pending.resolve({ ok: false, id, code: 'closed', error: 'Native Reader bridge closed.' });
-    }
-    this.pending.clear();
+    this._failPending('closed', 'Native Reader bridge closed.');
     this.state = { ...this.state, available: false, backend: '', features: '', reason: 'closed', pid: 0 };
   }
 }

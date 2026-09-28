@@ -1104,6 +1104,10 @@ ipcMain.handle('native-reader:stop', async () => {
   if (!nativeReaderBridge) return { ok: false, available: false, error: 'bridge-not-ready' };
   return nativeReaderBridge.stop();
 });
+ipcMain.handle('native-reader:reconnect', async () => {
+  if (!nativeReaderBridge) return { available: false, reason: 'bridge-not-ready' };
+  return nativeReaderBridge.reconnect();
+});
 ipcMain.handle('tintin:control-keys', async (_event, value = {}) => {
   tintinDefaultKeyCapture = { enabled: value?.enabled === true, focused: value?.focused === true };
   return { ...tintinDefaultKeyCapture };

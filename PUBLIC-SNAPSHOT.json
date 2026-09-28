@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta84-windows-prism-toolchain-fix",
-  "source_tag": "v0.3.1-beta.84",
+  "public_snapshot": "beta85-native-reader-hardening-speech-ownership",
+  "source_tag": "v0.3.1-beta.85",
   "source_commit": null,
-  "created_at": "2026-09-28T18:27:04+00:00",
+  "created_at": "2026-09-28T20:54:05+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,23 +46,30 @@
     }
   },
   "server_integration_examples_included": true,
-  "server_integration_status": "unchanged from Beta.83; Beta.84 only corrects the Windows PRISM distribution toolchain",
+  "server_integration_status": "unchanged from Beta.84; Beta.85 hardens Native Reader transport and speech ownership",
   "source_branch": "main",
-  "package_version": "0.3.1-beta.84",
+  "package_version": "0.3.1-beta.85",
   "excluded_private_paths": [],
   "verification": {
-    "beta83_public_base": "2271b8616825d1dd44866fac4f656fa0d42d3dcc",
-    "beta84_candidate": "Windows runner/MSVC/current-CMake/Ninja regression + Beta.83 Native Reader regressions + Beta.82/Beta.79 accessibility regressions + git diff --check + npm run verify: PASS immediately before Beta.84 release commit/tag"
+    "beta84_public_base": "a6262f91e479fb6274507c161a54300714bfa94c",
+    "beta85_candidate": "Native Reader reconnect/stale-child/timeout/non-Windows regressions + Beta.85 local Reader control and speech-coexistence regressions + Beta.83/Beta.82/Beta.79 Native Reader regressions + Beta.64/Beta.59/Beta.58 speech contracts + renderer/multi-session gates + git diff --check + npm run verify: PASS immediately before Beta.85 release commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.84",
-  "base_public_commit": "2271b8616825d1dd44866fac4f656fa0d42d3dcc",
-  "beta84_scope": [
-    "Beta.83 Native Reader runtime behavior unchanged",
-    "Windows distribution runner updated to windows-2025-vs2026",
-    "Windows build initializes amd64 MSVC developer environment",
-    "Windows build installs current CMake",
-    "Native Reader helper uses clean Ninja Release configuration",
-    "macOS and Linux release runners unchanged",
+  "public_release_tag": "v0.3.1-beta.85",
+  "base_public_commit": "a6262f91e479fb6274507c161a54300714bfa94c",
+  "beta85_scope": [
+    "Beta.84 automatic Native Reader output behavior preserved",
+    "local #reader status/test/stop/reconnect controls",
+    "forced Windows PRISM helper reconnect and backend reacquisition",
+    "stale old-helper exit protection",
+    "timeout/write/backend/helper-loss recovery",
+    "restart/reconnect/last-failure/last-connected diagnostics",
+    "foreground-only speech shared by Native Reader and Self-Voice",
+    "background transition stops NukeFire-owned PRISM speech and suppresses live speech",
+    "no background speech catch-up when NukeFire returns to the foreground",
+    "single-owner handoff between Native Reader and NukeFire Self-Voice",
+    "muted/background Self-Voice cannot fall through to ARIA/native speech",
+    "Reader Review/history processing continues while live speech is suppressed",
+    "macOS and Linux remain on compatibility ARIA transport",
     "PRISM remains pinned to v0.18.2 with NVDA first and JAWS second"
   ]
 }

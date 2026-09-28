@@ -980,6 +980,20 @@ const CLIENT_COMMAND_HELP_TOPICS = Object.freeze([
     ])
   }),
   Object.freeze({
+    name: 'reader',
+    aliases: Object.freeze([]),
+    summary: 'Inspect and control the Native Reader transport without opening Developer Tools.',
+    usages: Object.freeze([
+      'reader {status|test|stop|reconnect}'
+    ]),
+    details: Object.freeze([
+      'STATUS reports whether Windows is using the PRISM helper and names the active NVDA or JAWS backend; macOS and Linux report the compatibility ARIA transport.',
+      'TEST sends one short diagnostic announcement through the active native backend when available.',
+      'STOP requests immediate native screen-reader speech cancellation without changing Reader Review or NukeFire Voice settings.',
+      'RECONNECT force-restarts the isolated Windows helper and reacquires the running supported screen reader. Automatic MUD output still falls back to the Beta.82 ARIA path if native transport is unavailable.'
+    ])
+  }),
+  Object.freeze({
     name: 'links',
     aliases: Object.freeze(['link', 'hyperlink', 'hyperlinks']),
     summary: 'Review or activate recent safe OSC 8 server hyperlinks.',
@@ -1048,7 +1062,7 @@ function listClientCommandHelp(prefixValue = DEFAULT_CLIENT_COMMAND_PREFIX) {
     `  ${prefix}end  ${prefix}kill/${prefix}killall  ${prefix}info  ${prefix}commands`,
     '',
     'ACCESSIBILITY',
-    `  ${prefix}accessibility/${prefix}access/${prefix}a11y  ${prefix}sound`,
+    `  ${prefix}accessibility/${prefix}access/${prefix}a11y  ${prefix}reader  ${prefix}sound`,
     '',
     'AUTOMATION',
     `  ${prefix}alias/${prefix}aliases  ${prefix}unalias  ${prefix}variable/${prefix}variables  ${prefix}unvariable`,

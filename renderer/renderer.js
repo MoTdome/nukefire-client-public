@@ -4464,10 +4464,15 @@ function persistentSessionsSnapshot(options = {}) {
   };
 }
 
+function readerSpeechAllowedInCurrentFocus() {
+  return !state.accessibility.selfVoiceForegroundOnly || state.accessibility.selfVoiceAppForeground;
+}
+
 function requestNativeReaderTransport(text, options = {}, fallback = null) {
   if (
     !state.accessibility.screenReaderMode
     || state.accessibility.selfVoiceEnabled
+    || !readerSpeechAllowedInCurrentFocus()
     || typeof window.nukefire?.nativeReaderOutput !== 'function'
   ) {
     return false;
@@ -4487,12 +4492,38 @@ function announce(message, options = {}) {
   const interrupt = options.interrupt === true;
   if (!text || (!force && !state.accessibility.announceImportant)) return;
 
-  if (state.accessibility.selfVoiceEnabled && selfVoice?.speak?.(text, { interrupt: interrupt || force })) {
+  /*
+   * Self-Voice and the OS screen-reader lane are exclusive speech owners.
+   * When Self-Voice is enabled, never fall through to ARIA merely because
+   * Self-Voice is muted, background-suppressed, or momentarily unable to
+   * speak. A fallback there would make both speech systems compete.
+   */
+  if (state.accessibility.selfVoiceEnabled && selfVoice?.speak) {
+    state.announcementSerial += 1;
+    announcer.textContent = '';
+    if (interruptAnnouncer) interruptAnnouncer.textContent = '';
+    if (
+      readerSpeechAllowedInCurrentFocus()
+      && !state.accessibility.selfVoiceMuted
+    ) {
+      selfVoice?.speak?.(text, { interrupt: interrupt || force });
+    }
+    return;
+  }
+
+  /*
+   * Self-Voice still owns the lane even if its runtime object is temporarily
+   * unavailable. Do not fall through to ARIA/native speech and create two
+   * competing speech paths once the runtime returns.
+   */
+  if (state.accessibility.selfVoiceEnabled) {
     state.announcementSerial += 1;
     announcer.textContent = '';
     if (interruptAnnouncer) interruptAnnouncer.textContent = '';
     return;
   }
+
+  if (!readerSpeechAllowedInCurrentFocus()) return;
 
   state.announcementSerial += 1;
   const serial = state.announcementSerial;
@@ -4516,6 +4547,7 @@ function announceNativeReaderOutputLine(value) {
   if (!state.accessibility.screenReaderMode || state.accessibility.selfVoiceEnabled) return false;
   const text = String(value || '').replaceAll('\r', '').trimEnd();
   if (!text.trim() || !shouldIncludeNativeReaderLine(text)) return false;
+  if (!readerSpeechAllowedInCurrentFocus()) return false;
 
   const fallback = () => {
     const result = typeof nativeReaderOutputApi.notifyNativeReaderOutput === 'function'
@@ -12437,9 +12469,30 @@ function syncSelfVoiceForegroundState() {
 }
 
 function setSelfVoiceAppForeground(foreground) {
+  const wasForeground = state.accessibility.selfVoiceAppForeground;
   state.accessibility.selfVoiceAppForeground = Boolean(foreground);
   const speechForeground = syncSelfVoiceForegroundState();
   syncAudioCueForegroundState();
+
+  if (
+    wasForeground
+    && !state.accessibility.selfVoiceAppForeground
+    && state.accessibility.selfVoiceForegroundOnly
+  ) {
+    /*
+     * Self-Voice setForeground(false) already flushes its Web Speech queue.
+     * Mirror that behavior for the native/ARIA lane: stop PRISM-owned speech,
+     * clear live-region content we control, and do not retain a catch-up queue.
+     */
+    state.announcementSerial += 1;
+    announcer.textContent = '';
+    if (interruptAnnouncer) interruptAnnouncer.textContent = '';
+    readerOutputAnnouncer?.replaceChildren?.();
+    if (state.accessibility.screenReaderMode) {
+      void window.nukefire?.nativeReaderStop?.().catch(() => {});
+    }
+  }
+
   return speechForeground;
 }
 
@@ -12453,7 +12506,7 @@ function setSelfVoiceForegroundOnly(enabled, options = {}) {
     schedulePersistentSettingsSave();
   }
   if (options.announceChange !== false) {
-    announce(`Foreground-only self-voice ${state.accessibility.selfVoiceForegroundOnly ? 'enabled' : 'disabled'}.`, { force: true });
+    announce(`Foreground-only Reader speech ${state.accessibility.selfVoiceForegroundOnly ? 'enabled' : 'disabled'}.`, { force: true });
   }
   return state.accessibility.selfVoiceForegroundOnly;
 }
@@ -12671,6 +12724,15 @@ function setSelfVoiceEnabled(enabled, options = {}) {
   }
 
   if (requested && state.accessibility.screenReaderMode) {
+    /*
+     * Self-Voice is taking ownership. Stop any NukeFire speech already queued
+     * in PRISM before disabling future Native Reader delivery.
+     */
+    void window.nukefire?.nativeReaderStop?.().catch(() => {});
+    state.announcementSerial += 1;
+    announcer.textContent = '';
+    if (interruptAnnouncer) interruptAnnouncer.textContent = '';
+    readerOutputAnnouncer?.replaceChildren?.();
     state.accessibility.screenReaderMode = false;
     document.body.classList.remove('screen-reader-mode');
     xtermAdapter?.setScreenReaderMode?.(false);
@@ -13305,8 +13367,13 @@ function setReaderWorkspaceEnabled(enabled, options = {}) {
 function setScreenReaderMode(enabled, options = {}) {
   const requested = Boolean(enabled);
   if (requested && state.accessibility.selfVoiceEnabled) {
+    /*
+     * Native Reader is taking ownership. Stop and disable Self-Voice before
+     * exposing the native lane so both engines can never own live speech.
+     */
     selfVoice?.stop?.();
     selfVoice?.setEnabled?.(false);
+    speechSoundTriggers?.clearRuntime?.();
     state.accessibility.selfVoiceEnabled = false;
     $('#self-voice-enabled').checked = false;
     localStorage.setItem('nukefire.selfVoiceEnabled', 'false');
@@ -17051,6 +17118,105 @@ function handleLocalBufferCommand(commandValue) {
   return true;
 }
 
+function parseNativeReaderControlCommand(commandValue) {
+  const command = String(commandValue || '');
+  const prefix = normalizeClientCommandPrefix(state.sessions.commandPrefix);
+  if (!command.startsWith(prefix) || command.startsWith(prefix.repeat(2))) return null;
+  const body = command.slice(prefix.length).trim();
+  const match = body.match(/^reader(?:\s+(\S+))?(?:\s+([\s\S]*))?$/iu);
+  if (!match) return null;
+  const action = String(match[1] || 'status').trim().toLowerCase();
+  const argument = String(match[2] || '').trim();
+  if (!['status', 'test', 'stop', 'reconnect'].includes(action) || argument) {
+    return { action: 'invalid' };
+  }
+  return { action };
+}
+
+function nativeReaderStatusText(status = {}) {
+  const transport = String(status.transport || 'prism-helper');
+  if (status.available) {
+    const backend = String(status.backend || 'screen reader');
+    const restartCount = Math.max(0, Number(status.restarts) || 0);
+    const reconnectCount = Math.max(0, Number(status.reconnects) || 0);
+    return `Native Reader: ${backend} connected through ${transport}. Helper restarts ${restartCount}; manual reconnects ${reconnectCount}.`;
+  }
+  if (status.reason === 'unsupported-platform') {
+    return 'Native Reader: compatibility ARIA transport active. The PRISM helper is Windows-only in this release.';
+  }
+  const reason = String(status.reason || status.lastFailure || 'unavailable').replaceAll('-', ' ');
+  return `Native Reader: compatibility fallback active. Native helper unavailable: ${reason}.`;
+}
+
+async function presentNativeReaderControlMessage(text, options = {}) {
+  const message = String(text || '').trim();
+  if (!message) return false;
+  appendSystemMessage(message);
+  if (
+    state.accessibility.screenReaderMode
+    && !state.accessibility.selfVoiceEnabled
+    && typeof window.nukefire?.nativeReaderSpeak === 'function'
+  ) {
+    try {
+      const result = await window.nukefire.nativeReaderSpeak(message, {
+        interrupt: options.interrupt !== false
+      });
+      if (result?.ok && result.available !== false) return true;
+    } catch {}
+  }
+  announce(message, { force: true, interrupt: options.interrupt !== false });
+  return true;
+}
+
+async function handleNativeReaderControlCommand(commandValue) {
+  const parsed = parseNativeReaderControlCommand(commandValue);
+  if (!parsed) return false;
+  const prefix = normalizeClientCommandPrefix(state.sessions.commandPrefix);
+
+  if (parsed.action === 'invalid') {
+    await presentNativeReaderControlMessage(
+      `Usage: ${prefix}reader {status|test|stop|reconnect}`
+    );
+    return true;
+  }
+
+  if (parsed.action === 'stop') {
+    const result = typeof window.nukefire?.nativeReaderStop === 'function'
+      ? await window.nukefire.nativeReaderStop().catch(() => null)
+      : null;
+    appendSystemMessage(result?.ok
+      ? 'Native Reader speech stopped.'
+      : 'Native Reader stop is unavailable; compatibility Reader output remains active.');
+    return true;
+  }
+
+  if (parsed.action === 'reconnect') {
+    const status = typeof window.nukefire?.nativeReaderReconnect === 'function'
+      ? await window.nukefire.nativeReaderReconnect().catch(() => ({ available: false, reason: 'reconnect-failed' }))
+      : { available: false, reason: 'reconnect-unavailable' };
+    await presentNativeReaderControlMessage(nativeReaderStatusText(status));
+    return true;
+  }
+
+  if (parsed.action === 'test') {
+    const status = typeof window.nukefire?.getNativeReaderStatus === 'function'
+      ? await window.nukefire.getNativeReaderStatus().catch(() => ({ available: false, reason: 'status-failed' }))
+      : { available: false, reason: 'status-unavailable' };
+    if (status.available) {
+      await presentNativeReaderControlMessage(`NukeFire Native Reader test through ${status.backend || 'the active screen reader'}.`);
+    } else {
+      await presentNativeReaderControlMessage(nativeReaderStatusText(status));
+    }
+    return true;
+  }
+
+  const status = typeof window.nukefire?.getNativeReaderStatus === 'function'
+    ? await window.nukefire.getNativeReaderStatus().catch(() => ({ available: false, reason: 'status-failed' }))
+    : { available: false, reason: 'status-unavailable' };
+  await presentNativeReaderControlMessage(nativeReaderStatusText(status));
+  return true;
+}
+
 function parseLocalReaderCommand(commandValue) {
   const command = String(commandValue || '').trim();
   const matched = command.match(/^cr(?:\s+(.+))?$/iu);
@@ -17092,6 +17258,7 @@ function handleLocalReaderCommand(commandValue) {
 }
 
 async function handleLocalRendererCommand(commandValue) {
+  if (await handleNativeReaderControlCommand(commandValue)) return true;
   if (handleLocalReaderCommand(commandValue)) return true;
   if (await handleLocalLinkCommand(commandValue)) return true;
   return handleLocalBufferCommand(commandValue);
@@ -17165,9 +17332,10 @@ async function sendCommand(rawCommand, options = {}) {
   }
   state.paginationPending = false;
   const localReaderCommand = parseLocalReaderCommand(command);
+  const nativeReaderControlCommand = parseNativeReaderControlCommand(command);
   const commandLine = analyzeCommandLineText(command);
-  const hasServerCommands = !localReaderCommand && !commandLine.errorCode && Boolean(commandLine.hasServerCommands);
-  const singleClientCommand = Boolean(localReaderCommand) || (
+  const hasServerCommands = !localReaderCommand && !nativeReaderControlCommand && !commandLine.errorCode && Boolean(commandLine.hasServerCommands);
+  const singleClientCommand = Boolean(localReaderCommand || nativeReaderControlCommand) || (
     !commandLine.errorCode
     && commandLine.commands?.length === 1
     && isClientCommandText(commandLine.commands[0])
@@ -17226,7 +17394,11 @@ async function sendCommand(rawCommand, options = {}) {
   if (window.nukefire.routeCommand && state.sessions.activeId) {
     const commands = commandLine.errorCode ? [] : (commandLine.commands || []);
     const containsLocalRendererCommand = commands.length > 1
-      && commands.some((commandPart) => parseLocalLinkCommand(commandPart) || parseLocalBufferCommand(commandPart));
+      && commands.some((commandPart) =>
+        parseNativeReaderControlCommand(commandPart)
+        || parseLocalLinkCommand(commandPart)
+        || parseLocalBufferCommand(commandPart)
+      );
     let persistentMutation = false;
     if (containsLocalRendererCommand) {
       for (const commandPart of commands) {

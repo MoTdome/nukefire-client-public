@@ -1,2 +1,2 @@
-NukeFire Client 0.3.1-beta.84
-Windows PRISM Toolchain Fix
+NukeFire Client 0.3.1-beta.85
+Native Reader Hardening and Speech Ownership

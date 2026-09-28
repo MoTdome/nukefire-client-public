@@ -107,3 +107,110 @@ test('Native Reader packaged and source paths are deterministic', () => {
     /native[\\/]reader-bridge[\\/]dist[\\/]win32-x64[\\/]nukefire-reader-bridge\.exe$/u
   );
 });
+
+
+test('Native Reader reconnect survives a stale exit from the replaced helper', async () => {
+  const children = [];
+  let pid = 5000;
+  const spawnImpl = () => {
+    const child = new EventEmitter();
+    child.pid = ++pid;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = {
+      destroyed: false,
+      write(line) {
+        const parts = String(line).trimEnd().split('\t');
+        const op = parts[0];
+        const id = parts[1];
+        const backend = Buffer.from('NVDA').toString('base64');
+        setImmediate(() => child.stdout.emit('data', Buffer.from(`OK\t${id}\t${op}\t${backend}\t1a4\n`)));
+        return true;
+      },
+      end() { this.destroyed = true; }
+    };
+    child.kill = () => true;
+    children.push(child);
+    return child;
+  };
+
+  const bridge = new NativeReaderBridge({
+    platform: 'win32',
+    executablePath: 'C:\\fake\\nukefire-reader-bridge.exe',
+    fileExists: () => true,
+    spawnImpl,
+    requestTimeoutMs: 500
+  });
+
+  const firstStatus = await bridge.start();
+  assert.equal(firstStatus.available, true);
+  const first = children[0];
+
+  const secondStatus = await bridge.reconnect();
+  assert.equal(secondStatus.available, true);
+  assert.equal(secondStatus.reconnects, 1);
+  const second = children[1];
+  assert.notEqual(first, second);
+
+  first.emit('exit', 0, null);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const afterStaleExit = bridge.snapshot();
+  assert.equal(afterStaleExit.available, true);
+  assert.equal(afterStaleExit.pid, second.pid);
+  assert.equal(afterStaleExit.backend, 'NVDA');
+  bridge.close();
+});
+
+test('Native Reader request timeout marks the helper unavailable for bounded recovery', async () => {
+  const spawnImpl = () => {
+    const child = new EventEmitter();
+    child.pid = 6001;
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = {
+      destroyed: false,
+      write(line) {
+        const parts = String(line).trimEnd().split('\t');
+        const op = parts[0];
+        const id = parts[1];
+        if (op === 'HELLO') {
+          const backend = Buffer.from('NVDA').toString('base64');
+          setImmediate(() => child.stdout.emit('data', Buffer.from(`OK\t${id}\tHELLO\t${backend}\t1a4\n`)));
+        }
+        return true;
+      },
+      end() { this.destroyed = true; }
+    };
+    child.kill = () => true;
+    return child;
+  };
+
+  const bridge = new NativeReaderBridge({
+    platform: 'win32',
+    executablePath: 'C:\\fake\\nukefire-reader-bridge.exe',
+    fileExists: () => true,
+    spawnImpl,
+    requestTimeoutMs: 250
+  });
+
+  const result = await bridge.output('this request will time out');
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'timeout');
+  const status = bridge.snapshot();
+  assert.equal(status.available, false);
+  assert.match(status.lastFailure, /timed out/iu);
+  bridge.close();
+});
+
+test('Native Reader reconnect stays compatibility-only off Windows', async () => {
+  let spawned = false;
+  const bridge = new NativeReaderBridge({
+    platform: 'linux',
+    spawnImpl: () => { spawned = true; throw new Error('should not spawn'); }
+  });
+  const status = await bridge.reconnect();
+  assert.equal(status.available, false);
+  assert.equal(status.reason, 'unsupported-platform');
+  assert.equal(spawned, false);
+});

@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('nukefire', {
   nativeReaderOutput: (text, options) => ipcRenderer.invoke('native-reader:output', text, options),
   nativeReaderSpeak: (text, options) => ipcRenderer.invoke('native-reader:speak', text, options),
   nativeReaderStop: () => ipcRenderer.invoke('native-reader:stop'),
+  nativeReaderReconnect: () => ipcRenderer.invoke('native-reader:reconnect'),
   setTinTinControlKeys: (value) => ipcRenderer.invoke('tintin:control-keys', value),
   onTinTinControlKey: (callback) => subscribe('tintin:control-key', callback),
   readTinTinScript: (requested) => ipcRenderer.invoke('scripts:read', requested),

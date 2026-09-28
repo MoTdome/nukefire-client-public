@@ -1,28 +1,34 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client **Beta.84** milestone.
+Public source snapshot of the NukeFire Client **Beta.85** milestone.
 
 ## This snapshot
 
 This repository is the reviewed and sanitized public snapshot of the
-**Beta.84** milestone. Beta.84 is built directly on the public Beta.83 source
-commit `2271b8616825d1dd44866fac4f656fa0d42d3dcc`.
+**Beta.85** milestone. Beta.85 is built directly on the public Beta.84 release
+commit `a6262f91e479fb6274507c161a54300714bfa94c`.
 
-Beta.84 preserves Beta.83's experimental Windows PRISM Native Reader transport
-and changes only the Windows build toolchain required to produce the
-distribution successfully:
+Beta.85 hardens the Windows PRISM Native Reader transport after real NVDA play
+testing confirmed that Beta.84 automatic MUD output was useful without observed
+dropped lines.
 
-- Windows releases use the `windows-2025-vs2026` runner;
-- the workflow initializes the x64 MSVC environment and installs current CMake;
-- the native helper builds with Ninja Release instead of Visual Studio
-  `-A x64`;
-- macOS and Linux release runners remain unchanged.
+The release adds:
 
-Native Reader runtime behavior, PRISM v0.18.2 pinning, NVDA/JAWS selection,
-Beta.82 fallback behavior, manual Reader announcements, and NukeFire Voice are
-unchanged from Beta.83.
+- `#reader status`, `#reader test`, `#reader stop`, and `#reader reconnect`;
+- forced helper restart and supported screen-reader reacquisition;
+- stale old-helper exit protection;
+- bounded timeout/write/backend failure recovery;
+- native transport restart/reconnect/failure diagnostics;
+- foreground-only behavior shared by Native Reader and Self-Voice;
+- immediate cancellation of NukeFire-owned native speech when the app moves to
+  the background;
+- explicit single-owner handoff between Native Reader and NukeFire Self-Voice.
 
-See `RELEASE-NOTES-beta84.md` for the complete Beta.84 scope.
+Background-suppressed speech is not replayed when focus returns; Reader Review
+and other client processing continue normally. macOS/Linux continue using the
+compatibility ARIA transport.
+
+See `RELEASE-NOTES-beta85.md` for the complete Beta.85 scope.
 
 ## Test soundpacks
 
@@ -75,11 +81,11 @@ Platform distribution scripts are defined in `package.json`.
 ## Security / public-history note
 
 This public repository contains sanitized public snapshots rather than the
-private development history. Beta.84 is reconciled on the public Beta.83 source
-commit `2271b8616825d1dd44866fac4f656fa0d42d3dcc`, reviewed, and independently verified before its public
-commit and tag are pushed. Private Git history, backup trees, local distribution
-outputs, credentials, private checkout paths, game-server paths, and
-build-machine metadata are intentionally excluded.
+private development history. Beta.85 is reconciled on the public Beta.84
+release commit `a6262f91e479fb6274507c161a54300714bfa94c`, reviewed, and independently verified before
+its public commit and tag are pushed. Private Git history, backup trees, local
+distribution outputs, credentials, private checkout paths, game-server paths,
+and build-machine metadata are intentionally excluded.
 
 ## License
 

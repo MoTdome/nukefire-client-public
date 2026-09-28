@@ -1,3 +1,20 @@
+## 0.3.1-beta.85 — Native Reader Hardening and Speech Ownership
+
+- Hardens the Windows PRISM Native Reader transport after real NVDA play testing confirmed Beta.84 automatic MUD output was usable without observed line loss.
+- Adds local `#reader status`, `#reader test`, `#reader stop`, and `#reader reconnect` controls so screen-reader users can diagnose and recover the native transport without Developer Tools.
+- Adds a forced helper reconnect/reacquire path for restarting the isolated PRISM bridge and reacquiring a running supported screen reader.
+- Prevents delayed exit/error events from an old helper process from tearing down a newer replacement helper.
+- Treats timeout, write failure, backend failure, and helper loss as bounded recovery events.
+- Tracks native helper restart count, manual reconnect count, last failure, and last successful connection time in transport status.
+- Makes the existing foreground-only speech preference apply to both Native Reader and NukeFire Self-Voice.
+- When NukeFire leaves the foreground, stops NukeFire-owned native speech already queued through PRISM, suppresses new live speech, and resumes only with new output after focus returns.
+- Keeps Reader Review/history, Communications, mapper, automation, and other client processing active while live speech is foreground-suppressed.
+- Enforces a single NukeFire speech owner: enabling Self-Voice stops queued Native Reader speech before Self-Voice takes ownership, while enabling Native Reader stops and clears Self-Voice before native speech takes ownership.
+- Prevents muted/background-suppressed Self-Voice from falling through to ARIA/native speech and causing overlapping voices.
+- Keeps Beta.84 automatic completed-line output semantics unchanged when foreground speech is allowed.
+- Keeps macOS and Linux on the compatibility ARIA transport; the PRISM helper remains Windows-only.
+- Adds regression coverage for stale-helper races, timeout recovery, forced reconnect, non-Windows behavior, local Reader controls, foreground suppression, and Native/Self-Voice ownership.
+
 ## 0.3.1-beta.84 — Windows PRISM Toolchain Fix
 
 - Keeps the Beta.83 Native Reader transport and accessibility behavior unchanged.
