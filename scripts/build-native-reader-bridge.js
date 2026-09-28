@@ -22,11 +22,17 @@ function run(command, args) {
   if (result.status !== 0) process.exit(result.status || 1);
 }
 
+fs.rmSync(build, { recursive: true, force: true });
 fs.mkdirSync(build, { recursive: true });
 fs.mkdirSync(dist, { recursive: true });
 
-run('cmake', ['-S', source, '-B', build, '-A', 'x64']);
-run('cmake', ['--build', build, '--config', 'Release', '--target', 'nukefire-reader-bridge', '--parallel']);
+run('cmake', [
+  '-S', source,
+  '-B', build,
+  '-G', 'Ninja',
+  '-DCMAKE_BUILD_TYPE=Release'
+]);
+run('cmake', ['--build', build, '--target', 'nukefire-reader-bridge', '--parallel']);
 
 const candidates = [
   path.join(build, 'Release', exeName),

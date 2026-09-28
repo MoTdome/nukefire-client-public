@@ -1,29 +1,28 @@
 # NukeFire Client
 
-Public source snapshot of the NukeFire Client **Beta.83** milestone.
+Public source snapshot of the NukeFire Client **Beta.84** milestone.
 
 ## This snapshot
 
 This repository is the reviewed and sanitized public snapshot of the
-**Beta.83** milestone. Beta.83 is built directly on the public Beta.82 release
-commit `911ebf38a3759903f648e77d3107a299d8410e64` and is independently verified again before the public
-release commit and tag.
+**Beta.84** milestone. Beta.84 is built directly on the public Beta.83 source
+commit `2271b8616825d1dd44866fac4f656fa0d42d3dcc`.
 
-Beta.83 introduces an experimental Windows Native Reader transport:
+Beta.84 preserves Beta.83's experimental Windows PRISM Native Reader transport
+and changes only the Windows build toolchain required to produce the
+distribution successfully:
 
-- automatic completed MUD output can use an isolated native PRISM helper with
-  direct NVDA or JAWS delivery;
-- the helper supports ordered output, interruption, stop, and backend/status
-  reporting;
-- Beta.82 `ariaNotify()` / live-region behavior remains the fallback whenever
-  the helper or supported screen reader is unavailable;
-- manual Reader/UI announcements and NukeFire Self-Voice keep their established
-  Beta.82 paths;
-- macOS and Linux Native Reader behavior remains unchanged from Beta.82.
+- Windows releases use the `windows-2025-vs2026` runner;
+- the workflow initializes the x64 MSVC environment and installs current CMake;
+- the native helper builds with Ninja Release instead of Visual Studio
+  `-A x64`;
+- macOS and Linux release runners remain unchanged.
 
-The Windows Setup and Portable builds compile and bundle the pinned PRISM
-v0.18.2 helper automatically. See `RELEASE-NOTES-beta83.md` for the full
-experimental scope and testing expectations.
+Native Reader runtime behavior, PRISM v0.18.2 pinning, NVDA/JAWS selection,
+Beta.82 fallback behavior, manual Reader announcements, and NukeFire Voice are
+unchanged from Beta.83.
+
+See `RELEASE-NOTES-beta84.md` for the complete Beta.84 scope.
 
 ## Test soundpacks
 
@@ -76,8 +75,8 @@ Platform distribution scripts are defined in `package.json`.
 ## Security / public-history note
 
 This public repository contains sanitized public snapshots rather than the
-private development history. Beta.83 is reconciled on the public Beta.82 release
-commit `911ebf38a3759903f648e77d3107a299d8410e64`, reviewed, and independently verified before its public
+private development history. Beta.84 is reconciled on the public Beta.83 source
+commit `2271b8616825d1dd44866fac4f656fa0d42d3dcc`, reviewed, and independently verified before its public
 commit and tag are pushed. Private Git history, backup trees, local distribution
 outputs, credentials, private checkout paths, game-server paths, and
 build-machine metadata are intentionally excluded.

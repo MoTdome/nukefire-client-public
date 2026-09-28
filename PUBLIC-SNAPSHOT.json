@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta83-prism-native-reader-transport",
-  "source_tag": "v0.3.1-beta.83",
+  "public_snapshot": "beta84-windows-prism-toolchain-fix",
+  "source_tag": "v0.3.1-beta.84",
   "source_commit": null,
-  "created_at": "2026-09-28T17:56:14+00:00",
+  "created_at": "2026-09-28T18:27:04+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,25 +46,23 @@
     }
   },
   "server_integration_examples_included": true,
-  "server_integration_status": "unchanged from Beta.82; Beta.83 adds an experimental Windows client-side PRISM Native Reader transport",
+  "server_integration_status": "unchanged from Beta.83; Beta.84 only corrects the Windows PRISM distribution toolchain",
   "source_branch": "main",
-  "package_version": "0.3.1-beta.83",
+  "package_version": "0.3.1-beta.84",
   "excluded_private_paths": [],
   "verification": {
-    "beta82_public_base": "911ebf38a3759903f648e77d3107a299d8410e64",
-    "beta83_candidate": "PRISM bridge protocol/order/interrupt/platform/path regressions + Beta.83 source architecture + Beta.82/Beta.79 accessibility + multi-session/renderer regressions + git diff --check + npm run verify: PASS immediately before Beta.83 release commit/tag"
+    "beta83_public_base": "2271b8616825d1dd44866fac4f656fa0d42d3dcc",
+    "beta84_candidate": "Windows runner/MSVC/current-CMake/Ninja regression + Beta.83 Native Reader regressions + Beta.82/Beta.79 accessibility regressions + git diff --check + npm run verify: PASS immediately before Beta.84 release commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.83",
-  "base_public_commit": "911ebf38a3759903f648e77d3107a299d8410e64",
-  "beta83_scope": [
-    "experimental Windows-only isolated PRISM Native Reader helper",
-    "PRISM v0.18.2 pinned and statically linked for Windows distributions",
-    "direct NVDA first and JAWS second with no SAPI or OneCore helper fallback",
-    "automatic completed MUD output uses native transport first on supported Windows systems",
-    "explicit output speak stop interrupt and backend status protocol",
-    "Beta.82 ariaNotify and polite live-region automatic-output fallback preserved",
-    "manual Reader and UI announcements remain on the established Beta.82 path",
-    "macOS and Linux Native Reader behavior unchanged from Beta.82",
-    "Windows Setup and Portable builds package helper and upstream licensing material"
+  "public_release_tag": "v0.3.1-beta.84",
+  "base_public_commit": "2271b8616825d1dd44866fac4f656fa0d42d3dcc",
+  "beta84_scope": [
+    "Beta.83 Native Reader runtime behavior unchanged",
+    "Windows distribution runner updated to windows-2025-vs2026",
+    "Windows build initializes amd64 MSVC developer environment",
+    "Windows build installs current CMake",
+    "Native Reader helper uses clean Ninja Release configuration",
+    "macOS and Linux release runners unchanged",
+    "PRISM remains pinned to v0.18.2 with NVDA first and JAWS second"
   ]
 }

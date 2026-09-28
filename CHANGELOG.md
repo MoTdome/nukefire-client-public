@@ -1,3 +1,14 @@
+## 0.3.1-beta.84 — Windows PRISM Toolchain Fix
+
+- Keeps the Beta.83 Native Reader transport and accessibility behavior unchanged.
+- Corrects the Windows distribution build environment after the Beta.83 tag exposed a PRISM C23 toolchain mismatch on the older `windows-2022` / VS2022 runner.
+- Moves only the Windows distribution matrix entry to `windows-2025-vs2026`, matching PRISM v0.18.2's own supported Windows CI environment.
+- Initializes the x64 MSVC developer environment and installs current CMake using the same pinned GitHub Actions used by PRISM v0.18.2.
+- Changes the NukeFire native-reader helper build from the Visual Studio `-A x64` generator to a clean Ninja Release build, again matching PRISM's upstream Windows build strategy.
+- Clears the helper CMake build directory before configuration so a stale Visual Studio/Ninja generator cache cannot poison local Windows rebuilds.
+- Leaves the already-successful macOS and Linux release runners unchanged.
+- Adds regression coverage for the exact Windows runner, MSVC/CMake setup, Ninja generator, and retained PRISM v0.18.2/NVDA/JAWS configuration.
+
 ## 0.3.1-beta.83 — PRISM Native Reader Transport
 
 - Adds an experimental Windows Native Reader transport that sends automatic completed MUD output through a small isolated native helper instead of relying exclusively on browser accessibility announcements.

@@ -79,7 +79,7 @@ test('GitHub release workflow builds and publishes all supported platforms', () 
   assert.doesNotMatch(workflow, /push:\s*\n\s*tags:/u);
   assert.match(releaseWorkflow, /push:\s*\n\s*tags:\s*\n\s*- 'v\*'/u);
   assert.match(releaseWorkflow, /macos-15-intel/u);
-  assert.match(releaseWorkflow, /windows-2022/u);
+  assert.match(releaseWorkflow, /windows-2025-vs2026/u);
   assert.match(releaseWorkflow, /ubuntu-24\.04/u);
   assert.match(releaseWorkflow, /Run complete verification suite/u);
   assert.match(releaseWorkflow, /gh release create/u);
