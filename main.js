@@ -17,6 +17,7 @@ const { LuaManagedStore, normalizeModuleName } = require('./src/lua-managed-stor
 const { LuaDiagnosticsRegistry } = require('./src/lua-diagnostics');
 const { buildLuaGmcpSnapshot, buildMudletMsdpSnapshot, splitGmcpCommand } = require('./src/lua-data-bridge');
 const { mainWindowBoundsForWorkArea } = require('./src/window-layout');
+const { NativeReaderBridge } = require('./src/native-reader-bridge');
 const {
   normalizeMainWindowState,
   windowStateForSave
@@ -39,6 +40,7 @@ let scriptStore = null;
 let soundpackStore = null;
 let logStore = null;
 let luaLabService = null;
+let nativeReaderBridge = null;
 const luaPaneRegistry = new LuaPaneRegistry();
 let luaManagedStore = null;
 const luaDiagnostics = new LuaDiagnosticsRegistry({ maxErrors: 64, repeatWindowMs: 2000 });
@@ -1036,6 +1038,14 @@ app.whenReady().then(async () => {
   logStore = new LogStore({
     documentsDirectory: app.getPath('documents')
   });
+  nativeReaderBridge = new NativeReaderBridge({
+    appRoot: __dirname,
+    resourcesPath: process.resourcesPath,
+    isPackaged: app.isPackaged
+  });
+  void nativeReaderBridge.start().catch((error) => {
+    console.warn('Native Reader bridge did not start.', error);
+  });
   try {
     await scriptStore.ensureDirectory();
     await soundpackStore.ensureDirectory();
@@ -1065,6 +1075,8 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  nativeReaderBridge?.close?.();
+  nativeReaderBridge = null;
   if (luaManagedStore) void luaManagedStore.flush().catch((error) => console.warn('Unable to flush managed Lua state during shutdown.', error));
 });
 
@@ -1076,6 +1088,22 @@ app.on('window-all-closed', () => {
 
 
 ipcMain.handle('app:is-focused', async () => appHasFocusedWindow());
+ipcMain.handle('native-reader:status', async () => {
+  if (!nativeReaderBridge) return { available: false, reason: 'bridge-not-ready' };
+  return nativeReaderBridge.getStatus();
+});
+ipcMain.handle('native-reader:output', async (_event, text, options = {}) => {
+  if (!nativeReaderBridge) return { ok: false, available: false, error: 'bridge-not-ready' };
+  return nativeReaderBridge.output(text, { interrupt: options?.interrupt === true });
+});
+ipcMain.handle('native-reader:speak', async (_event, text, options = {}) => {
+  if (!nativeReaderBridge) return { ok: false, available: false, error: 'bridge-not-ready' };
+  return nativeReaderBridge.speak(text, { interrupt: options?.interrupt === true });
+});
+ipcMain.handle('native-reader:stop', async () => {
+  if (!nativeReaderBridge) return { ok: false, available: false, error: 'bridge-not-ready' };
+  return nativeReaderBridge.stop();
+});
 ipcMain.handle('tintin:control-keys', async (_event, value = {}) => {
   tintinDefaultKeyCapture = { enabled: value?.enabled === true, focused: value?.focused === true };
   return { ...tintinDefaultKeyCapture };

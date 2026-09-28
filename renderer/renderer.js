@@ -4464,6 +4464,23 @@ function persistentSessionsSnapshot(options = {}) {
   };
 }
 
+function requestNativeReaderTransport(text, options = {}, fallback = null) {
+  if (
+    !state.accessibility.screenReaderMode
+    || state.accessibility.selfVoiceEnabled
+    || typeof window.nukefire?.nativeReaderOutput !== 'function'
+  ) {
+    return false;
+  }
+
+  void window.nukefire.nativeReaderOutput(text, {
+    interrupt: options.interrupt === true
+  }).then((result) => {
+    if (!result?.ok || result.available === false) fallback?.(result);
+  }).catch(() => fallback?.());
+  return true;
+}
+
 function announce(message, options = {}) {
   const text = String(message || '').trim();
   const force = Boolean(options.force);
@@ -4500,28 +4517,28 @@ function announceNativeReaderOutputLine(value) {
   const text = String(value || '').replaceAll('\r', '').trimEnd();
   if (!text.trim() || !shouldIncludeNativeReaderLine(text)) return false;
 
-  const result = typeof nativeReaderOutputApi.notifyNativeReaderOutput === 'function'
-    ? nativeReaderOutputApi.notifyNativeReaderOutput(text, {
-        documentRef: document,
-        elementRef: readerOutputAnnouncer,
-        priority: 'normal'
-      })
-    : null;
-  if (result?.announced) return true;
+  const fallback = () => {
+    const result = typeof nativeReaderOutputApi.notifyNativeReaderOutput === 'function'
+      ? nativeReaderOutputApi.notifyNativeReaderOutput(text, {
+          documentRef: document,
+          elementRef: readerOutputAnnouncer,
+          priority: 'normal'
+        })
+      : null;
+    if (result?.announced) return true;
 
-  /* Progressive fallback for assistive-technology/browser combinations that
-   * do not expose ariaNotify. Keep this path as a traditional polite live
-   * region rather than duplicating native notifications.
-   */
-  if (!readerOutputAnnouncer) return false;
-  const line = document.createElement('div');
-  line.textContent = text;
-  while (readerOutputAnnouncer.children.length >= 8) readerOutputAnnouncer.firstElementChild?.remove();
-  readerOutputAnnouncer.append(line);
-  setTimeout(() => line.remove(), 5000);
-  return true;
+    if (!readerOutputAnnouncer) return false;
+    const line = document.createElement('div');
+    line.textContent = text;
+    while (readerOutputAnnouncer.children.length >= 8) readerOutputAnnouncer.firstElementChild?.remove();
+    readerOutputAnnouncer.append(line);
+    setTimeout(() => line.remove(), 5000);
+    return true;
+  };
+
+  if (requestNativeReaderTransport(text, { interrupt: false }, fallback)) return true;
+  return fallback();
 }
-
 
 function legacySettingsSnapshot() {
   return {

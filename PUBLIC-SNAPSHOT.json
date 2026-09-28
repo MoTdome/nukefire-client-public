@@ -1,9 +1,9 @@
 {
   "project": "NukeFire Client",
-  "public_snapshot": "beta82-native-reader-reliability",
-  "source_tag": "v0.3.1-beta.82",
+  "public_snapshot": "beta83-prism-native-reader-transport",
+  "source_tag": "v0.3.1-beta.83",
   "source_commit": null,
-  "created_at": "2026-09-25T18:14:31+00:00",
+  "created_at": "2026-09-28T17:56:14+00:00",
   "private_history_included": false,
   "soundpacks": [
     "NukeFire-Classic.nfsp",
@@ -46,22 +46,25 @@
     }
   },
   "server_integration_examples_included": true,
-  "server_integration_status": "unchanged from Beta.81; Beta.82 contains client-side Native Reader reliability changes",
+  "server_integration_status": "unchanged from Beta.82; Beta.83 adds an experimental Windows client-side PRISM Native Reader transport",
   "source_branch": "main",
-  "package_version": "0.3.1-beta.82",
+  "package_version": "0.3.1-beta.83",
   "excluded_private_paths": [],
   "verification": {
-    "beta81_public_base": "414d45ce746bd0b44c49bf133c600ac866adfe08",
-    "beta82_candidate": "dedicated Native Reader reliability regressions + Beta.79 Native Reader/MUSH regressions + session/prompt/xterm gates + git diff --check + npm run verify: PASS immediately before Beta.82 release commit/tag"
+    "beta82_public_base": "911ebf38a3759903f648e77d3107a299d8410e64",
+    "beta83_candidate": "PRISM bridge protocol/order/interrupt/platform/path regressions + Beta.83 source architecture + Beta.82/Beta.79 accessibility + multi-session/renderer regressions + git diff --check + npm run verify: PASS immediately before Beta.83 release commit/tag"
   },
-  "public_release_tag": "v0.3.1-beta.82",
-  "base_public_commit": "414d45ce746bd0b44c49bf133c600ac866adfe08",
-  "beta82_scope": [
-    "ariaNotify-first completed-line Native Reader delivery with live-region fallback",
-    "removed noisy New NukeFire output accessible label",
-    "bare greater-than gameplay prompt suppressed from Native Reader live speech",
-    "bare greater-than gameplay prompt suppressed from Reader Review",
-    "shared Reader-line filter applied to newline and GA/EOR completion",
-    "repeated identical lines remain distinct Reader events"
+  "public_release_tag": "v0.3.1-beta.83",
+  "base_public_commit": "911ebf38a3759903f648e77d3107a299d8410e64",
+  "beta83_scope": [
+    "experimental Windows-only isolated PRISM Native Reader helper",
+    "PRISM v0.18.2 pinned and statically linked for Windows distributions",
+    "direct NVDA first and JAWS second with no SAPI or OneCore helper fallback",
+    "automatic completed MUD output uses native transport first on supported Windows systems",
+    "explicit output speak stop interrupt and backend status protocol",
+    "Beta.82 ariaNotify and polite live-region automatic-output fallback preserved",
+    "manual Reader and UI announcements remain on the established Beta.82 path",
+    "macOS and Linux Native Reader behavior unchanged from Beta.82",
+    "Windows Setup and Portable builds package helper and upstream licensing material"
   ]
 }

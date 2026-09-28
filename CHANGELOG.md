@@ -1,3 +1,14 @@
+## 0.3.1-beta.83 — PRISM Native Reader Transport
+
+- Adds an experimental Windows Native Reader transport that sends automatic completed MUD output through a small isolated native helper instead of relying exclusively on browser accessibility announcements.
+- Uses a statically linked, pinned PRISM v0.18.2 build with direct NVDA first and JAWS second; it deliberately does not fall back to SAPI or OneCore and therefore does not create a competing speech owner.
+- Adds ordered native `OUTPUT` / `SPEAK`, explicit interruption, `STOP`, backend/status reporting, bounded IPC payloads, process supervision, and retry/fallback behavior.
+- Keeps Beta.82's `ariaNotify()` plus polite live-region path as the automatic-output fallback whenever the Windows helper or supported screen reader is unavailable.
+- Keeps manual Reader/UI announcements such as Read Last Line, vitals, Reader Review hotkeys, setup/status messages, and NukeFire Voice on their established Beta.82 paths for this first native-transport release.
+- Leaves macOS and Linux Native Reader behavior unchanged from Beta.82; the PRISM helper is Windows-only in Beta.83.
+- Adds Windows distribution integration so Setup and Portable builds compile and bundle the native helper and PRISM attribution/license material automatically.
+- Adds deterministic fake-helper and source-architecture regressions for ordering, interrupt flags, platform fallback, helper path resolution, PRISM pinning, and Windows packaging.
+
 ## 0.3.1-beta.82 — Native Reader Reliability
 
 - Uses the browser's `ariaNotify()` path first for Native Reader completed-line announcements when available, while retaining the established polite live-region path as a compatibility fallback.

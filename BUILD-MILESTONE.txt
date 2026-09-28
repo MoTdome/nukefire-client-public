@@ -1,2 +1,2 @@
-NukeFire Client 0.3.1-beta.82
-Native Reader Reliability
+NukeFire Client 0.3.1-beta.83
+PRISM Native Reader Transport
